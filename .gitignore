@@ -66,3 +66,6 @@ tmp/
 test-benchmark-report.json
 
 .conductor
+spec
+.tmp
+.local-install
