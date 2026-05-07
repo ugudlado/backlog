@@ -10,7 +10,7 @@ import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
-import InitializationScreen from './components/InitializationScreen';
+import EmptyRegistryScreen from './components/EmptyRegistryScreen';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
@@ -209,10 +209,6 @@ function App() {
       }
     };
     checkInitStatus();
-  }, []);
-
-  const handleInitialized = useCallback(() => {
-    setIsInitialized(true);
   }, []);
 
   const applySearchResults = useCallback((
@@ -460,11 +456,13 @@ function App() {
     );
   }
 
-  // Show initialization screen if not initialized
+  // Show empty-registry screen when there is no current workspace.
+  // Adding a workspace through this screen also covers first-time init
+  // (the server auto-inits an empty target directory).
   if (isInitialized === false) {
     return (
       <ThemeProvider>
-        <InitializationScreen onInitialized={handleInitialized} />
+        <EmptyRegistryScreen onWorkspaceAdded={async () => { window.location.reload(); }} />
       </ThemeProvider>
     );
   }

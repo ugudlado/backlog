@@ -29,6 +29,21 @@ export interface InitializationStatus {
 	rootConfigPath?: string | null;
 }
 
+export interface Workspace {
+	id: string;
+	path: string;
+}
+
+export interface WorkspacesResponse {
+	workspaces: Workspace[];
+	currentId: string | null;
+}
+
+export interface AddWorkspaceResponse extends WorkspacesResponse {
+	/** Id minted (or matched) for the path the caller just added; null if the server couldn't resolve it. */
+	addedId: string | null;
+}
+
 // Enhanced error types for better error handling
 export class ApiError extends Error {
 	constructor(
@@ -42,8 +57,36 @@ export class ApiError extends Error {
 	}
 
 	static fromResponse(response: Response, data?: unknown): ApiError {
-		const message = `HTTP ${response.status}: ${response.statusText}`;
-		return new ApiError(message, response.status, response.statusText, data);
+		const message = ApiError.extractMessage(response, data);
+		const code = ApiError.extractCode(response, data);
+		return new ApiError(message, response.status, code, data);
+	}
+
+	private static extractMessage(response: Response, data?: unknown): string {
+		if (typeof data === "string" && data.trim().length > 0) {
+			return data.trim();
+		}
+		if (data && typeof data === "object") {
+			const maybeMessage = (data as { message?: unknown }).message;
+			if (typeof maybeMessage === "string" && maybeMessage.trim().length > 0) {
+				return maybeMessage.trim();
+			}
+			const maybeError = (data as { error?: unknown }).error;
+			if (typeof maybeError === "string" && maybeError.trim().length > 0) {
+				return maybeError.trim();
+			}
+		}
+		return `HTTP ${response.status}: ${response.statusText}`;
+	}
+
+	private static extractCode(response: Response, data?: unknown): string {
+		if (data && typeof data === "object") {
+			const maybeCode = (data as { code?: unknown }).code;
+			if (typeof maybeCode === "string" && maybeCode.trim().length > 0) {
+				return maybeCode.trim();
+			}
+		}
+		return response.statusText;
 	}
 }
 
@@ -531,6 +574,30 @@ export class ApiClient {
 
 	async checkStatus(): Promise<InitializationStatus> {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
+	}
+
+	async fetchWorkspaces(): Promise<WorkspacesResponse> {
+		return this.fetchJson<WorkspacesResponse>(`${API_BASE}/workspaces`);
+	}
+
+	async addWorkspace(path: string): Promise<AddWorkspaceResponse> {
+		return this.fetchJson<AddWorkspaceResponse>(`${API_BASE}/workspaces`, {
+			method: "POST",
+			body: JSON.stringify({ path }),
+		});
+	}
+
+	async setCurrentWorkspace(id: string): Promise<{ ok: boolean }> {
+		return this.fetchJson<{ ok: boolean }>(`${API_BASE}/workspaces/${encodeURIComponent(id)}`, {
+			method: "PATCH",
+			body: JSON.stringify({ current: true }),
+		});
+	}
+
+	async deleteWorkspace(id: string): Promise<WorkspacesResponse> {
+		return this.fetchJson<WorkspacesResponse>(`${API_BASE}/workspaces/${encodeURIComponent(id)}`, {
+			method: "DELETE",
+		});
 	}
 
 	async initializeProject(options: {
