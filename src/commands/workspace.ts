@@ -14,14 +14,20 @@ function formatIssue(issue: WorkspaceIssue): string {
 	return `  [${issue.kind}] ${target}`;
 }
 
+function pluralEntries(n: number): string {
+	return `${n} ${n === 1 ? "entry" : "entries"}`;
+}
+
+function pluralIssues(n: number): string {
+	return `${n} ${n === 1 ? "issue" : "issues"}`;
+}
+
 function printReport(issues: WorkspaceIssue[], totalEntries: number): void {
 	if (issues.length === 0) {
-		console.log(`Registry healthy — ${totalEntries} entry${totalEntries === 1 ? "" : "ies"}, no issues.`);
+		console.log(`Registry healthy — ${pluralEntries(totalEntries)}, no issues.`);
 		return;
 	}
-	console.log(
-		`Found ${issues.length} issue${issues.length === 1 ? "" : "s"} across ${totalEntries} entry${totalEntries === 1 ? "" : "ies"}:`,
-	);
+	console.log(`Found ${pluralIssues(issues.length)} across ${pluralEntries(totalEntries)}:`);
 	for (const issue of issues) {
 		console.log(formatIssue(issue));
 	}
@@ -66,7 +72,7 @@ async function doDoctor(opts: DoctorOptions): Promise<void> {
 		await writeWorkspacesIndex(next);
 	});
 
-	console.log(`Removed/repaired ${issues.length} issue${issues.length === 1 ? "" : "s"}.`);
+	console.log(`Removed/repaired ${pluralIssues(issues.length)}.`);
 	process.exit(0);
 }
 

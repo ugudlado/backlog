@@ -734,6 +734,51 @@ backlog doc view doc-1
 
 ---
 
+## Workspace Registry
+
+Backlog.md keeps a machine-wide registry of every project you've initialised at
+`~/.config/backlog.md/workspaces.yml` (override via `BACKLOG_MACHINE_CONFIG_DIR`).
+Each entry pairs a workspace `id` with the absolute project path; one entry can be
+flagged as the `current` workspace, which is what the long-running `backlog
+browser` / `backlog server` and the MCP server fall back to when no project is
+detected from the working directory.
+
+The registry is shared mutable state — multiple CLI invocations and the daemon
+can write it concurrently — so all read-modify-write goes through a cross-process
+lock. You should never edit `workspaces.yml` by hand.
+
+### `backlog workspace doctor`
+
+Use `backlog workspace doctor` to scan the registry for drift. It reports five
+categories of issue per entry:
+
+- `missing-path` — the recorded path no longer exists on disk
+- `not-git-repo` — the path exists but isn't a git checkout
+- `no-backlog-dir` — the repo has no `backlog/` directory
+- `duplicate-path` — two or more entries share the same path
+- `stale-current-pointer` — `current` points at an id that's no longer in the registry
+
+Pass `--fix` to repair (prunes broken/duplicate entries, clears stale pointers).
+The command prompts before writing; pass `--yes` to skip the prompt in scripted
+contexts. Exit code is `0` when healthy, `1` when issues remain.
+
+### MCP tools: `workspace_list` and `workspace_switch`
+
+The MCP server exposes the registry to agents via two tools alongside the
+`task_*` family:
+
+- `workspace_list` (read-only) — returns
+  `{ workspaces: [{ id, path, isCurrent }], current }`. Use this to discover
+  which projects are registered on the machine before reading or writing tasks
+  outside the current working directory.
+- `workspace_switch` (mutating) — accepts `{ id }` and updates the machine-wide
+  current pointer. Returns `{ id, path }` on success or an `isError: true`
+  result when the id isn't registered.
+
+Cursor-family clients (Cursor, Windsurf, etc.) see these alongside CLI commands;
+prefer the MCP tools over invoking `backlog` shell commands when both are
+available.
+
 ## Remember: The Golden Rule
 
 **🎯 If you want to change ANYTHING in a task, use the `backlog task edit` command.**
