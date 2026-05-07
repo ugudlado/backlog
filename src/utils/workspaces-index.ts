@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, normalize, relative, resolve, sep } from "node:path";
+import lockfile from "proper-lockfile";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import { findBacklogRoot } from "./find-backlog-root.ts";
 
@@ -33,6 +34,98 @@ async function withWriteLock<T>(filePath: string, fn: () => Promise<T>): Promise
 		if (writeLocks.get(filePath) === next.then(() => undefined)) {
 			writeLocks.delete(filePath);
 		}
+	}
+}
+
+// ─── Cross-process registry lock (mirrors withCreateLock in operations.ts) ───
+
+const REGISTRY_LOCK_TIMEOUT_MS = 5_000;
+const REGISTRY_LOCK_STALE_MS = 10_000;
+const REGISTRY_LOCK_RETRY_DELAY_MS = 100;
+
+export const REGISTRY_LOCK_ERROR_CODE = "EREGISTRYLOCK";
+
+function createRegistryLockError(message: string, cause?: unknown): Error {
+	const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code?: string };
+	error.name = "RegistryLockError";
+	error.code = REGISTRY_LOCK_ERROR_CODE;
+	return error;
+}
+
+export function isRegistryLockError(error: unknown): error is Error {
+	return (
+		error instanceof Error &&
+		(error as Error & { code?: string }).code === REGISTRY_LOCK_ERROR_CODE &&
+		error.name === "RegistryLockError"
+	);
+}
+
+export function getRegistryLockPath(machineConfigDir: string): string {
+	return join(machineConfigDir, ".locks", "workspaces");
+}
+
+export async function withRegistryLock<T>(
+	fn: () => Promise<T>,
+	options?: { timeoutMs?: number; machineConfigDir?: string },
+): Promise<T> {
+	const configDir = getMachineConfigDir(options?.machineConfigDir);
+	const locksDir = join(configDir, ".locks");
+	const lockPath = getRegistryLockPath(configDir);
+	const timeoutMs = options?.timeoutMs ?? REGISTRY_LOCK_TIMEOUT_MS;
+	const retryDelayMs = REGISTRY_LOCK_RETRY_DELAY_MS;
+	const retries = Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0);
+
+	await mkdir(locksDir, { recursive: true });
+
+	let release: (() => Promise<void>) | undefined;
+	try {
+		release = await lockfile.lock(configDir, {
+			lockfilePath: lockPath,
+			realpath: false,
+			stale: REGISTRY_LOCK_STALE_MS,
+			retries: {
+				retries,
+				factor: 1,
+				minTimeout: retryDelayMs,
+				maxTimeout: retryDelayMs,
+				randomize: false,
+			},
+		});
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "ELOCKED") {
+			throw createRegistryLockError(
+				`EREGISTRYLOCK: Registry lock timed out after ${timeoutMs}ms (path: ${lockPath})`,
+				error,
+			);
+		}
+		if (code === "ECOMPROMISED") {
+			throw createRegistryLockError("Registry lock was interrupted. Please try again.", error);
+		}
+		throw error;
+	}
+
+	try {
+		const result = await fn();
+		try {
+			await release?.();
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException | undefined)?.code;
+			if (code === "ELOCKED" || code === "ECOMPROMISED") {
+				throw createRegistryLockError("Registry lock release failed.", error);
+			}
+			throw error;
+		}
+		return result;
+	} catch (error) {
+		if (release) {
+			try {
+				await release();
+			} catch {
+				// Preserve the original operation error if lock cleanup also fails.
+			}
+		}
+		throw error;
 	}
 }
 
@@ -307,16 +400,21 @@ export function resolveWorkspaceSelector(selector: string, entries: WorkspaceEnt
 
 export async function upsertWorkspaceEntry(entry: WorkspaceEntry, override?: string): Promise<void> {
 	const filePath = getWorkspacesFilePath(override);
-	await withWriteLock(filePath, async () => {
-		const index = await readWorkspacesIndex(override);
-		const absPath = toAbsoluteProjectRoot(entry.path);
-		const existing = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
-		const merged: WorkspaceEntry = { ...existing, ...entry, path: absPath };
-		const next = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
-		next.push(merged);
-		next.sort((a, b) => a.path.localeCompare(b.path));
-		await writeWorkspacesIndex({ ...index, workspaces: next }, override);
-	});
+	await withRegistryLock(
+		async () => {
+			await withWriteLock(filePath, async () => {
+				const index = await readWorkspacesIndex(override);
+				const absPath = toAbsoluteProjectRoot(entry.path);
+				const existing = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
+				const merged: WorkspaceEntry = { ...existing, ...entry, path: absPath };
+				const next = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
+				next.push(merged);
+				next.sort((a, b) => a.path.localeCompare(b.path));
+				await writeWorkspacesIndex({ ...index, workspaces: next }, override);
+			});
+		},
+		{ machineConfigDir: override },
+	);
 }
 
 /**
@@ -326,38 +424,48 @@ export async function upsertWorkspaceEntry(entry: WorkspaceEntry, override?: str
  */
 export async function setCurrentWorkspaceId(id: string | null, override?: string): Promise<void> {
 	const filePath = getWorkspacesFilePath(override);
-	await withWriteLock(filePath, async () => {
-		const index = await readWorkspacesIndex(override);
-		if (id !== null && !index.workspaces.some((e) => e.id === id)) {
-			throw new Error(`No workspace with id "${id}" in registry`);
-		}
-		const next: WorkspacesIndex = { ...index, workspaces: index.workspaces };
-		if (id) {
-			next.current = id;
-		} else {
-			delete next.current;
-		}
-		await writeWorkspacesIndex(next, override);
-	});
+	await withRegistryLock(
+		async () => {
+			await withWriteLock(filePath, async () => {
+				const index = await readWorkspacesIndex(override);
+				if (id !== null && !index.workspaces.some((e) => e.id === id)) {
+					throw new Error(`No workspace with id "${id}" in registry`);
+				}
+				const next: WorkspacesIndex = { ...index, workspaces: index.workspaces };
+				if (id) {
+					next.current = id;
+				} else {
+					delete next.current;
+				}
+				await writeWorkspacesIndex(next, override);
+			});
+		},
+		{ machineConfigDir: override },
+	);
 }
 
 export async function removeWorkspaceEntry(projectRoot: string, override?: string): Promise<boolean> {
 	const filePath = getWorkspacesFilePath(override);
-	return withWriteLock(filePath, async () => {
-		const index = await readWorkspacesIndex(override);
-		const absPath = toAbsoluteProjectRoot(projectRoot);
-		const filtered = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
-		if (filtered.length === index.workspaces.length) {
-			return false;
-		}
-		const removed = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
-		const next: WorkspacesIndex = { ...index, workspaces: filtered };
-		if (next.current && removed?.id && next.current === removed.id) {
-			delete next.current;
-		}
-		await writeWorkspacesIndex(next, override);
-		return true;
-	});
+	return withRegistryLock(
+		async () => {
+			return withWriteLock(filePath, async () => {
+				const index = await readWorkspacesIndex(override);
+				const absPath = toAbsoluteProjectRoot(projectRoot);
+				const filtered = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
+				if (filtered.length === index.workspaces.length) {
+					return false;
+				}
+				const removed = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
+				const next: WorkspacesIndex = { ...index, workspaces: filtered };
+				if (next.current && removed?.id && next.current === removed.id) {
+					delete next.current;
+				}
+				await writeWorkspacesIndex(next, override);
+				return true;
+			});
+		},
+		{ machineConfigDir: override },
+	);
 }
 
 export async function autoRegisterDiscoveredRepo(projectRoot: string): Promise<void> {

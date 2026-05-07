@@ -7,6 +7,7 @@ import {
 	toAbsoluteProjectRoot,
 	upsertWorkspaceEntry,
 	type WorkspaceEntry,
+	withRegistryLock,
 	writeWorkspacesIndex,
 } from "./workspaces-index.ts";
 
@@ -108,24 +109,39 @@ export async function tryReadProjectId(projectRoot: string): Promise<string | nu
  * single rewrite of workspaces.yml — never N rewrites.
  */
 export async function readWorkspacesWithIds(machineConfigDir?: string): Promise<WorkspaceEntry[]> {
+	// First pass: unlocked read to check whether migration is needed.
 	const index = await readWorkspacesIndex(machineConfigDir);
-	const out: WorkspaceEntry[] = [];
-	let mutated = false;
-	for (const e of index.workspaces) {
-		if (e.id) {
-			out.push(e);
-			continue;
-		}
-		const projectId = await tryReadProjectId(e.path);
-		if (projectId) {
-			out.push({ ...e, id: projectId });
-			mutated = true;
-		} else {
-			out.push(e);
-		}
+	const needsMigration = index.workspaces.some((e) => !e.id);
+	if (!needsMigration) {
+		return index.workspaces;
 	}
-	if (mutated) {
-		await writeWorkspacesIndex({ workspaces: out }, machineConfigDir);
-	}
-	return out;
+
+	// Migration needed: re-read and rewrite inside the registry lock to avoid
+	// a lost-update race where two concurrent processes both read the old state
+	// and one's write clobbers the other's workspace entries.
+	return withRegistryLock(
+		async () => {
+			const locked = await readWorkspacesIndex(machineConfigDir);
+			const out: WorkspaceEntry[] = [];
+			let mutated = false;
+			for (const e of locked.workspaces) {
+				if (e.id) {
+					out.push(e);
+					continue;
+				}
+				const projectId = await tryReadProjectId(e.path);
+				if (projectId) {
+					out.push({ ...e, id: projectId });
+					mutated = true;
+				} else {
+					out.push(e);
+				}
+			}
+			if (mutated) {
+				await writeWorkspacesIndex({ ...locked, workspaces: out }, machineConfigDir);
+			}
+			return out;
+		},
+		{ machineConfigDir },
+	);
 }
