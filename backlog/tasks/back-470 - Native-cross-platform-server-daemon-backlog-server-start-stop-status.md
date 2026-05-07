@@ -1,18 +1,23 @@
 ---
-id: BACK-464
-title: Native cross-platform server daemon (backlog server start/stop/status)
+id: BACK-470
+title: >-
+  Cross-platform server daemon (Linux systemd + Windows + native
+  start/stop/status)
 status: To Do
 assignee: []
 created_date: '2026-05-03 12:40'
-labels: []
+updated_date: '2026-05-07 15:45'
+labels:
+  - cross-platform
+  - server
 dependencies: []
-priority: medium
+priority: high
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Add a native daemon to Backlog.md so users without Homebrew (Linux, CI, Docker, source installs) can run the web UI as a background service. Ships a 'backlog server' command group with start/stop/status subcommands, a JSON PID sidecar at ~/.config/backlog.md/server.pid, optional config at ~/.config/backlog.md/server.yml, stale-PID detection, double-start refusal, and terminal-close survival. Lower priority than BACK-463 (Homebrew covers most macOS users); revisit when Linux/non-brew demand materializes.
+Now that workspace registry + macOS launchd service shipped (BACK-468), close the platform-parity gap so Linux and Windows users get a first-class persistent server. Two halves: (a) native daemon — backlog server start/stop/status with ~/.config/backlog.md/server.pid sidecar, stale-PID detection, double-start refusal, terminal-close survival; (b) OS-service templates — extend backlog service to emit a systemd user unit (~/.config/systemd/user/backlog.service) on Linux and a Scheduled Task / Windows Service shim on Windows. Keep the existing macOS launchd path untouched. References src/commands/service.ts:34 (currently darwin-only early-return) and the empty Linux/Windows branches in doc-003.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -28,4 +33,8 @@ Add a native daemon to Backlog.md so users without Homebrew (Linux, CI, Docker, 
 - [ ] #9 'backlog server start --foreground' runs BacklogServer in the current process (no spawn, no PID file, no detach); SIGTERM/SIGINT cleanly stop it. This is the form OS service managers (launchd, systemd) invoke when users prefer them over the native daemon.
 - [ ] #10 Tests cover lifecycle (start/stop/status), stale-PID cleanup, double-start refusal, stop-when-not-running, foreground mode in-process behavior, and terminal-close survival
 - [ ] #11 doc-003 is updated to lead with 'backlog server start/stop/status' alongside the Homebrew section from BACK-463; both paths coexist
+- [ ] #12 Linux: 'backlog service install' generates a systemd user unit at ~/.config/systemd/user/backlog.service that calls 'backlog server start --foreground'; documents 'systemctl --user enable --now backlog' to activate
+- [ ] #13 Windows: 'backlog service install' registers a Scheduled Task (or Windows Service via nssm-style shim) that calls 'backlog server start --foreground' on user login; 'backlog service uninstall' removes it
+- [ ] #14 Linux/Windows daemon survives parent shell exit on each platform; tests cover process detachment per-platform
+- [ ] #15 doc-003 lists install/uninstall steps per OS in a single comparison table; macOS launchd path remains unchanged
 <!-- AC:END -->
