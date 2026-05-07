@@ -279,6 +279,8 @@ export interface PrefixConfig {
 }
 
 export interface BacklogConfig {
+	/** Stable workspace identifier (slug + 4-char hash of projectName). Minted on first registration. */
+	id?: string;
 	projectName: string;
 	defaultAssignee?: string;
 	defaultReporter?: string;

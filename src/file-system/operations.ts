@@ -1345,6 +1345,9 @@ ${description || `Milestone: ${title}`}`,
 			const value = trimmed.substring(colonIndex + 1).trim();
 
 			switch (key) {
+				case "id":
+					config.id = value.replace(/['"]/g, "");
+					break;
 				case "project_name":
 					config.projectName = value.replace(/['"]/g, "");
 					break;
@@ -1425,6 +1428,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 
 		return {
+			id: config.id,
 			projectName: config.projectName || "",
 			defaultAssignee: config.defaultAssignee,
 			defaultReporter: config.defaultReporter,
@@ -1453,6 +1457,7 @@ ${description || `Milestone: ${title}`}`,
 	private serializeConfig(config: BacklogConfig): string {
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [
+			...(config.id ? [`id: "${config.id}"`] : []),
 			`project_name: "${config.projectName}"`,
 			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
 			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
