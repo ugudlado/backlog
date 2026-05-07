@@ -179,10 +179,27 @@ Manage task dependencies to create execution sequences and prevent circular rela
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches web UI on port 6420) |
-| Web custom port | `backlog browser --port 8080 --no-open` |
+| Run server (foreground) | `backlog server` (port 6420; Ctrl+C to stop) |
+| Open UI on start | `backlog server --open` |
+| Custom port | `backlog server --port 8080` |
+| Pin project explicitly | `backlog server --project /path/to/repo` |
 
-To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
+The server picks its project from the registry's `current` pointer (set on UI switch or `backlog init`); without `--project` it falls back to the first registered workspace, then walk-up from CWD.
+
+## Service (macOS launchd)
+
+| Action      | Example                                              |
+|-------------|------------------------------------------------------|
+| Install + start | `backlog service start` (port 6420; idempotent) |
+| Custom port | `backlog service start --port 8080` (rewrites plist) |
+| Status | `backlog service status` (state / pid / program) |
+| Tail logs | `backlog service logs` (`~/Library/Logs/backlog-md/{out,err}.log`) |
+| Stop (keep plist) | `backlog service stop` |
+| Uninstall | `backlog service uninstall` (stop + remove plist) |
+
+`service start` writes `~/Library/LaunchAgents/md.backlog.browser.plist` with `KeepAlive` and `RunAtLoad`, so the server restarts on crash and on login. The plist does not bake in a project. When you switch projects in the web UI, Backlog writes the new selection to the registry and the next service start picks it up.
+
+For Linux (systemd) and Windows recipes, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 
 ## Documentation
 

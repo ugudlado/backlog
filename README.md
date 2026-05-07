@@ -2,7 +2,7 @@
 <p align="center">Markdown‑native Task Manager &amp; Kanban visualizer for any Git repository</p>
 
 <p align="center">
-<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>brew install backlog-md</code> or <code>nix run github:MrLesk/Backlog.md</code>
+<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>nix run github:MrLesk/Backlog.md</code>
 </p>
 
 ![Backlog demo GIF using: backlog board](./.github/backlog-v1.40.gif)
@@ -22,7 +22,7 @@
 
 * 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
-* 🌐 **Modern web interface** -- `backlog browser` launches a sleek web UI for visual task management
+* 🌐 **Modern web interface** -- `backlog server` launches a sleek web UI for visual task management; `backlog service` runs it as a launchd service on macOS
 
 * 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
 
@@ -46,7 +46,6 @@
 # Install
 bun i -g backlog.md
 # or: npm i -g backlog.md
-# or: brew install backlog-md
 
 # Initialize in any Git repo
 backlog init "My Awesome Project"
@@ -111,7 +110,7 @@ backlog search "kanban"
 backlog board
 
 # Work visually in the browser
-backlog browser
+backlog server --open
 ```
 
 You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent. Tasks can record project-root-relative modified files and later be found with `backlog search --modified-file src/path.ts --plain`.
@@ -125,15 +124,31 @@ You can switch between AI-assisted and manual workflows at any time — both ope
 Launch a modern, responsive web interface for visual task management:
 
 ```bash
-# Start the web server (opens browser automatically)
-backlog browser
+# Start the web server (foreground; Ctrl+C to stop)
+backlog server
+
+# Open the UI in a browser after start
+backlog server --open
 
 # Custom port
-backlog browser --port 8080
-
-# Don't open browser automatically
-backlog browser --no-open
+backlog server --port 8080
 ```
+
+### Run as a service (macOS)
+
+`backlog service` runs the Web UI under launchd so it starts on login and restarts on crash.
+
+```bash
+backlog service start              # install plist + start on port 6420
+backlog service status             # check state, pid, program
+backlog service logs               # tail stdout/stderr logs
+backlog service stop               # stop, leave plist on disk
+backlog service uninstall          # stop and remove plist
+```
+
+The service serves whichever project is the current one in `~/.config/backlog.md/workspaces.yml`. Switch projects from the workspace switcher in the web UI; the selection survives restarts.
+
+Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 
 **Features:**
 - Interactive Kanban board with drag-and-drop
@@ -145,8 +160,6 @@ backlog browser --no-open
 - Seamless CLI integration - all changes sync with markdown files
 
 ![Web Interface Screenshot](./.github/web.jpeg)
-
-To keep the Web UI running as an auto-starting local service, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 
 ---
 
@@ -229,7 +242,7 @@ Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the c
 
 Full command reference — task management, search, board, docs, decisions, and more: **[CLI-INSTRUCTIONS.md](CLI-INSTRUCTIONS.md)**
 
-Quick examples: `backlog task create`, `backlog task list`, `backlog task edit`, `backlog search`, `backlog board`, `backlog browser`.
+Quick examples: `backlog task create`, `backlog task list`, `backlog task edit`, `backlog search`, `backlog board`, `backlog server`, `backlog service start`.
 
 Full help: `backlog --help`
 
@@ -290,6 +303,10 @@ For the full configuration reference (all options, commands, and detailed notes)
 - **[vscode-backlog-md](https://marketplace.visualstudio.com/items?itemName=ysamlan.vscode-backlog-md)** - VS Code extension with issues panel, kanban view, and editing. ([ysamlan/vscode-backlog-md](https://github.com/ysamlan/vscode-backlog-md))
 
 ---
+
+### Acknowledgments
+
+Forked from [MrLesk/Backlog.md](https://github.com/MrLesk/Backlog.md) by Alex Gavrilescu — thanks for the original work.
 
 ### License
 

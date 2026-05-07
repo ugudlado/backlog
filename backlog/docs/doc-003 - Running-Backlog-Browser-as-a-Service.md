@@ -7,14 +7,44 @@ created_date: '2026-04-25'
 
 # Running Backlog.md as a Service
 
-`backlog browser --no-open` keeps the Web UI running without opening a browser tab. This is useful when you want a long-lived local dashboard that starts on boot and restarts on failure.
+`backlog server` runs the Web UI in the foreground. This is useful when you want a long-lived local dashboard that starts on boot and restarts on failure.
 
 Pick the recipe that matches your OS.
 
 > [!NOTE]
 > Running more than one Backlog project on the same machine? Each project needs its own service name and its own port. The examples below use `<project>` as a placeholder. Replace it with a short slug per project, such as `work` or `personal`, and assign distinct ports, such as `6420` and `6421`.
 
-## Linux / WSL2 (systemd user unit)
+## macOS (`backlog service`)
+
+After `npm install -g backlog.md`:
+
+```bash
+backlog service start              # default port 6420
+backlog service start --port 7000  # custom port (re-runnable)
+```
+
+Then manage it with:
+
+```bash
+backlog service status
+backlog service logs       # tails ~/Library/Logs/backlog-md/{out,err}.log
+backlog service stop       # stop, leave the plist on disk
+backlog service uninstall  # stop and remove the plist
+```
+
+`start` writes `~/Library/LaunchAgents/md.backlog.browser.plist`, runs `launchctl bootstrap`, and starts the server with `KeepAlive` and `RunAtLoad`. The server picks its project from the machine-wide registry (`~/.config/backlog.md/workspaces.yml`):
+
+1. The `current` pointer (last workspace selected in the UI), if set
+2. Otherwise the first registered workspace
+3. Otherwise the server falls back to walk-up from CWD (which fails for the launchd-managed case where CWD is `/`)
+
+Register a project before opening the UI by running `backlog init` inside the project directory — it creates the project layout, registers it in the machine-wide index, and marks it as current. Switching workspaces in the UI persists the selection so the next service start picks up the same project.
+
+## Advanced / manual service managers
+
+For finer control, or on Linux/Windows, use the OS-native service manager directly.
+
+### Linux / WSL2 (systemd user unit)
 
 Create `~/.config/systemd/user/backlog-browser-<project>.service`, for example `backlog-browser-work.service`:
 
@@ -26,7 +56,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/path/to/your/project
-ExecStart=/usr/local/bin/backlog browser --no-open --port 6420
+ExecStart=/usr/local/bin/backlog server --port 6420
 Restart=on-failure
 RestartSec=5
 
@@ -48,7 +78,7 @@ journalctl --user -u backlog-browser-<project> -f
 
 Adjust the `ExecStart` path to match `which backlog` on your system. For users with many projects, a systemd [template unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Description) such as `backlog-browser@.service` with `%i` can reduce repetition.
 
-## macOS (launchd LaunchAgent)
+### macOS (launchd LaunchAgent)
 
 Create `~/Library/LaunchAgents/md.backlog.browser.<project>.plist`:
 
@@ -60,9 +90,8 @@ Create `~/Library/LaunchAgents/md.backlog.browser.<project>.plist`:
   <key>Label</key><string>md.backlog.browser.&lt;project&gt;</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/backlog</string>
-    <string>browser</string>
-    <string>--no-open</string>
+    <string>/usr/local/bin/backlog</string>
+    <string>server</string>
     <string>--port</string>
     <string>6420</string>
   </array>
@@ -83,13 +112,13 @@ launchctl load -w ~/Library/LaunchAgents/md.backlog.browser.<project>.plist
 
 Use `/usr/local/bin/backlog` on Intel Macs, or the path returned by `which backlog`. The `Label` must be unique per project because launchd refuses to load two agents with the same label.
 
-## Windows (Task Scheduler or NSSM)
+### Windows (Task Scheduler or NSSM)
 
 For a setup that runs when you log in, register a Scheduled Task from PowerShell:
 
 ```powershell
 $action  = New-ScheduledTaskAction -Execute "backlog.exe" `
-            -Argument "browser --no-open --port 6420" `
+            -Argument "server --port 6420" `
             -WorkingDirectory "C:\path\to\your\project"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 Register-ScheduledTask -TaskName "Backlog Browser (<project>)" -Action $action -Trigger $trigger
@@ -98,7 +127,7 @@ Register-ScheduledTask -TaskName "Backlog Browser (<project>)" -Action $action -
 For a true background service that starts before login and auto-restarts on failure, wrap the command with [NSSM](https://nssm.cc/):
 
 ```powershell
-nssm install BacklogBrowser_<project> "C:\path\to\backlog.exe" "browser --no-open --port 6420"
+nssm install BacklogBrowser_<project> "C:\path\to\backlog.exe" "server --port 6420"
 nssm set BacklogBrowser_<project> AppDirectory "C:\path\to\your\project"
 nssm start BacklogBrowser_<project>
 ```
