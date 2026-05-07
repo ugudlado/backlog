@@ -1,9 +1,11 @@
 ---
 id: BACK-471
 title: 'Workspace registry hardening: locking, doctor, and MCP parity'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@mahesh'
 created_date: '2026-05-07 15:45'
+updated_date: '2026-05-07 21:47'
 labels:
   - registry
   - mcp
@@ -21,7 +23,7 @@ ordinal: 26000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 writeWorkspacesIndex acquires the existing Lockfile around read-modify-write so daemon + CLI writes are serialized
+- [x] #1 writeWorkspacesIndex acquires the existing Lockfile around read-modify-write so daemon + CLI writes are serialized
 - [ ] #2 Lockfile contention has a tested timeout + clear error; concurrent test exercises two writers
 - [ ] #3 'backlog workspace doctor' scans every entry and reports: missing path, non-git path, path with no backlog/ subdir, duplicate paths, current-workspace pointer pointing at a removed entry
 - [ ] #4 'backlog workspace doctor --fix' prunes broken entries (with a y/N prompt unless --yes); preserves entries that pass
@@ -32,7 +34,7 @@ ordinal: 26000
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
