@@ -12,7 +12,7 @@
   - **Why**: Code quality — keep a single source for retry/stale defaults across the two stores (project rule: "keep behavior consistent across similar stores").
   - **Verify**: All tests still pass; no duplicated literal `{ stale: 10_000, retries: { factor: 1, ... } }` block across the two helpers; `biome check .` clean.
 
-- [ ] T-4 Review checkpoint (phase gate)
+- [x] T-4 Review checkpoint (phase gate)
   - **Verify**: `bunx tsc --noEmit` + `bun test src/test/workspace-registry-lock.test.ts src/test/workspace-registration-fixes.test.ts` + `bun run check .` all pass.
 
 - [ ] T-5 Write tests: `scanWorkspaces` and `applyFixes` for all five issue categories (RED) (depends: T-2)
