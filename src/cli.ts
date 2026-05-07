@@ -12,6 +12,7 @@ import { configureAdvancedSettings } from "./commands/configure-advanced-setting
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
+import { registerWorkspaceCommand } from "./commands/workspace.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -3964,6 +3965,9 @@ registerMcpCommand(program);
 
 // Service command group (macOS launchd)
 registerServiceCommand(program);
+
+// Workspace registry command group
+registerWorkspaceCommand(program);
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
