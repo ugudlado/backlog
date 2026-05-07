@@ -15,11 +15,11 @@
 - [x] T-4 Review checkpoint (phase gate)
   - **Verify**: `bunx tsc --noEmit` + `bun test src/test/workspace-registry-lock.test.ts src/test/workspace-registration-fixes.test.ts` + `bun run check .` all pass.
 
-- [ ] T-5 Write tests: `scanWorkspaces` and `applyFixes` for all five issue categories (RED) (depends: T-2)
+- [x] T-5 Write tests: `scanWorkspaces` and `applyFixes` for all five issue categories (RED) (depends: T-2)
   - **Why**: AC-3, AC-4, AC-5 (FR-4, FR-5). Cover: missing path, non-git path, no-`backlog/`-dir, duplicate paths (one with id, one without), stale current pointer. Tests use temp dirs with controlled fixtures. Plus `applyFixes` keeps healthy entries untouched and removes/dedupes/clears as specified.
   - **Verify**: `bun test src/test/workspace-doctor.test.ts` runs and FAILS — module does not yet exist.
 
-- [ ] T-6 Implement: `src/commands/workspace-doctor.ts` (`scanWorkspaces`, `applyFixes`) (GREEN) (depends: T-5)
+- [x] T-6 Implement: `src/commands/workspace-doctor.ts` (`scanWorkspaces`, `applyFixes`) (GREEN) (depends: T-5)
   - **Why**: AC-3, AC-4, AC-5 (FR-4, FR-5). Pure functions, no CLI dependency.
   - **Verify**: All T-5 tests pass; `bunx tsc --noEmit` clean.
 
