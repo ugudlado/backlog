@@ -38,6 +38,8 @@ async function withWriteLock<T>(filePath: string, fn: () => Promise<T>): Promise
 }
 
 // ─── Cross-process registry lock (mirrors withCreateLock in operations.ts) ───
+// Shape mirrors withCreateLock; diverges intentionally: realpath:false (config dir may not exist yet),
+// stale is a fixed constant (no per-call override), and it targets the machine config dir, not a project backlog dir.
 
 const REGISTRY_LOCK_TIMEOUT_MS = 5_000;
 const REGISTRY_LOCK_STALE_MS = 10_000;
