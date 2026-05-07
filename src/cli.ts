@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -10,6 +10,7 @@ import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
@@ -266,6 +267,26 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
  * Exits with error message if no Backlog.md project is found.
  */
+/**
+ * Project root resolver for `backlog server` (no --project flag).
+ *
+ * Order: workspaces.yml `current` id → first registered workspace → walk-up
+ * from CWD. The first two cover the launchd / background-service case where
+ * CWD is `/`; the walk-up matches the interactive `cd ~/repo && backlog server`
+ * usage.
+ */
+async function resolveServerProjectRoot(): Promise<string> {
+	const { readWorkspacesIndex, toAbsoluteProjectRoot } = await import("./utils/workspaces-index.ts");
+	const index = await readWorkspacesIndex();
+	if (index.current) {
+		const entry = index.workspaces.find((e) => e.id === index.current);
+		if (entry) return toAbsoluteProjectRoot(entry.path);
+	}
+	const first = index.workspaces[0];
+	if (first) return toAbsoluteProjectRoot(first.path);
+	return await requireProjectRoot();
+}
+
 async function requireProjectRoot(): Promise<string> {
 	let runtimeCwd: RuntimeCwdResolution;
 	try {
@@ -3832,51 +3853,81 @@ program
 		}
 	});
 
-// Browser command for web UI
+// Server: long-running web UI process (used by `backlog service`, dev, scripts)
+async function runServer(options: { port?: string; project?: string; open?: boolean }): Promise<void> {
+	let cwd: string;
+	if (options.project) {
+		cwd = resolve(options.project);
+		const found = await findBacklogRoot(cwd);
+		if (!found || found !== cwd) {
+			console.error(`--project must point at a Backlog.md project root (got: ${cwd})`);
+			process.exit(1);
+		}
+	} else {
+		cwd = await resolveServerProjectRoot();
+	}
+	const { BacklogServer } = await import("./server/index.ts");
+	const server = new BacklogServer(cwd);
+
+	const core = new Core(cwd);
+	const config = await core.filesystem.loadConfig();
+	const defaultPort = config?.defaultPort ?? 6420;
+
+	const port = Number.parseInt(options.port || defaultPort.toString(), 10);
+	if (Number.isNaN(port) || port < 1 || port > 65535) {
+		console.error("Invalid port number. Must be between 1 and 65535.");
+		process.exit(1);
+	}
+
+	await server.start(port, options.open === true);
+
+	let shuttingDown = false;
+	const shutdown = async (signal: string) => {
+		if (shuttingDown) return;
+		shuttingDown = true;
+		console.log(`\nReceived ${signal}. Shutting down server...`);
+		try {
+			const stopPromise = server.stop();
+			const timeout = new Promise<void>((r) => setTimeout(r, 1500));
+			await Promise.race([stopPromise, timeout]);
+		} finally {
+			process.exit(0);
+		}
+	};
+
+	process.once("SIGINT", () => void shutdown("SIGINT"));
+	process.once("SIGTERM", () => void shutdown("SIGTERM"));
+	process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
+}
+
 program
-	.command("browser")
-	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
-	.option("-p, --port <port>", "port to run server on")
-	.option("--no-open", "don't automatically open browser")
+	.command("server")
+	.description("run the web UI server in the foreground (press Ctrl+C to stop)")
+	.option("-p, --port <port>", "port to listen on")
+	.option("--project <path>", "project root to serve (default: walk up from cwd)")
+	.option("--open", "open the UI in a browser after start")
 	.action(async (options) => {
 		try {
-			const cwd = await requireProjectRoot();
-			const { BacklogServer } = await import("./server/index.ts");
-			const server = new BacklogServer(cwd);
-
-			// Load config to get default port
-			const core = new Core(cwd);
-			const config = await core.filesystem.loadConfig();
-			const defaultPort = config?.defaultPort ?? 6420;
-
-			const port = Number.parseInt(options.port || defaultPort.toString(), 10);
-			if (Number.isNaN(port) || port < 1 || port > 65535) {
-				console.error("Invalid port number. Must be between 1 and 65535.");
-				process.exit(1);
-			}
-
-			await server.start(port, options.open !== false);
-
-			// Graceful shutdown on common termination signals (register once)
-			let shuttingDown = false;
-			const shutdown = async (signal: string) => {
-				if (shuttingDown) return;
-				shuttingDown = true;
-				console.log(`\nReceived ${signal}. Shutting down server...`);
-				try {
-					const stopPromise = server.stop();
-					const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
-					await Promise.race([stopPromise, timeout]);
-				} finally {
-					process.exit(0);
-				}
-			};
-
-			process.once("SIGINT", () => void shutdown("SIGINT"));
-			process.once("SIGTERM", () => void shutdown("SIGTERM"));
-			process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
+			await runServer(options);
 		} catch (err) {
-			console.error("Failed to start browser interface", err);
+			console.error("Failed to start server", err);
+			process.exitCode = 1;
+		}
+	});
+
+// Deprecated alias: `backlog browser` → `backlog server --open`
+program
+	.command("browser", { hidden: true })
+	.description("[deprecated] alias for `backlog server --open`")
+	.option("-p, --port <port>", "port to listen on")
+	.option("--project <path>", "project root to serve")
+	.option("--no-open", "don't automatically open browser")
+	.action(async (options) => {
+		console.error("Note: `backlog browser` is deprecated; use `backlog server --open` instead.");
+		try {
+			await runServer({ port: options.port, project: options.project, open: options.open !== false });
+		} catch (err) {
+			console.error("Failed to start server", err);
 			process.exitCode = 1;
 		}
 	});
@@ -3910,6 +3961,9 @@ registerCompletionCommand(program);
 
 // MCP command group
 registerMcpCommand(program);
+
+// Service command group (macOS launchd)
+registerServiceCommand(program);
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands

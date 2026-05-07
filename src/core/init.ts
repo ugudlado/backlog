@@ -178,7 +178,7 @@ export async function initializeProject(
 		delete config.definitionOfDone;
 	}
 
-	// Create structure and save config
+	// Create structure and save config (id minted + workspace registered after save).
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
 	} else {
@@ -218,6 +218,21 @@ export async function initializeProject(
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();
+	}
+
+	// Register the workspace in the machine-wide index and mark it current.
+	// Mints + persists a stable id into the project config if missing.
+	// Best-effort: if the home directory isn't writable (sandboxed envs,
+	// read-only setups), init still succeeds.
+	try {
+		const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
+		const { entry } = await registerWorkspaceAtPath(projectRoot);
+		if (entry.id) {
+			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+			await setCurrentWorkspaceId(entry.id);
+		}
+	} catch (err) {
+		console.warn(`Warning: could not register workspace in machine index: ${(err as Error).message}`);
 	}
 
 	const mcpResults: Record<string, string> = {};
