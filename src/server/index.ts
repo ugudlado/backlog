@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -20,6 +20,8 @@ import {
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";
+import { registerWorkspaceAtPath, WorkspaceRegistrationError } from "../utils/workspace-registration.ts";
+import { pathExistsAsDirectory, removeWorkspaceEntry, toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
@@ -417,6 +419,16 @@ export class BacklogServer {
 					"/api/sequences/move": {
 						POST: async (req: Request) => await this.handleMoveSequence(req),
 					},
+					"/api/workspaces": {
+						GET: async () => await this.handleListWorkspaces(),
+						POST: async (req: Request) => await this.handleAddWorkspace(req),
+					},
+					"/api/workspaces/:id": {
+						PATCH: async (req: Request & { params: { id: string } }) =>
+							await this.handlePatchWorkspace(req, req.params.id),
+						DELETE: async (req: Request & { params: { id: string } }) =>
+							await this.handleDeleteWorkspace(req.params.id),
+					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
 						GET: async (req: Request) => await this.handleAssetRequest(req),
@@ -485,6 +497,26 @@ export class BacklogServer {
 	}
 
 	private _stopping = false;
+
+	/**
+	 * Serializes workspace switch / delete against the in-memory `core` so a
+	 * DELETE can't race a PATCH and remove the workspace that just became
+	 * active. File-level mutation is already serialized in workspaces-index.ts.
+	 */
+	private workspaceMutationLock: Promise<void> = Promise.resolve();
+	private async withWorkspaceMutation<T>(fn: () => Promise<T>): Promise<T> {
+		const prev = this.workspaceMutationLock;
+		let release!: () => void;
+		this.workspaceMutationLock = new Promise<void>((r) => {
+			release = r;
+		});
+		await prev;
+		try {
+			return await fn();
+		} finally {
+			release();
+		}
+	}
 
 	async stop(): Promise<void> {
 		if (this._stopping) return;
@@ -1761,6 +1793,137 @@ export class BacklogServer {
 			console.error("Error initializing project:", error);
 			const message = error instanceof Error ? error.message : "Failed to initialize project";
 			return Response.json({ error: message }, { status: 500 });
+		}
+	}
+
+	private async listWorkspacesPayload(): Promise<{
+		workspaces: Array<{ id: string; path: string }>;
+		currentId: string | null;
+	}> {
+		const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
+		const { readWorkspacesIndex } = await import("../utils/workspaces-index.ts");
+		const entries = await readWorkspacesWithIds();
+		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
+		const persisted = (await readWorkspacesIndex()).current;
+		const persistedHit = persisted ? withIds.find((e) => e.id === persisted) : undefined;
+		const currentPath = toAbsoluteProjectRoot(this.core.filesystem.rootDir);
+		const memoryHit = withIds.find((e) => toAbsoluteProjectRoot(e.path) === currentPath);
+		return {
+			workspaces: withIds.map((e) => ({ id: e.id, path: toAbsoluteProjectRoot(e.path) })),
+			currentId: persistedHit?.id ?? memoryHit?.id ?? null,
+		};
+	}
+
+	private async handleListWorkspaces(): Promise<Response> {
+		try {
+			return Response.json(await this.listWorkspacesPayload());
+		} catch (error) {
+			console.error("Error listing workspaces:", error);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			return Response.json({ error: `Failed to list workspaces: ${message}` }, { status: 500 });
+		}
+	}
+
+	private async handleAddWorkspace(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+			const raw = typeof body.path === "string" ? body.path.trim() : "";
+			if (!raw) {
+				return Response.json({ error: "path is required" }, { status: 400 });
+			}
+			const projectRoot = toAbsoluteProjectRoot(raw);
+			try {
+				await registerWorkspaceAtPath(raw);
+			} catch (error) {
+				// Auto-init only when there is no backlog/ at all. A `config_load_failed`
+				// means a config exists but couldn't be parsed — likely user-edited
+				// YAML; surface the error rather than silently overwriting.
+				const needsInit = error instanceof WorkspaceRegistrationError && error.code === "no_backlog_config";
+				if (needsInit) {
+					const projectName = basename(projectRoot) || "Backlog Project";
+					const filesystemOnly = !(await pathExistsAsDirectory(join(projectRoot, ".git")));
+					const initCore = new Core(projectRoot);
+					await initializeProject(initCore, {
+						projectName,
+						integrationMode: "none",
+						filesystemOnly,
+						existingConfig: null,
+					});
+					await registerWorkspaceAtPath(projectRoot);
+				} else {
+					throw error;
+				}
+			}
+			const payload = await this.listWorkspacesPayload();
+			const added = payload.workspaces.find((w) => toAbsoluteProjectRoot(w.path) === projectRoot);
+			return Response.json({ ...payload, addedId: added?.id ?? null });
+		} catch (error) {
+			if (error instanceof WorkspaceRegistrationError) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
+			console.error("Error adding workspace:", error);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			return Response.json({ error: `Failed to add workspace: ${message}` }, { status: 400 });
+		}
+	}
+
+	private async handlePatchWorkspace(req: Request, id: string): Promise<Response> {
+		try {
+			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+			if (body.current !== true) {
+				return Response.json({ error: "Only { current: true } is supported" }, { status: 400 });
+			}
+			return await this.withWorkspaceMutation(async () => {
+				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
+				const entries = await readWorkspacesWithIds();
+				const target = entries.find((e) => e.id === id);
+				if (!target) {
+					return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+				}
+				const targetPath = toAbsoluteProjectRoot(target.path);
+				if (!(await pathExistsAsDirectory(targetPath))) {
+					return Response.json({ error: `Workspace path no longer exists: ${targetPath}` }, { status: 410 });
+				}
+				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) !== targetPath) {
+					this.core.reinitializeProjectRoot(targetPath);
+					await this.core.ensureConfigLoaded();
+				}
+				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+				await setCurrentWorkspaceId(id);
+				return Response.json({ ok: true });
+			});
+		} catch (error) {
+			console.error("Error patching workspace:", error);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			return Response.json({ error: `Failed to update workspace: ${message}` }, { status: 500 });
+		}
+	}
+
+	private async handleDeleteWorkspace(id: string): Promise<Response> {
+		try {
+			return await this.withWorkspaceMutation(async () => {
+				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
+				const entries = await readWorkspacesWithIds();
+				const target = entries.find((e) => e.id === id);
+				if (!target) {
+					return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+				}
+				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) === toAbsoluteProjectRoot(target.path)) {
+					return Response.json(
+						{ error: "Cannot remove the workspace that is currently active. Switch to another workspace first." },
+						{ status: 409 },
+					);
+				}
+				const removed = await removeWorkspaceEntry(target.path);
+				if (!removed) {
+					return Response.json({ error: "Workspace entry not found in index" }, { status: 404 });
+				}
+				return Response.json(await this.listWorkspacesPayload());
+			});
+		} catch (error) {
+			console.error("Error deleting workspace:", error);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			return Response.json({ error: `Failed to remove workspace: ${message}` }, { status: 400 });
 		}
 	}
 }
