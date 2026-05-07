@@ -15,7 +15,7 @@ const Navigation: React.FC<NavigationProps> = ({projectName, onWorkspaceSwitched
 					<h1 className="truncate text-xl font-bold text-gray-900 dark:text-gray-100">{projectName || "Loading..."}</h1>
 					<span className="hidden md:inline text-sm text-gray-500 dark:text-gray-400 shrink-0">powered by</span>
 					<a
-						href="https://backlog.md"
+						href="https://github.com/ugudlado/Backlog.md"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="hidden md:inline text-sm text-stone-600 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-300 hover:underline transition-colors duration-200 shrink-0"
