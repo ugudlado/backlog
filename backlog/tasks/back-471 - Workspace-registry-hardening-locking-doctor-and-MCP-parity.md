@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@mahesh'
 created_date: '2026-05-07 15:45'
-updated_date: '2026-05-07 21:47'
+updated_date: '2026-05-08 07:23'
 labels:
   - registry
   - mcp
@@ -24,17 +24,17 @@ ordinal: 26000
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 writeWorkspacesIndex acquires the existing Lockfile around read-modify-write so daemon + CLI writes are serialized
-- [ ] #2 Lockfile contention has a tested timeout + clear error; concurrent test exercises two writers
-- [ ] #3 'backlog workspace doctor' scans every entry and reports: missing path, non-git path, path with no backlog/ subdir, duplicate paths, current-workspace pointer pointing at a removed entry
-- [ ] #4 'backlog workspace doctor --fix' prunes broken entries (with a y/N prompt unless --yes); preserves entries that pass
-- [ ] #5 MCP exposes workspace_list and workspace_switch tools mirroring the CLI; tool schemas documented in MCP server
-- [ ] #6 Agent-instruction templates (CLAUDE.md, AGENTS.md, .cursorrules) describe the registry and the workspace_list/workspace_switch MCP tools
-- [ ] #7 bunx tsc --noEmit, bun run check ., bun test all green
+- [x] #2 Lockfile contention has a tested timeout + clear error; concurrent test exercises two writers
+- [x] #3 'backlog workspace doctor' scans every entry and reports: missing path, non-git path, path with no backlog/ subdir, duplicate paths, current-workspace pointer pointing at a removed entry
+- [x] #4 'backlog workspace doctor --fix' prunes broken entries (with a y/N prompt unless --yes); preserves entries that pass
+- [x] #5 MCP exposes workspace_list and workspace_switch tools mirroring the CLI; tool schemas documented in MCP server
+- [x] #6 Agent-instruction templates (CLAUDE.md, AGENTS.md, .cursorrules) describe the registry and the workspace_list/workspace_switch MCP tools
+- [x] #7 bunx tsc --noEmit, bun run check ., bun test all green
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
