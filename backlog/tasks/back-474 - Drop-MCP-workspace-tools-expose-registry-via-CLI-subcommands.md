@@ -3,9 +3,10 @@ id: BACK-474
 title: >-
   Drop MCP workspace tools; expose workspace registry via CLI subcommands
   instead
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-08 07:23'
+updated_date: '2026-05-08 09:57'
 labels:
   - registry
   - cli
