@@ -762,22 +762,47 @@ Pass `--fix` to repair (prunes broken/duplicate entries, clears stale pointers).
 The command prompts before writing; pass `--yes` to skip the prompt in scripted
 contexts. Exit code is `0` when healthy, `1` when issues remain.
 
-### MCP tools: `workspace_list` and `workspace_switch`
+### `backlog workspace list`
 
-The MCP server exposes the registry to agents via two tools alongside the
-`task_*` family:
+Use `backlog workspace list` to enumerate every entry in the registry.
+The default output prints one line per workspace with a `*` prefix on the
+current entry:
 
-- `workspace_list` (read-only) — returns
-  `{ workspaces: [{ id, path, isCurrent }], current }`. Use this to discover
-  which projects are registered on the machine before reading or writing tasks
-  outside the current working directory.
-- `workspace_switch` (mutating) — accepts `{ id }` and updates the machine-wide
-  current pointer. Returns `{ id, path }` on success or an `isError: true`
-  result when the id isn't registered.
+```
+* ws-a   /Users/you/projects/alpha
+  ws-b   /Users/you/projects/beta
+```
 
-Cursor-family clients (Cursor, Windsurf, etc.) see these alongside CLI commands;
-prefer the MCP tools over invoking `backlog` shell commands when both are
-available.
+Pass `--plain` to get a single line of stable JSON suitable for scripting:
+
+```
+backlog workspace list --plain
+```
+
+Output shape:
+
+```json
+{"current": "<id|null>", "workspaces": [{"id": "<string|null>", "path": "<string>"}]}
+```
+
+Agents should `JSON.parse` stdout to discover which projects are registered
+and which is currently active. When the registry is empty the output is
+`{"current": null, "workspaces": []}`. Exit code is always `0` for `list`.
+
+### `backlog workspace switch`
+
+Use `backlog workspace switch <id>` to update the machine-wide current pointer:
+
+```
+backlog workspace switch ws-b
+# stdout: Switched to workspace ws-b
+# exit: 0
+```
+
+On success the command prints `Switched to workspace <id>` to stdout and
+exits `0`. If the id is not registered the command writes
+`No workspace with id "<id>" in registry` to stderr and exits `1`. Exit code
+is the authoritative signal; agents that suppress stdout can rely on it.
 
 ## Remember: The Golden Rule
 

@@ -1,11 +1,25 @@
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
-import { readWorkspacesIndex, withRegistryLock, writeWorkspacesIndex } from "../utils/workspaces-index.ts";
+import {
+	readWorkspacesIndex,
+	setCurrentWorkspaceId,
+	withRegistryLock,
+	writeWorkspacesIndex,
+} from "../utils/workspaces-index.ts";
 import { applyFixes, scanWorkspaces, type WorkspaceIssue } from "./workspace-doctor.ts";
 
 interface DoctorOptions {
 	fix?: boolean;
 	yes?: boolean;
+}
+
+async function runAction(fn: () => Promise<void>): Promise<void> {
+	try {
+		await fn();
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
 }
 
 function formatIssue(issue: WorkspaceIssue): string {
@@ -83,12 +97,40 @@ export function registerWorkspaceCommand(program: Command): void {
 		.description("scan the registry for drift; --fix to repair")
 		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
 		.option("--yes", "skip the confirmation prompt when --fix is supplied")
-		.action(async (opts: DoctorOptions) => {
-			try {
-				await doDoctor(opts);
-			} catch (err) {
-				console.error(err instanceof Error ? err.message : String(err));
-				process.exit(1);
-			}
-		});
+		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
+
+	ws.command("list")
+		.description("list all registered workspaces")
+		.option("--plain", "emit JSON output")
+		.action((opts: { plain?: boolean }) =>
+			runAction(async () => {
+				const index = await readWorkspacesIndex();
+				if (opts.plain) {
+					const payload = {
+						current: index.current ?? null,
+						workspaces: index.workspaces.map((w) => ({ id: w.id ?? null, path: w.path })),
+					};
+					console.log(JSON.stringify(payload));
+					return;
+				}
+				if (index.workspaces.length === 0) {
+					console.log("No workspaces registered.");
+					return;
+				}
+				for (const w of index.workspaces) {
+					const marker = w.id && w.id === index.current ? "*" : " ";
+					const id = w.id ?? "(no id)";
+					console.log(`${marker} ${id}\t${w.path}`);
+				}
+			}),
+		);
+
+	ws.command("switch <id>")
+		.description("set the current workspace by id")
+		.action((id: string) =>
+			runAction(async () => {
+				await setCurrentWorkspaceId(id);
+				console.log(`Switched to workspace ${id}`);
+			}),
+		);
 }
