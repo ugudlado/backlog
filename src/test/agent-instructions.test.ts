@@ -221,7 +221,7 @@ describe("addAgentInstructions", () => {
 });
 
 describe("agent-guidelines.md workspace registry section", () => {
-	it("guideline file documents the registry, doctor command, and MCP tools", async () => {
+	it("guideline file documents the registry, doctor command, and CLI commands", async () => {
 		const path = join(__dirname, "../guidelines/agent-guidelines.md");
 		const content = await Bun.file(path).text();
 
@@ -229,8 +229,8 @@ describe("agent-guidelines.md workspace registry section", () => {
 		expect(content).toContain("## Workspace Registry");
 		expect(content).toContain("workspaces.yml");
 		expect(content).toContain("backlog workspace doctor");
-		expect(content).toContain("workspace_list");
-		expect(content).toContain("workspace_switch");
+		expect(content).toContain("backlog workspace list");
+		expect(content).toContain("backlog workspace switch");
 	});
 
 	it("addAgentInstructions emits the registry section into CLAUDE.md and AGENTS.md", async () => {
@@ -241,8 +241,8 @@ describe("agent-guidelines.md workspace registry section", () => {
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
 				expect(text).toContain("## Workspace Registry");
-				expect(text).toContain("workspace_list");
-				expect(text).toContain("workspace_switch");
+				expect(text).toContain("backlog workspace list");
+				expect(text).toContain("backlog workspace switch");
 				expect(text).toContain("backlog workspace doctor");
 			}
 		} finally {
