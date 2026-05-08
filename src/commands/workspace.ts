@@ -1,6 +1,11 @@
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
-import { readWorkspacesIndex, withRegistryLock, writeWorkspacesIndex } from "../utils/workspaces-index.ts";
+import {
+	readWorkspacesIndex,
+	setCurrentWorkspaceId,
+	withRegistryLock,
+	writeWorkspacesIndex,
+} from "../utils/workspaces-index.ts";
 import { applyFixes, scanWorkspaces, type WorkspaceIssue } from "./workspace-doctor.ts";
 
 interface DoctorOptions {
@@ -86,6 +91,47 @@ export function registerWorkspaceCommand(program: Command): void {
 		.action(async (opts: DoctorOptions) => {
 			try {
 				await doDoctor(opts);
+			} catch (err) {
+				console.error(err instanceof Error ? err.message : String(err));
+				process.exit(1);
+			}
+		});
+
+	ws.command("list")
+		.description("list all registered workspaces")
+		.option("--plain", "emit JSON output")
+		.action(async (opts: { plain?: boolean }) => {
+			try {
+				const index = await readWorkspacesIndex();
+				if (opts.plain) {
+					const payload = {
+						current: index.current ?? null,
+						workspaces: index.workspaces.map((w) => ({ id: w.id ?? null, path: w.path })),
+					};
+					console.log(JSON.stringify(payload));
+					return;
+				}
+				if (index.workspaces.length === 0) {
+					console.log("No workspaces registered.");
+					return;
+				}
+				for (const w of index.workspaces) {
+					const marker = w.id && w.id === index.current ? "*" : " ";
+					const id = w.id ?? "(no id)";
+					console.log(`${marker} ${id}\t${w.path}`);
+				}
+			} catch (err) {
+				console.error(err instanceof Error ? err.message : String(err));
+				process.exit(1);
+			}
+		});
+
+	ws.command("switch <id>")
+		.description("set the current workspace by id")
+		.action(async (id: string) => {
+			try {
+				await setCurrentWorkspaceId(id);
+				console.log(`Switched to workspace ${id}`);
 			} catch (err) {
 				console.error(err instanceof Error ? err.message : String(err));
 				process.exit(1);
