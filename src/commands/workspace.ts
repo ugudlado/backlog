@@ -13,6 +13,15 @@ interface DoctorOptions {
 	yes?: boolean;
 }
 
+async function runAction(fn: () => Promise<void>): Promise<void> {
+	try {
+		await fn();
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
+}
+
 function formatIssue(issue: WorkspaceIssue): string {
 	const id = issue.entryId ?? "(no id)";
 	const target = issue.kind === "stale-current-pointer" ? `current=${id}` : `${id} ${issue.path}`;
@@ -88,20 +97,13 @@ export function registerWorkspaceCommand(program: Command): void {
 		.description("scan the registry for drift; --fix to repair")
 		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
 		.option("--yes", "skip the confirmation prompt when --fix is supplied")
-		.action(async (opts: DoctorOptions) => {
-			try {
-				await doDoctor(opts);
-			} catch (err) {
-				console.error(err instanceof Error ? err.message : String(err));
-				process.exit(1);
-			}
-		});
+		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
 
 	ws.command("list")
 		.description("list all registered workspaces")
 		.option("--plain", "emit JSON output")
-		.action(async (opts: { plain?: boolean }) => {
-			try {
+		.action((opts: { plain?: boolean }) =>
+			runAction(async () => {
 				const index = await readWorkspacesIndex();
 				if (opts.plain) {
 					const payload = {
@@ -120,21 +122,15 @@ export function registerWorkspaceCommand(program: Command): void {
 					const id = w.id ?? "(no id)";
 					console.log(`${marker} ${id}\t${w.path}`);
 				}
-			} catch (err) {
-				console.error(err instanceof Error ? err.message : String(err));
-				process.exit(1);
-			}
-		});
+			}),
+		);
 
 	ws.command("switch <id>")
 		.description("set the current workspace by id")
-		.action(async (id: string) => {
-			try {
+		.action((id: string) =>
+			runAction(async () => {
 				await setCurrentWorkspaceId(id);
 				console.log(`Switched to workspace ${id}`);
-			} catch (err) {
-				console.error(err instanceof Error ? err.message : String(err));
-				process.exit(1);
-			}
-		});
+			}),
+		);
 }
