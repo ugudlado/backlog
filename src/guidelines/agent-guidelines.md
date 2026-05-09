@@ -804,6 +804,57 @@ exits `0`. If the id is not registered the command writes
 `No workspace with id "<id>" in registry` to stderr and exits `1`. Exit code
 is the authoritative signal; agents that suppress stdout can rely on it.
 
+### How do I find the right project?
+
+1. **Check working directory**: Backlog.md auto-detects the project from `cwd` when a `backlog/` directory is present. Run `backlog task list --plain` — if it returns results, you're already in the right project.
+2. **Consult the registry**: If the project is not detected from `cwd`, run `backlog workspace list --plain` to see all registered projects. Parse the JSON output to find the correct `id`, then run `backlog workspace switch <id>`.
+3. **No registry entry**: If the target project is absent from the registry, `cd` into the project root and run `backlog init` (or `backlog workspace add .`) to register it, then switch to it.
+
+The registry file lives at `~/.config/backlog.md/workspaces.yml` (see `workspaces.yml` above). Never edit it by hand.
+
+---
+
+## Server & Service
+
+### `backlog server`
+
+Starts the Backlog.md web UI in the foreground:
+
+```bash
+backlog server          # serves on http://localhost:3000
+backlog server --open   # also opens the browser
+```
+
+`backlog browser` is a deprecated alias for `backlog server`; prefer `backlog server`.
+
+### `backlog service` (macOS only)
+
+Installs and manages a persistent launchd daemon so the web UI survives terminal closes.
+
+| Subcommand                  | Effect                                      |
+|-----------------------------|---------------------------------------------|
+| `backlog service start`     | Install and start the launchd daemon        |
+| `backlog service stop`      | Stop and unload the daemon                  |
+| `backlog service status`    | Show whether the daemon is running          |
+| `backlog service logs`      | Tail the daemon log file                    |
+| `backlog service uninstall` | Remove the launchd plist and stop the daemon |
+
+Linux and Windows are not supported by `backlog service`; use `backlog server` directly on those platforms.
+
+**When to use which:**
+- Use `backlog server` for one-off or short-lived sessions (CI, scripts, quick checks).
+- Use `backlog service start` on macOS when you want the web UI always available without keeping a terminal open.
+
+### Refreshing agent instructions
+
+If agent instruction files (CLAUDE.md, AGENTS.md, etc.) already exist in a repo and need to be updated to the latest version, run:
+
+```bash
+backlog agents --update-instructions
+```
+
+This is idempotent — it replaces the Backlog.md block between the markers without touching surrounding content. For a fresh repo, run `backlog init` instead.
+
 ## Remember: The Golden Rule
 
 **🎯 If you want to change ANYTHING in a task, use the `backlog task edit` command.**

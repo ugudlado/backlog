@@ -6,9 +6,11 @@ import {
 	AGENT_GUIDELINES,
 	addAgentInstructions,
 	CLAUDE_GUIDELINES,
+	CLAUDE_SKILL_CONTENT,
 	COPILOT_GUIDELINES,
 	ensureMcpGuidelines,
 	GEMINI_GUIDELINES,
+	installClaudeSkill,
 	README_GUIDELINES,
 } from "../index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -248,5 +250,244 @@ describe("agent-guidelines.md workspace registry section", () => {
 		} finally {
 			await safeCleanup(dir);
 		}
+	});
+});
+
+// T-1: RED tests — agent-guidelines.md server/service docs, decision tree, agents-update mention
+// These assertions FAIL until T-2 adds the content to agent-guidelines.md (FR-1, FR-2, FR-3).
+
+describe("agent-guidelines.md server & service section (FR-1)", () => {
+	it("guideline source documents backlog server and backlog service subcommands", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// Section heading
+		expect(content).toContain("## Server & Service");
+
+		// backlog service subcommands (FR-1)
+		expect(content).toContain("backlog service start");
+		expect(content).toContain("backlog service stop");
+		expect(content).toContain("backlog service status");
+		expect(content).toContain("backlog service logs");
+		expect(content).toContain("backlog service uninstall");
+	});
+
+	it("addAgentInstructions renders server & service section into CLAUDE.md and AGENTS.md", async () => {
+		const dir = createUniqueTestDir("test-agent-instructions-server");
+		await mkdir(dir, { recursive: true });
+		try {
+			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+				const text = await Bun.file(join(dir, name)).text();
+				expect(text).toContain("## Server & Service");
+				expect(text).toContain("backlog service start");
+				expect(text).toContain("backlog service status");
+			}
+		} finally {
+			await safeCleanup(dir);
+		}
+	});
+});
+
+describe("agent-guidelines.md workspace decision tree (FR-2)", () => {
+	it("guideline source contains the 'How do I find the right project?' decision tree", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// Decision-tree marker phrase (FR-2)
+		expect(content).toContain("How do I find the right project?");
+	});
+});
+
+describe("agent-guidelines.md agents-update mention (FR-3)", () => {
+	it("guideline source mentions backlog agents --update-instructions as the refresh command", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// refresh command mention (FR-3)
+		expect(content).toContain("backlog agents --update-instructions");
+	});
+
+	it("addAgentInstructions renders the agents-update mention into CLAUDE.md and AGENTS.md", async () => {
+		const dir = createUniqueTestDir("test-agent-instructions-update");
+		await mkdir(dir, { recursive: true });
+		try {
+			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+				const text = await Bun.file(join(dir, name)).text();
+				expect(text).toContain("backlog agents --update-instructions");
+			}
+		} finally {
+			await safeCleanup(dir);
+		}
+	});
+});
+
+// T-3: RED tests — mcp/overview.md workspace registry + persistent server mention
+// These assertions FAIL until T-4 adds the content to mcp/overview.md (FR-4, AC-3).
+
+describe("mcp/overview.md fork capabilities", () => {
+	it("overview source mentions the workspace registry", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must reference workspaces.yml (the registry backing file)
+		expect(content).toContain("workspaces.yml");
+	});
+
+	it("overview source mentions the backlog workspace command family", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must reference backlog workspace list --plain for registry discovery
+		expect(content).toContain("backlog workspace list --plain");
+	});
+
+	it("overview source mentions the persistent server surface (backlog server or backlog service)", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must mention either backlog server (foreground UI) or backlog service (macOS daemon)
+		const mentionsServer = content.includes("backlog server") || content.includes("backlog service");
+		expect(mentionsServer).toBe(true);
+	});
+});
+
+// T-5: RED tests — SKILL.md source bundle constraints, installClaudeSkill install behavior,
+// and addAgentInstructions integration.
+// These assertions FAIL until T-6 creates SKILL.md, exports CLAUDE_SKILL_CONTENT, adds
+// installClaudeSkill, and wires it into addAgentInstructions (FR-5..FR-9, NFR-1, AC-4, AC-5).
+
+describe("backlog-md skill bundle (source)", () => {
+	it("SKILL.md source file exists and is non-empty", async () => {
+		const path = join(__dirname, "../guidelines/skills/backlog-md/SKILL.md");
+		const file = Bun.file(path);
+		expect(await file.exists()).toBe(true);
+		const content = await file.text();
+		expect(content.length).toBeGreaterThan(0);
+	});
+
+	it("SKILL.md has YAML frontmatter with name: backlog-md and a description field", async () => {
+		const path = join(__dirname, "../guidelines/skills/backlog-md/SKILL.md");
+		const content = await Bun.file(path).text();
+
+		// Must start with a YAML frontmatter block
+		expect(content.startsWith("---")).toBe(true);
+		const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+		expect(fmMatch).not.toBeNull();
+		const frontmatter = fmMatch?.[1];
+		// Must contain name: backlog-md (FR-5, per design.md skill format spec)
+		expect(frontmatter).toMatch(/name:\s*backlog-md/);
+		// Must contain a description field (Claude Code Skill spec requirement)
+		expect(frontmatter).toMatch(/description:/);
+	});
+
+	it("SKILL.md does not contain backlog:// URI references (FR-6, NFR-1, BACK-349 AC #2)", async () => {
+		const path = join(__dirname, "../guidelines/skills/backlog-md/SKILL.md");
+		const content = await Bun.file(path).text();
+
+		// Self-contained: no MCP resource URIs (OQ-4 resolution)
+		expect(content).not.toContain("backlog://");
+	});
+
+	it("SKILL.md does not contain CLI command table rows (NFR-1 single-source enforcement)", async () => {
+		const path = join(__dirname, "../guidelines/skills/backlog-md/SKILL.md");
+		const content = await Bun.file(path).text();
+
+		// Must NOT duplicate command-reference table rows from agent-guidelines.md
+		// (greppable assertion: markdown table rows starting with "| backlog ")
+		expect(content).not.toMatch(/^\| backlog /m);
+	});
+});
+
+describe("installClaudeSkill writes skill bundle", () => {
+	let testDir: string;
+
+	beforeEach(async () => {
+		testDir = createUniqueTestDir("test-install-claude-skill");
+		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		await mkdir(testDir, { recursive: true });
+	});
+
+	afterEach(async () => {
+		try {
+			await safeCleanup(testDir);
+		} catch {
+			// Ignore cleanup errors
+		}
+	});
+
+	it("creates .claude/skills/backlog-md/SKILL.md with embedded content", async () => {
+		await installClaudeSkill(testDir);
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		expect(await Bun.file(skillPath).exists()).toBe(true);
+		const content = await Bun.file(skillPath).text();
+		expect(content).toBe(CLAUDE_SKILL_CONTENT);
+	});
+
+	it("creates nested directory tree if it does not exist", async () => {
+		// testDir exists but .claude/skills/backlog-md/ does not
+		await installClaudeSkill(testDir);
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		expect(await Bun.file(skillPath).exists()).toBe(true);
+	});
+
+	it("is idempotent: second call does not error and file content is unchanged", async () => {
+		await installClaudeSkill(testDir);
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		const first = await Bun.file(skillPath).text();
+
+		// Second call — must not throw, must not change the file
+		await installClaudeSkill(testDir);
+		const second = await Bun.file(skillPath).text();
+		expect(second).toBe(first);
+		expect(first).toBe(CLAUDE_SKILL_CONTENT);
+	});
+});
+
+describe("addAgentInstructions installs the skill bundle", () => {
+	let testDir: string;
+
+	beforeEach(async () => {
+		testDir = createUniqueTestDir("test-agent-instructions-skill");
+		await rm(testDir, { recursive: true, force: true }).catch(() => {});
+		await mkdir(testDir, { recursive: true });
+	});
+
+	afterEach(async () => {
+		try {
+			await safeCleanup(testDir);
+		} catch {
+			// Ignore cleanup errors
+		}
+	});
+
+	it("writes both the sub-agent file and the skill bundle in one call", async () => {
+		await addAgentInstructions(testDir);
+
+		// Existing sub-agent must still be written (regression guard)
+		const agentPath = join(testDir, ".claude", "agents", "project-manager-backlog.md");
+		expect(await Bun.file(agentPath).exists()).toBe(true);
+
+		// New skill bundle must also be written (FR-9, AC-5)
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		expect(await Bun.file(skillPath).exists()).toBe(true);
+	});
+
+	it("skill bundle content matches the embedded constant", async () => {
+		await addAgentInstructions(testDir);
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		const content = await Bun.file(skillPath).text();
+		expect(content).toBe(CLAUDE_SKILL_CONTENT);
+	});
+
+	it("is idempotent: second addAgentInstructions call does not change the skill file", async () => {
+		await addAgentInstructions(testDir);
+		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
+		const first = await Bun.file(skillPath).text();
+
+		await addAgentInstructions(testDir);
+		const second = await Bun.file(skillPath).text();
+		expect(second).toBe(first);
 	});
 });

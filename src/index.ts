@@ -8,6 +8,7 @@ export {
 	type EnsureMcpGuidelinesResult,
 	ensureMcpGuidelines,
 	installClaudeAgent,
+	installClaudeSkill,
 } from "./agent-instructions.ts";
 // Kanban board utilities
 export { exportKanbanBoardToFile, generateKanbanBoardWithMetadata } from "./board.ts";
