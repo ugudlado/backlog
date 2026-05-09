@@ -6,6 +6,7 @@ import {
 	AGENT_GUIDELINES,
 	CLAUDE_AGENT_CONTENT,
 	CLAUDE_GUIDELINES,
+	CLAUDE_SKILL_CONTENT,
 	COPILOT_GUIDELINES,
 	GEMINI_GUIDELINES,
 	MCP_AGENT_NUDGE,
@@ -181,6 +182,11 @@ export async function addAgentInstructions(
 		paths.push(filePath);
 	}
 
+	if (files.includes("CLAUDE.md")) {
+		await installClaudeAgent(projectRoot);
+		await installClaudeSkill(projectRoot);
+	}
+
 	if (git && paths.length > 0 && autoCommit) {
 		await git.addFiles(paths);
 		await git.commitChanges("Add AI agent instructions");
@@ -269,4 +275,18 @@ export async function installClaudeAgent(projectRoot: string): Promise<void> {
 
 	// Write the agent content
 	await Bun.write(agentPath, CLAUDE_AGENT_CONTENT);
+}
+
+/**
+ * Installs the Claude Code backlog skill bundle to the project's .claude/skills directory
+ */
+export async function installClaudeSkill(projectRoot: string): Promise<void> {
+	const skillDir = join(projectRoot, ".claude", "skills", "backlog-md");
+	const skillPath = join(skillDir, "SKILL.md");
+
+	// Create the directory if it doesn't exist
+	await mkdir(skillDir, { recursive: true });
+
+	// Write the skill content
+	await Bun.write(skillPath, CLAUDE_SKILL_CONTENT);
 }
