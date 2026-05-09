@@ -250,3 +250,73 @@ describe("agent-guidelines.md workspace registry section", () => {
 		}
 	});
 });
+
+// T-1: RED tests — agent-guidelines.md server/service docs, decision tree, agents-update mention
+// These assertions FAIL until T-2 adds the content to agent-guidelines.md (FR-1, FR-2, FR-3).
+
+describe("agent-guidelines.md server & service section (FR-1)", () => {
+	it("guideline source documents backlog server and backlog service subcommands", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// Section heading
+		expect(content).toContain("## Server & Service");
+
+		// backlog service subcommands (FR-1)
+		expect(content).toContain("backlog service start");
+		expect(content).toContain("backlog service stop");
+		expect(content).toContain("backlog service status");
+		expect(content).toContain("backlog service logs");
+		expect(content).toContain("backlog service uninstall");
+	});
+
+	it("addAgentInstructions renders server & service section into CLAUDE.md and AGENTS.md", async () => {
+		const dir = createUniqueTestDir("test-agent-instructions-server");
+		await mkdir(dir, { recursive: true });
+		try {
+			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+				const text = await Bun.file(join(dir, name)).text();
+				expect(text).toContain("## Server & Service");
+				expect(text).toContain("backlog service start");
+				expect(text).toContain("backlog service status");
+			}
+		} finally {
+			await safeCleanup(dir);
+		}
+	});
+});
+
+describe("agent-guidelines.md workspace decision tree (FR-2)", () => {
+	it("guideline source contains the 'How do I find the right project?' decision tree", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// Decision-tree marker phrase (FR-2)
+		expect(content).toContain("How do I find the right project?");
+	});
+});
+
+describe("agent-guidelines.md agents-update mention (FR-3)", () => {
+	it("guideline source mentions backlog agents --update-instructions as the refresh command", async () => {
+		const path = join(__dirname, "../guidelines/agent-guidelines.md");
+		const content = await Bun.file(path).text();
+
+		// refresh command mention (FR-3)
+		expect(content).toContain("backlog agents --update-instructions");
+	});
+
+	it("addAgentInstructions renders the agents-update mention into CLAUDE.md and AGENTS.md", async () => {
+		const dir = createUniqueTestDir("test-agent-instructions-update");
+		await mkdir(dir, { recursive: true });
+		try {
+			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+				const text = await Bun.file(join(dir, name)).text();
+				expect(text).toContain("backlog agents --update-instructions");
+			}
+		} finally {
+			await safeCleanup(dir);
+		}
+	});
+});
