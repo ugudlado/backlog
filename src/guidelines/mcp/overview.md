@@ -50,6 +50,15 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 **Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately.
 
+### Multi-project & persistent server
+
+Backlog.md keeps a workspace registry at `~/.config/backlog.md/workspaces.yml`.
+Use `backlog workspace list --plain` (CLI) to see registered projects and
+`backlog workspace switch <id>` to set the current one. The web UI runs in
+the foreground via `backlog server`, or as a macOS launchd daemon via
+`backlog service start`. See the in-repo CLAUDE.md/AGENTS.md (generated
+from agent-guidelines.md) for the full command reference.
+
 ### MCP Tools Quick Reference
 
 **Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
