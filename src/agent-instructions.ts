@@ -263,30 +263,22 @@ export async function ensureMcpGuidelines(
 	return { changed, created: !fileExists, fileName, filePath };
 }
 
+/** Creates parent directories and writes content to filePath. */
+async function writeFile(filePath: string, content: string): Promise<void> {
+	await mkdir(dirname(filePath), { recursive: true });
+	await Bun.write(filePath, content);
+}
+
 /**
  * Installs the Claude Code backlog agent to the project's .claude/agents directory
  */
 export async function installClaudeAgent(projectRoot: string): Promise<void> {
-	const agentDir = join(projectRoot, ".claude", "agents");
-	const agentPath = join(agentDir, "project-manager-backlog.md");
-
-	// Create the directory if it doesn't exist
-	await mkdir(agentDir, { recursive: true });
-
-	// Write the agent content
-	await Bun.write(agentPath, CLAUDE_AGENT_CONTENT);
+	await writeFile(join(projectRoot, ".claude", "agents", "project-manager-backlog.md"), CLAUDE_AGENT_CONTENT);
 }
 
 /**
  * Installs the Claude Code backlog skill bundle to the project's .claude/skills directory
  */
 export async function installClaudeSkill(projectRoot: string): Promise<void> {
-	const skillDir = join(projectRoot, ".claude", "skills", "backlog-md");
-	const skillPath = join(skillDir, "SKILL.md");
-
-	// Create the directory if it doesn't exist
-	await mkdir(skillDir, { recursive: true });
-
-	// Write the skill content
-	await Bun.write(skillPath, CLAUDE_SKILL_CONTENT);
+	await writeFile(join(projectRoot, ".claude", "skills", "backlog-md", "SKILL.md"), CLAUDE_SKILL_CONTENT);
 }

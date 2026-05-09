@@ -375,7 +375,7 @@ describe("backlog-md skill bundle (source)", () => {
 		expect(content.startsWith("---")).toBe(true);
 		const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
 		expect(fmMatch).not.toBeNull();
-		const frontmatter = fmMatch![1];
+		const frontmatter = fmMatch?.[1];
 		// Must contain name: backlog-md (FR-5, per design.md skill format spec)
 		expect(frontmatter).toMatch(/name:\s*backlog-md/);
 		// Must contain a description field (Claude Code Skill spec requirement)
