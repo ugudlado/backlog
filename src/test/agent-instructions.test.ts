@@ -320,3 +320,33 @@ describe("agent-guidelines.md agents-update mention (FR-3)", () => {
 		}
 	});
 });
+
+// T-3: RED tests — mcp/overview.md workspace registry + persistent server mention
+// These assertions FAIL until T-4 adds the content to mcp/overview.md (FR-4, AC-3).
+
+describe("mcp/overview.md fork capabilities", () => {
+	it("overview source mentions the workspace registry", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must reference workspaces.yml (the registry backing file)
+		expect(content).toContain("workspaces.yml");
+	});
+
+	it("overview source mentions the backlog workspace command family", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must reference backlog workspace list --plain for registry discovery
+		expect(content).toContain("backlog workspace list --plain");
+	});
+
+	it("overview source mentions the persistent server surface (backlog server or backlog service)", async () => {
+		const path = join(__dirname, "../guidelines/mcp/overview.md");
+		const content = await Bun.file(path).text();
+
+		// Must mention either backlog server (foreground UI) or backlog service (macOS daemon)
+		const mentionsServer = content.includes("backlog server") || content.includes("backlog service");
+		expect(mentionsServer).toBe(true);
+	});
+});
