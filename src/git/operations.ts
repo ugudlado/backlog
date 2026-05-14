@@ -331,6 +331,15 @@ export class GitOperations {
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {
+		// Guard: if backlogDir is an absolute path outside the project repo, no-op.
+		// This handles the globalStore case where task data lives outside the code repo.
+		if (isAbsolute(backlogDir)) {
+			const relToProject = relative(this.projectRoot, backlogDir);
+			if (relToProject.startsWith("..")) {
+				return null;
+			}
+		}
+
 		const context = await this.getPathContext(backlogDir);
 		if (context) {
 			const pathForAdd = context.relativePath === "." ? "." : context.relativePath;

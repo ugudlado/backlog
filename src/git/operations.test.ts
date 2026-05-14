@@ -3,7 +3,7 @@
  * When called with an absolute path that is outside the project's git repo,
  * stageBacklogDirectory must return null without calling git add.
  */
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
