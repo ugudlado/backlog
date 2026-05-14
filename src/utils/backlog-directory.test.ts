@@ -68,7 +68,7 @@ describe("resolveBacklogDirectory — globalStore branch", () => {
 
 		const resolution = resolveBacklogDirectory(repoDir);
 
-		const repoBasename = repoDir.split("/").pop()!;
+		const repoBasename = repoDir.split("/").at(-1) ?? "";
 		const expectedBacklogPath = join(globalStoreDir, repoBasename);
 		expect(resolution.backlogPath).toBe(expectedBacklogPath);
 		expect(resolution.configPath).toBe(join(expectedBacklogPath, "config.yml"));

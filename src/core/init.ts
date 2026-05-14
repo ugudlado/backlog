@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -8,7 +10,37 @@ import {
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { readMachineConfig } from "../utils/machine-config.ts";
 import type { Core } from "./backlog.ts";
+
+async function dirExistsAndNonEmpty(path: string): Promise<boolean> {
+	try {
+		const { readdir } = await import("node:fs/promises");
+		const entries = await readdir(path);
+		return entries.length > 0;
+	} catch {
+		return false;
+	}
+}
+
+async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
+	try {
+		const s = await stat(globalStore);
+		if (!s.isDirectory()) {
+			throw new Error(`Global store directory does not exist: ${globalStore}`);
+		}
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			throw new Error(`Global store directory does not exist: ${globalStore}`);
+		}
+		throw err;
+	}
+}
+
+function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): boolean {
+	if (!isAbsolute(backlogPath)) return false;
+	return relative(projectRoot, backlogPath).startsWith("..");
+}
 
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
@@ -181,6 +213,21 @@ export async function initializeProject(
 	// Create structure and save config (id minted + workspace registered after save).
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
+	} else if (isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot)) {
+		// GlobalStore branch: backlog directory is outside the project root.
+		// FileSystem was already resolved to the external slot by resolveBacklogDirectory.
+		// We just need to validate preconditions and create the structure.
+		const machine = readMachineConfig();
+		if (machine.globalStore) {
+			await ensureGlobalStoreExists(machine.globalStore);
+		}
+		const slotPath = core.filesystem.backlogDir;
+		if (await dirExistsAndNonEmpty(slotPath)) {
+			throw new Error(`Global store slot already exists and is not empty: ${slotPath}. Refusing to overwrite.`);
+		}
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(config);
+		await core.ensureConfigLoaded();
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
 		const inferredBacklogDirectorySource = normalizedBacklogDirectory

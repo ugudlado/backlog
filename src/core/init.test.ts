@@ -8,7 +8,7 @@
  * - Error if slot already exists and is non-empty
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { $ } from "bun";
@@ -35,15 +35,6 @@ async function dirExists(path: string): Promise<boolean> {
 	try {
 		const s = await stat(path);
 		return s.isDirectory();
-	} catch {
-		return false;
-	}
-}
-
-async function dirIsNonEmpty(path: string): Promise<boolean> {
-	try {
-		const entries = await readdir(path);
-		return entries.length > 0;
 	} catch {
 		return false;
 	}
