@@ -3272,7 +3272,9 @@ agentsCmd
 // Config command group
 const configCmd = program
 	.command("config")
-	.description("manage backlog configuration")
+	.description(
+		"manage backlog configuration\n\nProject config: stored in backlog/config.yml (or backlog.config.yml at root)\nMachine config: ~/.config/backlog.md/config.yml — controls machine-wide keys like 'globalStore' (redirect backlog storage to an external directory; see 'config list')",
+	)
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
