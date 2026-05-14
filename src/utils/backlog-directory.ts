@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
-import { join, normalize } from "node:path";
+import { basename, join, normalize } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
+import { readMachineConfig } from "./machine-config.ts";
 
 export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
 export type BacklogConfigSource = "folder" | "root";
@@ -134,6 +135,47 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 	return null;
 }
 
+/** Synchronously resolves the git repository root for the given directory. Returns null if not in a git repo. */
+function resolveGitRootSync(cwd: string): string | null {
+	const r = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
+		cwd,
+		stderr: "ignore",
+	});
+	if (r.exitCode !== 0) return null;
+	const out = new TextDecoder().decode(r.stdout).trim();
+	return out || null;
+}
+
+/**
+ * Tries to resolve backlog directory via the globalStore machine config.
+ * Returns null if globalStore is not set or the project is not in a git repo.
+ */
+function resolveGlobalStoreBacklogDirectory(
+	projectRoot: string,
+	rootConfigPath: string,
+	rootConfigExists: boolean,
+): BacklogDirectoryResolution | null {
+	const machine = readMachineConfig();
+	if (!machine.globalStore) return null;
+
+	const gitRoot = resolveGitRootSync(projectRoot);
+	if (!gitRoot) return null;
+
+	const slot = basename(gitRoot);
+	const backlogPath = join(machine.globalStore, slot);
+	const configPath = join(backlogPath, DEFAULT_FILES.CONFIG);
+	return {
+		projectRoot,
+		backlogDir: slot,
+		backlogPath,
+		source: "custom",
+		configPath,
+		configSource: "folder",
+		rootConfigPath,
+		rootConfigExists,
+	};
+}
+
 export function normalizeProjectBacklogDirectory(value: string | null | undefined): string | null {
 	const trimmed = String(value ?? "").trim();
 	if (!trimmed) {
@@ -195,7 +237,25 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 				};
 			}
 
-			return {
+			return (
+				resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
+					projectRoot,
+					backlogDir: null,
+					backlogPath: null,
+					source: null,
+					configPath: null,
+					configSource: null,
+					rootConfigPath,
+					rootConfigExists,
+				}
+			);
+		}
+	}
+
+	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+	if (!builtIn) {
+		return (
+			resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
 				projectRoot,
 				backlogDir: null,
 				backlogPath: null,
@@ -204,22 +264,8 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 				configSource: null,
 				rootConfigPath,
 				rootConfigExists,
-			};
-		}
-	}
-
-	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
-	if (!builtIn) {
-		return {
-			projectRoot,
-			backlogDir: null,
-			backlogPath: null,
-			source: null,
-			configPath: null,
-			configSource: null,
-			rootConfigPath,
-			rootConfigExists,
-		};
+			}
+		);
 	}
 
 	const folderConfigPath = resolveFolderConfigPath(builtIn.backlogPath);

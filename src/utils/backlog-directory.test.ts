@@ -94,17 +94,22 @@ describe("resolveBacklogDirectory — globalStore branch", () => {
 	});
 
 	it("(d) globalStore set, projectRoot not in a git repo → returns null result (no globalStore path)", async () => {
-		// Use a non-git directory
-		const nonGitDir = join(TMP_BASE, "non-git-dir");
+		// Use a directory outside any git repo
+		const { tmpdir } = await import("node:os");
+		const nonGitDir = join(tmpdir(), `backlog-non-git-${Date.now()}`);
 		await mkdir(nonGitDir, { recursive: true });
 
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 
-		const resolution = resolveBacklogDirectory(nonGitDir);
+		try {
+			const resolution = resolveBacklogDirectory(nonGitDir);
 
-		expect(resolution.backlogPath).toBeNull();
-		expect(resolution.configPath).toBeNull();
-		expect(resolution.source).toBeNull();
+			expect(resolution.backlogPath).toBeNull();
+			expect(resolution.configPath).toBeNull();
+			expect(resolution.source).toBeNull();
+		} finally {
+			await rm(nonGitDir, { recursive: true, force: true });
+		}
 	});
 });
