@@ -1,10 +1,11 @@
 ---
 id: BACK-267
 title: Add agent instruction version metadata
-status: To Do
+status: Done
 assignee:
   - '@codex'
 created_date: '2025-09-17 19:19'
+updated_date: '2026-05-14 21:33'
 labels: []
 dependencies: []
 ---

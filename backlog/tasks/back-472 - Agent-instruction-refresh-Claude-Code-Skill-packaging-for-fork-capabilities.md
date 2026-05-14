@@ -1,9 +1,10 @@
 ---
 id: BACK-472
 title: Agent-instruction refresh + Claude Code Skill packaging for fork capabilities
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-07 15:45'
+updated_date: '2026-05-14 21:27'
 labels:
   - agents
   - docs
