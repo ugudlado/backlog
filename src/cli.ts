@@ -3272,7 +3272,9 @@ agentsCmd
 // Config command group
 const configCmd = program
 	.command("config")
-	.description("manage backlog configuration")
+	.description(
+		"manage backlog configuration\n\nProject config: stored in backlog/config.yml (or backlog.config.yml at root)\nMachine config: ~/.config/backlog.md/config.yml — controls machine-wide keys like 'globalStore' (redirect backlog storage to an external directory; see 'config list')",
+	)
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
@@ -3662,6 +3664,10 @@ configCmd
 					);
 					process.exit(1);
 					break;
+				case "globalStore":
+					console.error("globalStore is a machine-level key. Edit ~/.config/backlog.md/config.yml directly.");
+					process.exit(1);
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
@@ -3713,6 +3719,10 @@ configCmd
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			// Machine-level config (read-only via CLI, edit ~/.config/backlog.md/config.yml directly)
+			const { readMachineConfig } = await import("./utils/machine-config.ts");
+			const machine = readMachineConfig();
+			console.log(`  globalStore: ${machine.globalStore ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

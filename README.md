@@ -279,6 +279,28 @@ For filesystem-only projects, run `backlog init --no-git`. Backlog.md will not r
 
 Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 
+### Machine-level config (`~/.config/backlog.md/config.yml`)
+
+Some settings live outside any project and apply across all repositories on the machine. Create or edit `~/.config/backlog.md/config.yml` directly — the CLI does not write to this file.
+
+**`globalStore`** — redirect all backlog storage to a single external directory instead of creating a `backlog/` folder inside each code repo:
+
+```yaml
+# ~/.config/backlog.md/config.yml
+globalStore: /path/to/my/backlog-store
+```
+
+When `globalStore` is set:
+- `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
+- All task reads and writes go to the external slot — the code repo is never touched.
+- `git log` in your code repo stays clean even with `autoCommit: true`.
+- The `globalStore` directory must exist before running `backlog init`. Backlog.md will not create it.
+- If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
+
+The current `globalStore` value (or `(not set)`) is shown in `backlog config list`.
+
+To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.
+
 ### Definition of Done defaults
 
 Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
