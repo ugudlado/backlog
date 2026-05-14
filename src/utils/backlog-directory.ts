@@ -148,7 +148,9 @@ function resolveGitRootSync(cwd: string): string | null {
 
 /**
  * Tries to resolve backlog directory via the globalStore machine config.
- * Returns null if globalStore is not set or the project is not in a git repo.
+ * Only resolves when `projectRoot` is the git repository root (not a subdirectory),
+ * so that `findBacklogRoot`'s walk-up correctly terminates at the git root.
+ * Returns null if globalStore is not set, not in a git repo, or projectRoot is not the git root.
  */
 function resolveGlobalStoreBacklogDirectory(
 	projectRoot: string,
@@ -160,6 +162,11 @@ function resolveGlobalStoreBacklogDirectory(
 
 	const gitRoot = resolveGitRootSync(projectRoot);
 	if (!gitRoot) return null;
+
+	// Only resolve when the caller is asking about the git root itself,
+	// not a subdirectory inside it. This ensures findBacklogRoot's walk-up
+	// terminates at the correct level.
+	if (gitRoot !== projectRoot) return null;
 
 	const slot = basename(gitRoot);
 	const backlogPath = join(machine.globalStore, slot);
