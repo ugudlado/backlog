@@ -8,22 +8,14 @@ export const DEFAULT_DIRECTORIES = {
 	HIDDEN_BACKLOG: ".backlog",
 	/** Active tasks directory */
 	TASKS: "tasks",
-	/** Draft tasks directory */
-	DRAFTS: "drafts",
 	/** Completed tasks directory */
 	COMPLETED: "completed",
 	/** Archive root directory */
 	ARCHIVE: "archive",
 	/** Archived tasks directory */
 	ARCHIVE_TASKS: "archive/tasks",
-	/** Archived drafts directory */
-	ARCHIVE_DRAFTS: "archive/drafts",
 	/** Archived milestones directory */
 	ARCHIVE_MILESTONES: "archive/milestones",
-	/** Documentation directory */
-	DOCS: "docs",
-	/** Decision logs directory */
-	DECISIONS: "decisions",
 	/** Milestones directory */
 	MILESTONES: "milestones",
 } as const;

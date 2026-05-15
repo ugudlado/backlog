@@ -6,9 +6,6 @@ export type TaskStatus = string;
  */
 export enum EntityType {
 	Task = "task",
-	Draft = "draft",
-	Document = "document",
-	Decision = "decision",
 }
 
 // Structured Acceptance Criterion (domain-level)
@@ -160,18 +157,6 @@ export interface TaskListFilter {
 	labels?: string[];
 }
 
-export interface Decision {
-	id: string;
-	title: string;
-	date: string;
-	status: "proposed" | "accepted" | "rejected" | "superseded";
-	context: string;
-	decision: string;
-	consequences: string;
-	alternatives?: string;
-	readonly rawContent: string; // Raw markdown content without frontmatter
-}
-
 export interface Milestone {
 	id: string;
 	title: string;
@@ -179,41 +164,7 @@ export interface Milestone {
 	readonly rawContent: string; // Raw markdown content without frontmatter
 }
 
-export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;
-export type DocumentType = (typeof DOCUMENT_TYPE_VALUES)[number];
-
-export interface Document {
-	id: string;
-	title: string;
-	type: DocumentType;
-	createdDate: string;
-	updatedDate?: string;
-	rawContent: string; // Raw markdown content without frontmatter
-	tags?: string[];
-	// Web UI specific fields
-	name?: string;
-	path?: string;
-	lastModified?: string;
-}
-
-export interface DocumentCreateInput {
-	title: string;
-	content?: string;
-	type?: Document["type"];
-	path?: string;
-	tags?: string[];
-}
-
-export interface DocumentUpdateInput {
-	id: string;
-	content: string;
-	title?: string;
-	type?: Document["type"];
-	path?: string | null;
-	tags?: string[];
-}
-
-export type SearchResultType = "task" | "document" | "decision";
+export type SearchResultType = "task";
 
 export type SearchPriorityFilter = "high" | "medium" | "low";
 
@@ -245,21 +196,7 @@ export interface TaskSearchResult {
 	matches?: SearchMatch[];
 }
 
-export interface DocumentSearchResult {
-	type: "document";
-	score: number | null;
-	document: Document;
-	matches?: SearchMatch[];
-}
-
-export interface DecisionSearchResult {
-	type: "decision";
-	score: number | null;
-	decision: Decision;
-	matches?: SearchMatch[];
-}
-
-export type SearchResult = TaskSearchResult | DocumentSearchResult | DecisionSearchResult;
+export type SearchResult = TaskSearchResult;
 
 export interface Sequence {
 	/** 1-based sequence index */
@@ -271,7 +208,6 @@ export interface Sequence {
 /**
  * Configuration for ID prefixes used in task files.
  * Allows customization of task prefix (e.g., "JIRA-", "issue-", "bug-").
- * Note: Draft prefix is always "draft" and not configurable.
  */
 export interface PrefixConfig {
 	/** Prefix for task IDs (default: "task") - produces IDs like TASK-1, TASK-2 */
