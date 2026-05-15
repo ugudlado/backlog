@@ -10,6 +10,7 @@ import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { registerMigrateCommand } from "./commands/migrate.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { registerWorkspaceCommand } from "./commands/workspace.ts";
@@ -3516,6 +3517,9 @@ registerMcpCommand(program);
 
 // Service command group (macOS launchd)
 registerServiceCommand(program);
+
+// Migrate command group (one-time legacy migrations)
+registerMigrateCommand(program);
 
 // Workspace registry command group
 registerWorkspaceCommand(program);
