@@ -137,13 +137,17 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 
 /** Synchronously resolves the git repository root for the given directory. Returns null if not in a git repo. */
 function resolveGitRootSync(cwd: string): string | null {
-	const r = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
-		cwd,
-		stderr: "ignore",
-	});
-	if (r.exitCode !== 0) return null;
-	const out = new TextDecoder().decode(r.stdout).trim();
-	return out || null;
+	try {
+		const r = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
+			cwd,
+			stderr: "ignore",
+		});
+		if (r.exitCode !== 0) return null;
+		const out = new TextDecoder().decode(r.stdout).trim();
+		return out || null;
+	} catch {
+		return null;
+	}
 }
 
 /**
