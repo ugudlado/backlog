@@ -245,6 +245,8 @@ export interface BacklogConfig {
 	backlogDirectory?: string;
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
+	/** Suppress the startup warning about legacy backlog/drafts/, backlog/docs/, backlog/decisions/ folders. */
+	suppressLegacyFolderWarning?: boolean;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
 	mcp?: {

@@ -47,6 +47,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { warnLegacyFolders } from "./utils/legacy-warning.ts";
 import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
@@ -3523,6 +3524,22 @@ registerMigrateCommand(program);
 
 // Workspace registry command group
 registerWorkspaceCommand(program);
+
+// Emit legacy-folder warning before routing (skip for migrate subcommands)
+const isMigrateCommand = process.argv.slice(2).some((arg) => arg === "migrate");
+if (!isMigrateCommand) {
+	try {
+		const projectRoot = await findBacklogRoot(process.cwd());
+		if (projectRoot) {
+			const earlyCore = new Core(projectRoot);
+			const backlogDir = await earlyCore.filesystem.getBacklogDir();
+			const earlyConfig = await earlyCore.filesystem.loadConfig();
+			await warnLegacyFolders(backlogDir, earlyConfig?.suppressLegacyFolderWarning === true);
+		}
+	} catch {
+		// Never block startup due to warning errors
+	}
+}
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
