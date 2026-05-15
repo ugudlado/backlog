@@ -1,4 +1,4 @@
-.PHONY: dev build test lint lint-fix format format-check type-check check doctor setup mcp
+.PHONY: dev build test lint lint-fix format format-check type-check check doctor setup mcp install
 
 dev:
 	bun run cli
@@ -35,3 +35,6 @@ doctor: type-check test check
 
 setup:
 	bun install
+
+install: build
+	cp dist/backlog $(shell dirname $(shell which backlog))/backlog
