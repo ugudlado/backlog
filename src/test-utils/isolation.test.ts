@@ -15,7 +15,7 @@ describe("withEnvVars", () => {
 		const prev = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 		delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
 		const restore = withEnvVars({ BACKLOG_MACHINE_CONFIG_DIR: "/tmp/test-isolation" });
-		expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe("/tmp/test-isolation");
+		expect(process.env.BACKLOG_MACHINE_CONFIG_DIR!).toBe("/tmp/test-isolation");
 		restore();
 		expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).not.toBeDefined();
 		// Restore original for other tests

@@ -574,7 +574,7 @@ program
 				const globalStoreConfigured = !!machineConfig.globalStore;
 
 				if (options.global && !globalStoreConfigured) {
-					console.error("--global requires globalStore to be set in machine config (~/.config/backlog.md/config.yml).");
+					console.error("--global requires globalStore to be set in machine config (~/.config/backlog/config.yml).");
 					process.exit(1);
 				}
 
@@ -3329,7 +3329,7 @@ agentsCmd
 const configCmd = program
 	.command("config")
 	.description(
-		"manage backlog configuration\n\nProject config: stored in backlog/config.yml (or backlog.config.yml at root)\nMachine config: ~/.config/backlog.md/config.yml — controls machine-wide keys like 'globalStore' (redirect backlog storage to an external directory; see 'config list')",
+		"manage backlog configuration\n\nProject config: stored in backlog/config.yml (or backlog.config.yml at root)\nMachine config: ~/.config/backlog/config.yml — controls machine-wide keys like 'globalStore' (redirect backlog storage to an external directory; see 'config list')",
 	)
 	.action(async () => {
 		try {
@@ -3721,7 +3721,7 @@ configCmd
 					process.exit(1);
 					break;
 				case "globalStore":
-					console.error("globalStore is a machine-level key. Edit ~/.config/backlog.md/config.yml directly.");
+					console.error("globalStore is a machine-level key. Edit ~/.config/backlog/config.yml directly.");
 					process.exit(1);
 					break;
 				default:
@@ -3775,7 +3775,7 @@ configCmd
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
-			// Machine-level config (read-only via CLI, edit ~/.config/backlog.md/config.yml directly)
+			// Machine-level config (read-only via CLI, edit ~/.config/backlog/config.yml directly)
 			const { readMachineConfig } = await import("./utils/machine-config.ts");
 			const machine = readMachineConfig();
 			console.log(`  globalStore: ${machine.globalStore ?? "(not set)"}`);

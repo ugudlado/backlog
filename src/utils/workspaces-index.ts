@@ -132,7 +132,7 @@ export async function withRegistryLock<T>(
 }
 
 /** User-level machine config (BACK-462). */
-export const MACHINE_CONFIG_DIR_NAME = "backlog.md";
+export const MACHINE_CONFIG_DIR_NAME = "backlog";
 export const WORKSPACES_FILE = "workspaces.yml";
 
 export interface WorkspaceEntry {
@@ -149,7 +149,7 @@ export interface WorkspacesIndex {
  * Resolves the machine-wide config directory. Precedence:
  *   1. explicit `override` argument (callers like `BacklogServer` pass this through),
  *   2. `BACKLOG_MACHINE_CONFIG_DIR` env var,
- *   3. `~/.config/backlog.md` default.
+ *   3. `~/.config/backlog` default.
  */
 export function getMachineConfigDir(override?: string): string {
 	if (override) {
