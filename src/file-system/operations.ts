@@ -2,18 +2,13 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import {
-	buildGlobPattern,
-	extractAnyPrefix,
-	idForFilename,
-	normalizeId,
-} from "../utils/prefix-config.ts";
+import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 

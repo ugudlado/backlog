@@ -45,10 +45,8 @@ export async function validateDependencies(
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	// Task dependencies should honor cross-branch visibility when enabled in config,
-	// while draft dependencies remain local-only.
-	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
-	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
+	const tasks = await core.queryTasks();
+	const knownIds = tasks.map((t) => t.id);
 	for (const dep of dependencies) {
 		const match = knownIds.find((id) => taskIdsEqual(dep, id));
 		if (match) {

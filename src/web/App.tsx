@@ -2,22 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
-import DocumentationDetail from './components/DocumentationDetail';
-import DecisionDetail from './components/DecisionDetail';
 import TaskList from './components/TaskList';
-import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import EmptyRegistryScreen from './components/EmptyRegistryScreen';
-import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
-	type Decision,
-	type DecisionSearchResult,
-	type Document,
-	type DocumentSearchResult,
 	type BacklogConfig,
 	type Milestone,
 	type SearchResult,
@@ -163,7 +155,6 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
 function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
@@ -172,15 +163,12 @@ function App() {
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
-  
+
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [docs, setDocs] = useState<Document[]>([]);
-  const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const { isOnline } = useHealthCheckContext();
@@ -217,8 +205,6 @@ function App() {
     milestoneAliases?: Map<string, string>,
   ) => {
     const taskResults = results.filter((result): result is TaskSearchResult => result.type === 'task');
-    const documentResults = results.filter((result): result is DocumentSearchResult => result.type === 'document');
-    const decisionResults = results.filter((result): result is DecisionSearchResult => result.type === 'decision');
 
     const tasksList = taskResults.map((result) => result.task);
     const normalizedTasks =
@@ -241,14 +227,10 @@ function App() {
             }
             return { ...task, milestone: canonicalMilestone || undefined };
           });
-    const docsList = documentResults.map((result) => result.document);
-    const decisionsList = decisionResults.map((result) => result.decision);
 
     setTasks(normalizedTasks);
-    setDocs(docsList);
-    setDecisions(decisionsList);
 
-    return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
+    return { tasks: normalizedTasks };
   }, []);
 
   const loadAllData = useCallback(async () => {
@@ -355,14 +337,6 @@ function App() {
 
   const handleNewTask = () => {
     setEditingTask(null);
-    setIsDraftMode(false);
-    setShowModal(true);
-  };
-
-  const handleNewDraft = () => {
-    // Create a draft task (same as new task but with status 'Draft')
-    setEditingTask(null);
-    setIsDraftMode(true);
     setShowModal(true);
   };
 
@@ -374,7 +348,6 @@ function App() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
-    setIsDraftMode(false);
   };
 
   const refreshData = useCallback(async () => {
@@ -411,28 +384,10 @@ function App() {
     if (editingTask) {
       await apiClient.updateTask(editingTask.id, taskData);
     } else {
-      // Set status to 'Draft' if in draft mode
-      const finalTaskData = isDraftMode
-        ? { ...taskData, status: 'Draft' }
-        : taskData;
-      const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
-
-      // Show task creation confirmation
-      setTaskConfirmation({ task: createdTask, isDraft: isDraftMode });
-
-      // Auto-dismiss after 4 seconds
-      setTimeout(() => {
-        setTaskConfirmation(null);
-      }, 4000);
+      await apiClient.createTask(taskData as Omit<Task, "id" | "createdDate">);
     }
     handleCloseModal();
     await refreshData();
-
-    // If we're on the drafts page and created a draft, trigger a refresh
-    if (isDraftMode && window.location.pathname === '/drafts') {
-      // Trigger refresh by updating a timestamp that DraftsList can watch
-      window.dispatchEvent(new Event('drafts-updated'));
-    }
   };
 
   const handleArchiveTask = async (taskId: string) => {
@@ -479,8 +434,6 @@ function App() {
                 showSuccessToast={showSuccessToast}
                 onDismissToast={() => setShowSuccessToast(false)}
                 tasks={tasks}
-                docs={docs}
-                decisions={decisions}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
               />
@@ -532,13 +485,6 @@ function App() {
               />
             }
           />
-            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} />} />
-            <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} />} />
-            <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-            <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
-            <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} />} />
             <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} />} />
             <Route path="settings" element={<Settings />} />
           </Route>
@@ -551,26 +497,13 @@ function App() {
           onSaved={refreshData}
           onSubmit={handleSubmitTask}
           onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-          availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+          availableStatuses={statuses}
           availableMilestones={milestones}
           milestoneEntities={milestoneEntities}
           archivedMilestoneEntities={archivedMilestones}
-          isDraftMode={isDraftMode}
+          isDraftMode={false}
           definitionOfDoneDefaults={config?.definitionOfDone ?? []}
         />
-
-        {/* Task Creation Confirmation Toast */}
-        {taskConfirmation && (
-          <SuccessToast
-            message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
-            onDismiss={() => setTaskConfirmation(null)}
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-        )}
       </BrowserRouter>
     </ThemeProvider>
   );

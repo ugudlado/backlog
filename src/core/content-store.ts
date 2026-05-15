@@ -1,6 +1,5 @@
 import { type FSWatcher, watch } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
-import { basename, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { Task, TaskListFilter } from "../types/index.ts";
@@ -332,49 +331,6 @@ export class ContentStore {
 		return null;
 	}
 
-	private async createDirectoryWatcher(
-		rootDir: string,
-		handler: (eventType: string, absolutePath: string, relativePath: string | null) => Promise<void> | void,
-	): Promise<WatchHandle> {
-		try {
-			const watcher = watch(rootDir, { recursive: true }, (eventType, filename) => {
-				const relativePath = this.normalizeFilename(filename);
-				const absolutePath = relativePath ? join(rootDir, relativePath) : rootDir;
-
-				this.enqueue(async () => {
-					await handler(eventType, absolutePath, relativePath);
-				});
-			});
-			this.attachWatcherErrorHandler(watcher, `dir:${rootDir}`);
-
-			return {
-				stop() {
-					watcher.close();
-				},
-			};
-		} catch (error) {
-			if (this.isRecursiveUnsupported(error)) {
-				return this.createManualRecursiveWatcher(rootDir, handler);
-			}
-			throw error;
-		}
-	}
-
-	private isRecursiveUnsupported(error: unknown): boolean {
-		if (!error || typeof error !== "object") {
-			return false;
-		}
-		const maybeError = error as { code?: string; message?: string };
-		if (maybeError.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM") {
-			return true;
-		}
-		return (
-			typeof maybeError.message === "string" &&
-			maybeError.message.toLowerCase().includes("recursive") &&
-			maybeError.message.toLowerCase().includes("not supported")
-		);
-	}
-
 	private replaceTasks(tasks: Task[]): void {
 		this.tasks.clear();
 		for (const task of tasks) {
@@ -449,88 +405,6 @@ export class ContentStore {
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 		this.notify("tasks");
-	}
-
-	private async createManualRecursiveWatcher(
-		rootDir: string,
-		handler: (eventType: string, absolutePath: string, relativePath: string | null) => Promise<void> | void,
-	): Promise<WatchHandle> {
-		const watchers = new Map<string, FSWatcher>();
-		let disposed = false;
-
-		const removeSubtreeWatchers = (baseDir: string) => {
-			const prefix = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
-			for (const path of [...watchers.keys()]) {
-				if (path === baseDir || path.startsWith(prefix)) {
-					watchers.get(path)?.close();
-					watchers.delete(path);
-				}
-			}
-		};
-
-		const addWatcher = async (dir: string): Promise<void> => {
-			if (disposed || watchers.has(dir)) {
-				return;
-			}
-
-			const watcher = watch(dir, { recursive: false }, (eventType, filename) => {
-				if (disposed) {
-					return;
-				}
-				const relativePath = this.normalizeFilename(filename);
-				const absolutePath = relativePath ? join(dir, relativePath) : dir;
-				const normalizedRelative = relativePath ? relative(rootDir, absolutePath) : null;
-
-				this.enqueue(async () => {
-					await handler(eventType, absolutePath, normalizedRelative);
-
-					if (eventType === "rename" && relativePath) {
-						try {
-							const stats = await stat(absolutePath);
-							if (stats.isDirectory()) {
-								await addWatcher(absolutePath);
-							}
-						} catch {
-							removeSubtreeWatchers(absolutePath);
-						}
-					}
-				});
-			});
-			this.attachWatcherErrorHandler(watcher, `manual:${dir}`);
-
-			watchers.set(dir, watcher);
-
-			try {
-				const entries = await readdir(dir, { withFileTypes: true });
-				for (const entry of entries) {
-					const entryPath = join(dir, entry.name);
-					if (entry.isDirectory()) {
-						await addWatcher(entryPath);
-						continue;
-					}
-
-					if (entry.isFile()) {
-						this.enqueue(async () => {
-							await handler("change", entryPath, relative(rootDir, entryPath));
-						});
-					}
-				}
-			} catch {
-				// Ignore transient directory enumeration issues
-			}
-		};
-
-		await addWatcher(rootDir);
-
-		return {
-			stop() {
-				disposed = true;
-				for (const watcher of watchers.values()) {
-					watcher.close();
-				}
-				watchers.clear();
-			},
-		};
 	}
 
 	private async retryRead<T>(

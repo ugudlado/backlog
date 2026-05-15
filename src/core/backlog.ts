@@ -1,4 +1,4 @@
-import { rename as moveFile, unlink } from "node:fs/promises";
+import { rename as moveFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -22,7 +22,7 @@ import {
 	normalizeMilestoneFilterValue,
 	resolveClosestMilestoneFilterValue,
 } from "../utils/milestone-filter.ts";
-import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
+import { buildIdRegex, extractAnyPrefix, getPrefixForType } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -711,7 +711,6 @@ export class Core {
 			// Rewrite config to apply schema defaults and strip legacy milestones key after successful migration.
 			await this.fs.saveConfig(config);
 		}
-
 	}
 
 	// ID generation
