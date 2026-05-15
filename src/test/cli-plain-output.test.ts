@@ -174,59 +174,5 @@ describe("CLI plain output for AI agents", () => {
 		expect(result.stdout.toString()).not.toContain("Subtasks:");
 	});
 
-	it("should output plain text with draft view --plain", async () => {
-		const result = await $`bun ${cliPath} draft view 1 --plain`.cwd(TEST_DIR).quiet();
-
-		if (result.exitCode !== 0) {
-			console.error("STDOUT:", result.stdout.toString());
-			console.error("STDERR:", result.stderr.toString());
-		}
-
-		expect(result.exitCode).toBe(0);
-		// Should contain the file path as first line
-		expect(result.stdout.toString()).toContain("File: ");
-		expect(result.stdout.toString()).toContain("draft-1 - Test-draft-for-plain-output.md");
-		// Should contain the formatted draft output
-		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
-		expect(result.stdout.toString()).toContain("Status: ○ Draft");
-		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2}/);
-		expect(result.stdout.toString()).toContain("Description:");
-		expect(result.stdout.toString()).toContain("Test draft description");
-		expect(result.stdout.toString()).toContain("Definition of Done:");
-		// Should not contain TUI escape codes
-		expect(result.stdout.toString()).not.toContain("[?1049h");
-		expect(result.stdout.toString()).not.toContain("\x1b");
-	});
-
-	it("should output plain text with draft <id> --plain shortcut", async () => {
-		// Verify draft exists before running CLI command
-		const core = new Core(TEST_DIR);
-		const draft = await core.filesystem.loadDraft("draft-1");
-		expect(draft).not.toBeNull();
-		expect(draft?.id).toBe("DRAFT-1");
-
-		const result = await $`bun ${cliPath} draft 1 --plain`.cwd(TEST_DIR).quiet();
-
-		if (result.exitCode !== 0) {
-			console.error("STDOUT:", result.stdout.toString());
-			console.error("STDERR:", result.stderr.toString());
-		}
-
-		expect(result.exitCode).toBe(0);
-		// Should contain the file path as first line
-		expect(result.stdout.toString()).toContain("File: ");
-		expect(result.stdout.toString()).toContain("draft-1 - Test-draft-for-plain-output.md");
-		// Should contain the formatted draft output
-		expect(result.stdout.toString()).toContain("Task DRAFT-1 - Test draft for plain output");
-		expect(result.stdout.toString()).toContain("Status: ○ Draft");
-		expect(result.stdout.toString()).toMatch(/Created:\s+\d{4}-\d{2}-\d{2}/);
-		expect(result.stdout.toString()).toContain("Description:");
-		expect(result.stdout.toString()).toContain("Test draft description");
-		expect(result.stdout.toString()).toContain("Definition of Done:");
-		// Should not contain TUI escape codes
-		expect(result.stdout.toString()).not.toContain("[?1049h");
-		expect(result.stdout.toString()).not.toContain("\x1b");
-	});
-
 	// Task list already has --plain support and works correctly
 });

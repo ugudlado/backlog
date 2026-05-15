@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
-import type { Decision, Document, Milestone, Task } from "../types/index.ts";
+import type { Milestone, Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -23,26 +23,6 @@ const baseTask: Task = {
 	description: "Alpha token appears here",
 	priority: "high",
 	modifiedFiles: ["src/server/index.ts", "src/core/search-service.ts"],
-};
-
-const baseDoc: Document = {
-	id: "doc-9001",
-	title: "Search Handbook",
-	type: "guide",
-	createdDate: "2025-09-20",
-	updatedDate: "2025-09-20",
-	rawContent: "# Guide\nAlpha document guidance",
-};
-
-const baseDecision: Decision = {
-	id: "decision-9001",
-	title: "Centralize search",
-	date: "2025-09-19",
-	status: "accepted",
-	context: "Need consistent Alpha search coverage",
-	decision: "Adopt shared Fuse service",
-	consequences: "Shared index",
-	rawContent: "## Context\nAlpha adoption",
 };
 
 const dependentTask: Task = {
@@ -76,8 +56,6 @@ describe("BacklogServer search endpoint", () => {
 
 		await filesystem.saveTask(baseTask);
 		await filesystem.saveTask(dependentTask);
-		await filesystem.saveDocument(baseDoc);
-		await filesystem.saveDecision(baseDecision);
 
 		server = new BacklogServer(TEST_DIR);
 		await server.start(0, false);
@@ -105,13 +83,12 @@ describe("BacklogServer search endpoint", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	it("returns tasks, documents, and decisions from the shared search service", async () => {
+	it("returns tasks from the shared search service", async () => {
 		const results = await retry(
 			async () => {
 				const data = await fetchJson<Array<{ type?: string }>>("/api/search?query=alpha");
-				const typeSet = new Set(data.map((item) => item.type));
-				if (!typeSet.has("task") || !typeSet.has("document") || !typeSet.has("decision")) {
-					throw new Error("Search results not yet indexed for all types");
+				if (!data.some((item) => item.type === "task")) {
+					throw new Error("Task search results not yet indexed");
 				}
 				return data;
 			},
@@ -120,8 +97,6 @@ describe("BacklogServer search endpoint", () => {
 		);
 		const finalTypes = new Set(results.map((item) => item.type));
 		expect(finalTypes.has("task")).toBe(true);
-		expect(finalTypes.has("document")).toBe(true);
-		expect(finalTypes.has("decision")).toBe(true);
 	});
 
 	it("filters search results by priority and status", async () => {
@@ -600,16 +575,18 @@ Milestone: m-0
 	});
 
 	it("rebuilds the Fuse index when markdown content changes", async () => {
-		await filesystem.saveDocument({
-			...baseDoc,
-			rawContent: "# Guide\nReindexed beta token",
+		await filesystem.saveTask({
+			...baseTask,
+			id: "task-reindex",
+			title: "Reindexed beta task",
+			rawContent: "## Description\nReindexed beta token",
 		});
 
 		await retry(
 			async () => {
 				const updated = await fetchJson<Array<{ type?: string }>>("/api/search?query=beta");
-				if (!updated.some((item) => item.type === "document")) {
-					throw new Error("Document not yet reindexed");
+				if (!updated.some((item) => item.type === "task")) {
+					throw new Error("Task not yet reindexed");
 				}
 				return updated;
 			},

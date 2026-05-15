@@ -85,24 +85,6 @@ describe("--desc alias functionality", () => {
 		expect(updatedTask?.description).toContain("Updated via --desc");
 	});
 
-	it("should create draft with --desc alias", async () => {
-		await $`bun ${cliPath} draft create "Draft with --desc" --desc "Draft description"`.cwd(TEST_DIR).quiet();
-
-		// Command succeeded without throwing
-	});
-
-	it("should verify draft created with --desc has correct description", async () => {
-		// Create draft with --desc
-		await $`bun ${cliPath} draft create "Test draft" --desc "Draft via --desc"`.cwd(TEST_DIR).quiet();
-
-		// Verify the draft was created with correct description
-		const core = new Core(TEST_DIR);
-		const draft = await core.filesystem.loadDraft("draft-1");
-
-		expect(draft).not.toBeNull();
-		expect(draft?.description).toContain("Draft via --desc");
-	});
-
 	it("should show --desc in help text", async () => {
 		const result = await $`bun ${cliPath} task create --help`.cwd(TEST_DIR).text();
 

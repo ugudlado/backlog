@@ -29,12 +29,10 @@ describe("parseSearchCommandQuery", () => {
 
 	it("supports type and modified file aliases", () => {
 		expect(
-			parseSearchCommandQuery(
-				"type:task types:document modifiedFile:src/web/App.tsx modifiedFiles:src/core/search.ts nav",
-			),
+			parseSearchCommandQuery("type:task modifiedFile:src/web/App.tsx modifiedFiles:src/core/search.ts nav"),
 		).toEqual({
 			query: "nav",
-			types: ["task", "document"],
+			types: ["task"],
 			modifiedFiles: ["src/web/App.tsx", "src/core/search.ts"],
 		});
 	});

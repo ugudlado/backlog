@@ -8,7 +8,6 @@ import { $ } from "bun";
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
-import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
@@ -128,7 +127,6 @@ describe("MCP roots discovery", () => {
 		registerTaskTools(server, configAfter);
 		registerMilestoneTools(server);
 		registerDefinitionOfDoneTools(server);
-		registerDocumentTools(server, configAfter);
 
 		const tools = await server.testInterface.listTools();
 		const toolNames = tools.tools.map((tool) => tool.name);

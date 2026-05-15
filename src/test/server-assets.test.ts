@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
@@ -37,8 +37,7 @@ describe("BacklogServer asset serving", () => {
 		});
 
 		// create backlog/assets and nested dirs
-		const backlogRoot = dirname(filesystem.docsDir);
-		const assetsDir = join(backlogRoot, "assets");
+		const assetsDir = join(filesystem.backlogDir, "assets");
 		await mkdir(join(assetsDir, "images"), { recursive: true });
 		await mkdir(join(assetsDir, "docs"), { recursive: true });
 

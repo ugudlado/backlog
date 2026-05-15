@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { Core, isGitRepository } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -70,14 +70,10 @@ describe("CLI Integration", () => {
 			const expectedDirs = [
 				"backlog",
 				"backlog/tasks",
-				"backlog/drafts",
 				"backlog/archive",
 				"backlog/archive/tasks",
-				"backlog/archive/drafts",
 				"backlog/archive/milestones",
 				"backlog/milestones",
-				"backlog/docs",
-				"backlog/decisions",
 			];
 
 			for (const dir of expectedDirs) {
@@ -416,23 +412,6 @@ describe("CLI Integration", () => {
 			expect(await git.isClean()).toBe(true);
 			expect(await git.getLastCommitMessage()).toContain(`Create task ${task?.id}`);
 			expect(task?.title).toBe("CLI Auto Commit Task");
-		});
-
-		it("should honor autoCommit config for draft create", async () => {
-			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
-			const output = await $`bun ${CLI_PATH} draft create "CLI Auto Commit Draft"`.cwd(TEST_DIR).text();
-			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
-
-			const core = new Core(TEST_DIR);
-			const git = await core.getGitOps();
-			const draft = await core.filesystem.loadDraft("draft-1");
-
-			expect(draft).not.toBeNull();
-			expect(output).toContain(`Created draft ${draft?.id}`);
-			expect(afterCount).toBe(beforeCount + 1);
-			expect(await git.isClean()).toBe(true);
-			expect(await git.getLastCommitMessage()).toContain(`Create draft ${draft?.id}`);
-			expect(draft?.title).toBe("CLI Auto Commit Draft");
 		});
 
 		it("should accept dependencies from other active branches", async () => {
@@ -1135,123 +1114,6 @@ describe("CLI Integration", () => {
 			expect(success).toBe(false);
 		});
 
-		it("should demote task to drafts", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Demote Test Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["needs-revision"],
-					dependencies: [],
-					rawContent: "Task that needs to go back to drafts",
-				},
-				false,
-			);
-
-			// Demote the task
-			const success = await core.demoteTask("task-2", false);
-			expect(success).toBe(true);
-
-			// Verify task is no longer in tasks directory
-			const task = await core.filesystem.loadTask("task-2");
-			expect(task).toBeNull();
-
-			// Verify demoted draft has new draft- ID
-			const { readdir } = await import("node:fs/promises");
-			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
-			expect(draftsFiles.some((f) => f.startsWith("draft-"))).toBe(true);
-
-			// Verify draft can be loaded with draft- ID
-			const demotedDraft = await core.filesystem.loadDraft("draft-1");
-			expect(demotedDraft?.title).toBe("Demote Test Task");
-		});
-
-		it("should promote draft to tasks", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test draft through the canonical create path
-			const { task: draft } = await core.createTaskFromInput(
-				{
-					title: "Promote Test Draft",
-					status: "Draft",
-					labels: ["ready"],
-					rawContent: "Draft ready for promotion",
-				},
-				false,
-			);
-
-			// Promote the draft
-			const success = await core.promoteDraft(draft.id, false);
-			expect(success).toBe(true);
-
-			// Verify draft is no longer in drafts directory
-			const loadedDraft = await core.filesystem.loadDraft(draft.id);
-			expect(loadedDraft).toBeNull();
-
-			// Verify promoted task has new task- ID
-			const { readdir } = await import("node:fs/promises");
-			const tasksFiles = await readdir(join(TEST_DIR, "backlog", "tasks"));
-			expect(tasksFiles.some((f) => f.startsWith("task-"))).toBe(true);
-
-			// Verify task can be loaded with task- ID
-			const promotedTask = await core.filesystem.loadTask("task-1");
-			expect(promotedTask?.title).toBe("Promote Test Draft");
-		});
-
-		it("should archive a draft", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test draft through the canonical create path
-			const { task: draft } = await core.createTaskFromInput(
-				{
-					title: "Archive Test Draft",
-					status: "Draft",
-					labels: ["cancelled"],
-					rawContent: "Draft that should be archived",
-				},
-				false,
-			);
-
-			// Archive the draft
-			const success = await core.archiveDraft(draft.id, false);
-			expect(success).toBe(true);
-
-			// Verify draft is no longer in drafts directory
-			const loadedDraft = await core.filesystem.loadDraft(draft.id);
-			expect(loadedDraft).toBeNull();
-
-			// Verify draft exists in archive
-			const { readdir } = await import("node:fs/promises");
-			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
-			expect(archiveFiles.some((f) => f.startsWith(draft.id.toLowerCase()))).toBe(true);
-		});
-
-		it("should handle promoting non-existent draft", async () => {
-			const core = new Core(TEST_DIR);
-
-			const success = await core.promoteDraft("task-999", false);
-			expect(success).toBe(false);
-		});
-
-		it("should handle demoting non-existent task", async () => {
-			const core = new Core(TEST_DIR);
-
-			const success = await core.demoteTask("task-999", false);
-			expect(success).toBe(false);
-		});
-
-		it("should handle archiving non-existent draft", async () => {
-			const core = new Core(TEST_DIR);
-
-			const success = await core.archiveDraft("task-999", false);
-			expect(success).toBe(false);
-		});
-
 		it("should commit archive operations automatically", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -1276,210 +1138,6 @@ describe("CLI Integration", () => {
 			// Verify operation completed successfully
 			const task = await core.filesystem.loadTask("task-5");
 			expect(task).toBeNull();
-		});
-
-		it("should preserve task content through state transitions", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a task with rich content
-			const originalTask = {
-				id: "task-6",
-				title: "Content Preservation Test",
-				status: "In Progress",
-				assignee: ["testuser"],
-				createdDate: "2025-06-08",
-				labels: ["important", "preservation-test"],
-				dependencies: ["task-1", "task-2"],
-				rawContent: "This task has rich metadata that should be preserved through transitions",
-			};
-
-			await core.createTask(originalTask, false);
-
-			// Demote to draft - note: this generates a new draft ID
-			await core.demoteTask("task-6", false);
-
-			// Find the demoted draft (it will have a new draft- ID)
-			const drafts = await core.filesystem.listDrafts();
-			const asDraft = drafts.find((d) => d.title === originalTask.title);
-
-			expect(asDraft?.title).toBe(originalTask.title);
-			expect(asDraft?.assignee).toEqual(originalTask.assignee);
-			expect(asDraft?.labels).toEqual(originalTask.labels);
-			expect(asDraft?.dependencies).toEqual(originalTask.dependencies);
-			expect(asDraft?.rawContent).toContain(originalTask.rawContent);
-
-			// Promote back to task - use the draft's new ID
-			expect(asDraft).toBeDefined();
-			if (!asDraft) {
-				throw new Error("Expected demoted draft to exist");
-			}
-			await core.promoteDraft(asDraft.id, false);
-
-			// Find the promoted task (it will have a new task- ID)
-			const tasks = await core.filesystem.listTasks();
-			const backToTask = tasks.find((t) => t.title === originalTask.title);
-
-			expect(backToTask?.title).toBe(originalTask.title);
-			expect(backToTask?.assignee).toEqual(originalTask.assignee);
-			expect(backToTask?.labels).toEqual(originalTask.labels);
-			expect(backToTask?.dependencies).toEqual(originalTask.dependencies);
-			expect(backToTask?.rawContent).toContain(originalTask.rawContent);
-		});
-	});
-
-	describe("doc and decision commands", () => {
-		beforeEach(async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Doc Test Project");
-		});
-
-		it("should create and list documents", async () => {
-			const core = new Core(TEST_DIR);
-			const doc: Document = {
-				id: "doc-1",
-				title: "Guide",
-				type: "guide",
-				createdDate: "2025-06-08",
-				rawContent: "Content",
-			};
-			await core.createDocument(doc, false);
-
-			const docs = await core.filesystem.listDocuments();
-			expect(docs).toHaveLength(1);
-			expect(docs[0]?.title).toBe("Guide");
-		});
-
-		it("should create documents in a subpath and print the persisted path", async () => {
-			const result = await $`bun ${CLI_PATH} doc create "Setup Guide" -p guides/setup`.cwd(TEST_DIR).quiet();
-			expect(result.exitCode).toBe(0);
-			const stdout = result.stdout.toString();
-			expect(stdout).toContain("Created document doc-1");
-			expect(stdout).toContain("Path: backlog/docs/guides/setup/doc-1 - Setup-Guide.md");
-
-			const core = new Core(TEST_DIR);
-			const docs = await core.filesystem.listDocuments();
-			expect(docs[0]?.path).toBe("guides/setup/doc-1 - Setup-Guide.md");
-		});
-
-		it("should reject unsafe document paths", async () => {
-			const result = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).quiet().nothrow();
-			expect(result.exitCode).not.toBe(0);
-			expect(result.stderr.toString()).toContain("Document path cannot include traversal segments.");
-		});
-
-		it("should update document content and metadata", async () => {
-			const core = new Core(TEST_DIR);
-			await core.createDocument(
-				{
-					id: "doc-1",
-					title: "Setup Guide",
-					type: "guide",
-					createdDate: "2025-06-08",
-					rawContent: "Old content",
-					tags: ["setup"],
-				},
-				false,
-				"guides/setup",
-			);
-
-			const updatedContent = "# Updated\n\nRun install steps.";
-			const result =
-				await $`bun ${CLI_PATH} doc update doc-1 --title "Install Runbook" --content ${updatedContent} -t specification --tags ops,runbook -p runbooks`
-					.cwd(TEST_DIR)
-					.quiet();
-			expect(result.exitCode).toBe(0);
-			expect(result.stdout.toString()).toContain("Updated document doc-1");
-			expect(result.stdout.toString()).toContain("Path: backlog/docs/runbooks/doc-1 - Install-Runbook.md");
-
-			const docs = await core.filesystem.listDocuments();
-			const updated = docs.find((doc) => doc.id === "doc-1");
-			expect(updated?.title).toBe("Install Runbook");
-			expect(updated?.type).toBe("specification");
-			expect(updated?.tags).toEqual(["ops", "runbook"]);
-			expect(updated?.path).toBe("runbooks/doc-1 - Install-Runbook.md");
-			expect(updated?.rawContent).toBe(updatedContent);
-		});
-
-		it("should preserve omitted document fields when updating", async () => {
-			const core = new Core(TEST_DIR);
-			await core.createDocument(
-				{
-					id: "doc-1",
-					title: "Setup Guide",
-					type: "guide",
-					createdDate: "2025-06-08",
-					rawContent: "Keep this content",
-					tags: ["setup", "guide"],
-				},
-				false,
-				"guides",
-			);
-
-			await $`bun ${CLI_PATH} doc update doc-1 --title "Setup Handbook"`.cwd(TEST_DIR).quiet();
-
-			const docs = await core.filesystem.listDocuments();
-			const updated = docs.find((doc) => doc.id === "doc-1");
-			expect(updated?.title).toBe("Setup Handbook");
-			expect(updated?.type).toBe("guide");
-			expect(updated?.tags).toEqual(["setup", "guide"]);
-			expect(updated?.path).toBe("guides/doc-1 - Setup-Handbook.md");
-			expect(updated?.rawContent).toBe("Keep this content");
-		});
-
-		it("should reject invalid document update inputs", async () => {
-			const core = new Core(TEST_DIR);
-			await core.createDocument(
-				{
-					id: "doc-1",
-					title: "Setup Guide",
-					type: "guide",
-					createdDate: "2025-06-08",
-					rawContent: "Content",
-				},
-				false,
-			);
-
-			const missing = await $`bun ${CLI_PATH} doc update doc-404 --content "Nope"`.cwd(TEST_DIR).quiet().nothrow();
-			expect(missing.exitCode).not.toBe(0);
-			expect(missing.stderr.toString()).toContain("Document not found: doc-404");
-
-			const invalidType = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -t invalid`
-				.cwd(TEST_DIR)
-				.quiet()
-				.nothrow();
-			expect(invalidType.exitCode).not.toBe(0);
-			expect(invalidType.stderr.toString()).toContain(
-				"Document type must be one of: readme, guide, specification, other.",
-			);
-
-			const unsafePath = await $`bun ${CLI_PATH} doc update doc-1 --content "Nope" -p ../outside`
-				.cwd(TEST_DIR)
-				.quiet()
-				.nothrow();
-			expect(unsafePath.exitCode).not.toBe(0);
-			expect(unsafePath.stderr.toString()).toContain("Document path cannot include traversal segments.");
-		});
-
-		it("should create and list decisions", async () => {
-			const core = new Core(TEST_DIR);
-			const decision: Decision = {
-				id: "decision-1",
-				title: "Choose Stack",
-				date: "2025-06-08",
-				status: "accepted",
-				context: "context",
-				decision: "decide",
-				consequences: "conseq",
-				rawContent: "",
-			};
-			await core.createDecision(decision, false);
-			const decisions = await core.filesystem.listDecisions();
-			expect(decisions).toHaveLength(1);
-			expect(decisions[0]?.title).toBe("Choose Stack");
 		});
 	});
 

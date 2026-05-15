@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { unlink } from "node:fs/promises";
-import { join } from "node:path";
 import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -23,25 +21,6 @@ describe("ContentStore", () => {
 		rawContent: "## Description\nSeed content",
 	};
 
-	const sampleDecision: Decision = {
-		id: "decision-1",
-		title: "Adopt shared cache",
-		date: "2025-09-19",
-		status: "proposed",
-		context: "Context",
-		decision: "Decision text",
-		consequences: "Consequences",
-		rawContent: "## Context\nContext\n\n## Decision\nDecision text\n\n## Consequences\nConsequences",
-	};
-
-	const sampleDocument: Document = {
-		id: "doc-1",
-		title: "Architecture Guide",
-		type: "guide",
-		createdDate: "2025-09-19",
-		rawContent: "# Architecture Guide",
-	};
-
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-content-store");
 		filesystem = new FileSystem(TEST_DIR);
@@ -58,16 +37,12 @@ describe("ContentStore", () => {
 		}
 	});
 
-	it("loads tasks, documents, and decisions during initialization", async () => {
+	it("loads tasks during initialization", async () => {
 		await filesystem.saveTask(sampleTask);
-		await filesystem.saveDecision(sampleDecision);
-		await filesystem.saveDocument(sampleDocument);
 
 		const snapshot = await store.ensureInitialized();
 
 		expect(snapshot.tasks).toHaveLength(1);
-		expect(snapshot.documents).toHaveLength(1);
-		expect(snapshot.decisions).toHaveLength(1);
 		expect(snapshot.tasks.map((task) => task.id)).toContain("TASK-1");
 	});
 
@@ -84,29 +59,6 @@ describe("ContentStore", () => {
 
 		const tasks = store.getTasks();
 		expect(tasks.map((task) => task.title)).toContain("Updated Task");
-	});
-
-	it("updates documents when new files are added", async () => {
-		await store.ensureInitialized();
-
-		const waitForDocument = waitForEventWithTimeout(store, (event) => {
-			return event.type === "documents" && event.documents.some((doc) => doc.id === "doc-2");
-		});
-
-		await filesystem.saveDocument(
-			{
-				...sampleDocument,
-				id: "doc-2",
-				title: "Implementation Notes",
-				rawContent: "# Implementation Notes",
-			},
-			"guides",
-		);
-
-		await waitForDocument;
-
-		const documents = store.getDocuments();
-		expect(documents.some((doc) => doc.id === "doc-2")).toBe(true);
 	});
 
 	it("preserves cross-branch tasks from the task loader during refresh", async () => {
@@ -140,33 +92,6 @@ describe("ContentStore", () => {
 		const refreshedTasks = store.getTasks();
 		expect(refreshedTasks.map((task) => task.id)).toContain("task-remote");
 		expect(loaderCalls).toBeGreaterThanOrEqual(2);
-	});
-
-	it("removes decisions when files are deleted", async () => {
-		store.dispose();
-		store = new ContentStore(filesystem, undefined, true);
-		await filesystem.saveDecision(sampleDecision);
-		await store.ensureInitialized();
-
-		const decisionsDir = filesystem.decisionsDir;
-		const decisionFiles: string[] = [];
-		for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
-			decisionFiles.push(file);
-		}
-		const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
-		if (!decisionFile) {
-			throw new Error("Expected decision file was not created");
-		}
-
-		const waitForRemoval = waitForEventWithTimeout(store, (event) => {
-			return event.type === "decisions" && event.decisions.every((decision) => decision.id !== "decision-1");
-		});
-
-		await unlink(join(decisionsDir, decisionFile));
-		await waitForRemoval;
-
-		const decisions = store.getDecisions();
-		expect(decisions.find((decision) => decision.id === "decision-1")).toBeUndefined();
 	});
 });
 

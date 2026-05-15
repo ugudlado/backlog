@@ -341,7 +341,7 @@ describe("Task Dependencies", () => {
 		};
 
 		await core.createTask(archiveTarget, false);
-		await core.createTaskFromInput(
+		const { task: createdDraft } = await core.createTaskFromInput(
 			{
 				title: draftTask.title,
 				status: "Draft",
@@ -352,7 +352,7 @@ describe("Task Dependencies", () => {
 		);
 		await core.archiveTask("task-1", false);
 
-		const draft = await core.filesystem.loadDraft("draft-1");
+		const draft = await core.filesystem.loadTask(createdDraft.id);
 		expect(draft?.dependencies).toEqual(["TASK-1"]);
 	});
 });
