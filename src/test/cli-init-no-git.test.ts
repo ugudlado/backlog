@@ -20,7 +20,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function initFilesystemOnlyProject(projectName = "No Git Project"): Promise<Core> {
-	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --integration-mode none`
+	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --local --integration-mode none`
 		.cwd(TEST_DIR)
 		.quiet();
 	expect(result.exitCode).toBe(0);
@@ -42,9 +42,10 @@ describe("CLI init without Git", () => {
 	});
 
 	test("initializes a filesystem-only project without creating a Git repository", async () => {
-		const result = await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --integration-mode none`
-			.cwd(TEST_DIR)
-			.quiet();
+		const result =
+			await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --local --integration-mode none`
+				.cwd(TEST_DIR)
+				.quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
@@ -86,7 +87,7 @@ describe("CLI init without Git", () => {
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
 	});
 
-	test("local task, draft, document, decision, milestone, and list flows work without Git", async () => {
+	test("local task and milestone flows work without Git", async () => {
 		const core = await initFilesystemOnlyProject();
 
 		expect(await core.gitOps.listAllBranches()).toEqual([]);
@@ -97,37 +98,37 @@ describe("CLI init without Git", () => {
 		expect(taskResult.exitCode).toBe(0);
 		expect(taskResult.stdout.toString()).toContain("Task TASK-1 - No Git Task");
 
-		const draftResult = await $`bun ${CLI_PATH} draft create "No Git Draft"`.cwd(TEST_DIR).quiet();
-		expect(draftResult.exitCode).toBe(0);
-		expect(draftResult.stdout.toString()).toContain("Created draft DRAFT-1");
-
-		const docResult = await $`bun ${CLI_PATH} doc create "No Git Doc"`.cwd(TEST_DIR).quiet();
-		expect(docResult.exitCode).toBe(0);
-		expect(docResult.stdout.toString()).toContain("Created document doc-1");
-
-		const decisionResult = await $`bun ${CLI_PATH} decision create "No Git Decision"`.cwd(TEST_DIR).quiet();
-		expect(decisionResult.exitCode).toBe(0);
-		expect(decisionResult.stdout.toString()).toContain("Created decision decision-1");
-
-		const promotedResult = await $`bun ${CLI_PATH} draft promote draft-1`.cwd(TEST_DIR).quiet();
-		expect(promotedResult.exitCode).toBe(0);
-		expect(promotedResult.stdout.toString()).toContain("Promoted draft draft-1");
-
 		const milestone = await core.filesystem.createMilestone("No Git Milestone");
 		const archiveMilestoneResult = await core.archiveMilestone(milestone.id, true);
 		expect(archiveMilestoneResult.success).toBe(true);
 
 		const tasks = await core.loadTasks();
-		const documents = await core.filesystem.listDocuments();
-		const decisions = await core.filesystem.listDecisions();
 		const archivedMilestones = await core.filesystem.listArchivedMilestones();
 
 		expect(tasks.map((task) => task.title)).toContain("No Git Task");
-		expect(tasks.map((task) => task.title)).toContain("No Git Draft");
-		expect(documents.map((doc) => doc.title)).toContain("No Git Doc");
-		expect(decisions.map((decision) => decision.title)).toContain("No Git Decision");
 		expect(archivedMilestones.map((item) => item.title)).toContain("No Git Milestone");
 		expect(await core.gitOps.getStatus()).toBe("");
+	});
+
+	test("init scaffolds only tasks, milestones, archive, completed — no drafts/docs/decisions dirs", async () => {
+		const core = new Core(TEST_DIR);
+		await initializeProject(core, {
+			projectName: "Structure Test",
+			integrationMode: "none",
+			filesystemOnly: true,
+		});
+
+		const backlogDir = join(TEST_DIR, "backlog");
+		expect(await pathExists(join(backlogDir, "tasks"))).toBe(true);
+		expect(await pathExists(join(backlogDir, "milestones"))).toBe(true);
+		expect(await pathExists(join(backlogDir, "archive"))).toBe(true);
+		expect(await pathExists(join(backlogDir, "completed"))).toBe(true);
+		expect(await pathExists(join(backlogDir, "config.yml"))).toBe(true);
+		// Removed surfaces must not be scaffolded
+		expect(await pathExists(join(backlogDir, "drafts"))).toBe(false);
+		expect(await pathExists(join(backlogDir, "docs"))).toBe(false);
+		expect(await pathExists(join(backlogDir, "decisions"))).toBe(false);
+		expect(await pathExists(join(backlogDir, "archive", "drafts"))).toBe(false);
 	});
 
 	test("filesystem-only mode ignores stale Git branches before explicit config loading", async () => {
@@ -152,12 +153,8 @@ describe("CLI init without Git", () => {
 		expect(await core.gitOps.listAllBranches()).toEqual([]);
 		expect(await core.gitOps.listRecentBranches(30)).toEqual([]);
 
-		const docResult = await $`bun ${CLI_PATH} doc create "Fresh Doc"`.cwd(TEST_DIR).quiet();
-		expect(docResult.exitCode).toBe(0);
-		expect(docResult.stdout.toString()).toContain("Created document doc-1");
-
-		const decisionResult = await $`bun ${CLI_PATH} decision create "Fresh Decision"`.cwd(TEST_DIR).quiet();
-		expect(decisionResult.exitCode).toBe(0);
-		expect(decisionResult.stdout.toString()).toContain("Created decision decision-1");
+		const taskResult = await $`bun ${CLI_PATH} task create "Fresh Task" --plain`.cwd(TEST_DIR).quiet();
+		expect(taskResult.exitCode).toBe(0);
+		expect(taskResult.stdout.toString()).toContain("Task TASK-1 - Fresh Task");
 	});
 });
