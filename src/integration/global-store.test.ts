@@ -68,7 +68,7 @@ afterEach(async () => {
 
 describe("globalStore end-to-end integration", () => {
 	it("(a) backlog init creates external slot and leaves code repo clean", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
+		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
@@ -89,7 +89,7 @@ describe("globalStore end-to-end integration", () => {
 	});
 
 	it("(b) task create and list operate against external slot", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
+		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
@@ -118,7 +118,7 @@ describe("globalStore end-to-end integration", () => {
 	});
 
 	it("(c) git log in code repo shows no new commits even with autoCommit: true", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
+		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
@@ -152,7 +152,7 @@ describe("globalStore end-to-end integration", () => {
 		await writeFile(join(badMachineConfigDir, "config.yml"), `globalStore: ${missingDir}\n`);
 
 		const badEnv = { ...cliEnv(), BACKLOG_MACHINE_CONFIG_DIR: badMachineConfigDir };
-		const result = await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
+		const result = await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
 			.cwd(repoDir)
 			.env(badEnv)
 			.nothrow();
