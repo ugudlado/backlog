@@ -181,9 +181,9 @@ Ensure that the task is structured in a way that it can be easily understood and
 | Add notes               | `backlog task edit 7 --notes "Completed X, working on Y"`                                                                                                     |
 | Add deps                | `backlog task edit 7 --dep task-1 --dep task-2`                                                                                                               |
 | Archive                 | `backlog task archive 7`                                                                                                                                      |
-| Create draft            | `backlog task create "Feature" --draft`                                                                                                                       |
-| Draft flow              | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1`                                                                                          |
-| Demote to draft         | `backlog task demote <id>`                                                                                                                                    |
+| Create draft task       | `backlog task create "Feature" --draft` (creates task with `status: Draft`)                                                                                                                       |
+
+| Promote draft           | `backlog task edit <id> --status "To Do"`                                                                                                                     |
 
 Full help: `backlog --help`
 
