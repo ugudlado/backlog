@@ -3,17 +3,14 @@ import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
-import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { parseMilestone, parseTask } from "../markdown/parser.ts";
+import { serializeTask } from "../markdown/serializer.ts";
+import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
-import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
-	generateNextId,
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
@@ -97,14 +94,6 @@ export class FileSystem {
 	get archiveMilestonesDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
-	get decisionsDir(): string {
-		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.DECISIONS);
-	}
-
-	get docsDir(): string {
-		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.DOCS);
-	}
-
 	get milestonesDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.MILESTONES);
 	}
@@ -156,11 +145,6 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
 
-	async getDraftsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS);
-	}
-
 	async getArchiveTasksDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
@@ -169,21 +153,6 @@ export class FileSystem {
 	private async getArchiveMilestonesDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
-	}
-
-	private async getArchiveDraftsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
-	}
-
-	private async getDecisionsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS);
-	}
-
-	private async getDocsDir(): Promise<string> {
-		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.DOCS);
 	}
 
 	private async getMilestonesDir(): Promise<string> {
@@ -201,14 +170,10 @@ export class FileSystem {
 		const directories = [
 			backlogDir,
 			join(backlogDir, DEFAULT_DIRECTORIES.TASKS),
-			join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS),
 			join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
-			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
 			join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES),
-			join(backlogDir, DEFAULT_DIRECTORIES.DOCS),
-			join(backlogDir, DEFAULT_DIRECTORIES.DECISIONS),
 		];
 
 		for (const dir of directories) {
@@ -528,358 +493,12 @@ export class FileSystem {
 		}
 	}
 
-	async archiveDraft(draftId: string): Promise<boolean> {
-		try {
-			const draftsDir = await this.getDraftsDir();
-			const archiveDraftsDir = await this.getArchiveDraftsDir();
-
-			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-
-			if (!draftFile) return false;
-
-			const sourcePath = join(draftsDir, draftFile);
-			const targetPath = join(archiveDraftsDir, draftFile);
-
-			const content = await Bun.file(sourcePath).text();
-			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
-
-			await unlink(sourcePath);
-
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	async promoteDraft(draftId: string): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the draft
-				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return false;
-
-				// Get task prefix from config (default: "task")
-				const config = await this.loadConfig();
-				const taskPrefix = config?.prefixes?.task ?? "task";
-
-				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
-				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
-
-				// Generate new task ID
-				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
-
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
-
-				// Draft-only statuses should enter the normal task workflow.
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined, // Will be set by saveTask
-				};
-
-				await this.saveTask(promotedTask);
-
-				// Delete old draft file
-				await unlink(draft.filePath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				throw error;
-			}
-			return false;
-		}
-	}
-
 	async demoteTask(taskId: string): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the task
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
-
-				// Get existing draft IDs to generate next ID
-				// Draft prefix is always "draft" (not configurable like task prefix)
-				const existingDrafts = await this.listDrafts();
-				const existingIds = existingDrafts.map((d) => d.id);
-
-				// Generate new draft ID
-				const config = await this.loadConfig();
-				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
-
-				// Update task with new draft ID and save as draft
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					filePath: undefined, // Will be set by saveDraft
-				};
-
-				await this.saveDraft(demotedDraft);
-
-				// Delete old task file
-				await unlink(task.filePath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				throw error;
-			}
-			return false;
-		}
-	}
-
-	// Draft operations
-	async saveDraft(task: Task): Promise<string> {
-		const draftId = normalizeId(task.id, "draft");
-		const filename = `${idForFilename(draftId)} - ${this.sanitizeFilename(task.title)}.md`;
-		const draftsDir = await this.getDraftsDir();
-		const filepath = join(draftsDir, filename);
-		// Normalize the draft ID to uppercase before serialization
-		const normalizedTask = { ...task, id: draftId };
-		const content = serializeTask(normalizedTask);
-
-		try {
-			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
-			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (existingFile && existingFile !== filename) {
-				await unlink(join(draftsDir, existingFile));
-			}
-		} catch {
-			// Ignore errors if no existing files found
-		}
-
-		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
-		return filepath;
-	}
-
-	async loadDraft(draftId: string): Promise<Task | null> {
-		try {
-			const draftsDir = await this.getDraftsDir();
-			// Search for draft files with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-
-			// Find matching draft file
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (!draftFile) return null;
-
-			const filepath = join(draftsDir, draftFile);
-			const content = await Bun.file(filepath).text();
-			const task = normalizeTaskIdentity(parseTask(content));
-			return { ...task, filePath: filepath };
-		} catch {
-			return null;
-		}
-	}
-
-	async listDrafts(): Promise<Task[]> {
-		try {
-			const draftsDir = await this.getDraftsDir();
-			const taskFiles = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-
-			const tasks: Task[] = [];
-			for (const file of taskFiles) {
-				const filepath = join(draftsDir, file);
-				const content = await Bun.file(filepath).text();
-				const task = normalizeTaskIdentity(parseTask(content));
-				tasks.push({ ...task, filePath: filepath });
-			}
-
-			return sortByTaskId(tasks);
-		} catch {
-			return [];
-		}
-	}
-
-	// Decision log operations
-	async saveDecision(decision: Decision): Promise<void> {
-		// Normalize ID - remove "decision-" prefix if present
-		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
-		const decisionsDir = await this.getDecisionsDir();
-		const filepath = join(decisionsDir, filename);
-		const content = serializeDecision(decision);
-
-		const matches = await Array.fromAsync(
-			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+		// demoteTask is no longer supported — draft folder concept removed.
+		// Status-concept drafts (status: Draft in tasks/) can be set via updateTaskFromInput.
+		throw new Error(
+			`demoteTask is no longer supported. To mark a task as Draft, update its status: backlog task edit ${taskId} -s Draft`,
 		);
-		for (const match of matches) {
-			if (match === filename) continue;
-			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
-			try {
-				await unlink(join(decisionsDir, match));
-			} catch {
-				// Ignore cleanup errors
-			}
-		}
-
-		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
-	}
-
-	async loadDecision(decisionId: string): Promise<Decision | null> {
-		try {
-			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-			);
-
-			// Normalize ID - remove "decision-" prefix if present
-			const normalizedId = decisionId.replace(/^decision-/, "");
-			const decisionFile = files.find((file) => file.startsWith(`decision-${normalizedId} -`));
-
-			if (!decisionFile) return null;
-
-			const filepath = join(decisionsDir, decisionFile);
-			const content = await Bun.file(filepath).text();
-			return parseDecision(content);
-		} catch (_error) {
-			return null;
-		}
-	}
-
-	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<string> {
-		const docsDir = await this.getDocsDir();
-		const canonicalId = normalizeDocumentId(document.id);
-		document.id = canonicalId;
-		const filename = `${canonicalId} - ${this.sanitizeFilename(document.title)}.md`;
-		const normalizedSubPath = normalizeDocumentSubPath(subPath);
-		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
-		const filepath = join(docsDir, ...relativePath.split("/"));
-		const content = serializeDocument(document);
-
-		await this.ensureDirectoryExists(dirname(filepath));
-
-		const glob = new Bun.Glob("**/doc-*.md");
-		const existingMatches = (await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }))).map((relative) =>
-			normalizeDocumentRelativePath(relative),
-		);
-		const matchesForId = existingMatches.filter((relative) => {
-			const base = relative.split("/").pop() || relative;
-			const [candidateId] = base.split(" - ");
-			if (!candidateId) return false;
-			return documentIdsEqual(canonicalId, candidateId);
-		});
-
-		let sourceRelativePath = document.path ? normalizeDocumentRelativePath(document.path) : undefined;
-		if (!sourceRelativePath && matchesForId.length > 0) {
-			sourceRelativePath = normalizeDocumentRelativePath(matchesForId[0] ?? "");
-		}
-
-		if (sourceRelativePath && sourceRelativePath !== relativePath) {
-			const sourcePath = join(docsDir, ...sourceRelativePath.split("/"));
-			try {
-				await this.ensureDirectoryExists(dirname(filepath));
-				await rename(sourcePath, filepath);
-			} catch (error) {
-				const code = (error as NodeJS.ErrnoException | undefined)?.code;
-				if (code !== "ENOENT") {
-					throw error;
-				}
-			}
-		}
-
-		for (const match of matchesForId) {
-			const matchPath = join(docsDir, ...normalizeDocumentRelativePath(match).split("/"));
-			if (matchPath === filepath) {
-				continue;
-			}
-			try {
-				await unlink(matchPath);
-			} catch {
-				// Ignore cleanup errors - file may have been removed already
-			}
-		}
-
-		await Bun.write(filepath, content);
-
-		document.path = relativePath;
-		return relativePath;
-	}
-
-	async listDecisions(): Promise<Decision[]> {
-		try {
-			const decisionsDir = await this.getDecisionsDir();
-			const decisionFiles = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-			);
-			const decisions: Decision[] = [];
-			for (const file of decisionFiles) {
-				// Filter out README files as they're just instruction files
-				if (file.toLowerCase().match(/^readme\.md$/i)) {
-					continue;
-				}
-				const filepath = join(decisionsDir, file);
-				const content = await Bun.file(filepath).text();
-				decisions.push(parseDecision(content));
-			}
-			return sortByTaskId(decisions);
-		} catch {
-			return [];
-		}
-	}
-
-	async listDocuments(): Promise<Document[]> {
-		try {
-			const docsDir = await this.getDocsDir();
-			// Recursively include all markdown files under docs, excluding README.md variants
-			const glob = new Bun.Glob("**/*.md");
-			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
-			const docs: Document[] = [];
-			for (const file of docFiles) {
-				const relativePath = normalizeDocumentRelativePath(file);
-				const base = relativePath.split("/").pop() || relativePath;
-				if (base.toLowerCase() === "readme.md") continue;
-				const filepath = join(docsDir, ...relativePath.split("/"));
-				const content = await Bun.file(filepath).text();
-				const parsed = parseDocument(content);
-				docs.push({
-					...parsed,
-					path: relativePath,
-				});
-			}
-
-			// Stable sort by title for UI/CLI listing
-			return docs.sort((a, b) => a.title.localeCompare(b.title));
-		} catch {
-			return [];
-		}
-	}
-
-	async loadDocument(id: string): Promise<Document> {
-		const documents = await this.listDocuments();
-		const document = documents.find((doc) => documentIdsEqual(id, doc.id));
-		if (!document) {
-			throw new Error(`Document not found: ${id}`);
-		}
-		return document;
 	}
 
 	private buildMilestoneIdentifierKeys(identifier: string): Set<string> {

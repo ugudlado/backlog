@@ -19,7 +19,7 @@ describe("getTaskStatistics", () => {
 	});
 
 	test("handles empty task list", () => {
-		const stats = getTaskStatistics([], [], statuses);
+		const stats = getTaskStatistics([], statuses);
 
 		expect(stats.totalTasks).toBe(0);
 		expect(stats.completedTasks).toBe(0);
@@ -39,7 +39,7 @@ describe("getTaskStatistics", () => {
 			createTask({ id: "task-5", title: "Task 5", status: "Done" }),
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.totalTasks).toBe(5);
 		expect(stats.completedTasks).toBe(2);
@@ -58,7 +58,7 @@ describe("getTaskStatistics", () => {
 			createTask({ id: "task-5", title: "Task 5", status: "Done" }), // No priority
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.priorityCounts.get("high")).toBe(2);
 		expect(stats.priorityCounts.get("medium")).toBe(1);
@@ -66,16 +66,16 @@ describe("getTaskStatistics", () => {
 		expect(stats.priorityCounts.get("none")).toBe(1);
 	});
 
-	test("counts drafts correctly", () => {
-		const tasks: Task[] = [createTask({ id: "task-1", title: "Task 1", status: "To Do" })];
-		const drafts: Task[] = [
-			createTask({ id: "task-2", title: "Draft 1", status: "" }),
-			createTask({ id: "task-3", title: "Draft 2", status: "" }),
+	test("counts draft-status tasks correctly via tasks array", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", title: "Task 1", status: "To Do" }),
+			createTask({ id: "task-2", title: "Draft 1", status: "Draft" }),
+			createTask({ id: "task-3", title: "Draft 2", status: "Draft" }),
 		];
 
-		const stats = getTaskStatistics(tasks, drafts, statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
-		expect(stats.totalTasks).toBe(1);
+		// To Do task counts in statusCounts; Draft tasks are counted in draftCount
 		expect(stats.draftCount).toBe(2);
 	});
 
@@ -118,7 +118,7 @@ describe("getTaskStatistics", () => {
 			},
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.recentActivity.created.length).toBe(1);
 		expect(stats.recentActivity.created[0]?.id).toBe("task-1");
@@ -164,7 +164,7 @@ describe("getTaskStatistics", () => {
 			},
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.projectHealth.staleTasks.length).toBe(1);
 		expect(stats.projectHealth.staleTasks[0]?.id).toBe("task-1");
@@ -178,7 +178,7 @@ describe("getTaskStatistics", () => {
 			createTask({ id: "task-4", title: "Done Task", status: "Done" }),
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.projectHealth.blockedTasks.length).toBe(1);
 		expect(stats.projectHealth.blockedTasks[0]?.id).toBe("task-2");
@@ -226,7 +226,7 @@ describe("getTaskStatistics", () => {
 			},
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		// Task 1: 10 days (active, so uses current age)
 		// Task 2: 5 days (completed, so uses creation to completion time)
@@ -242,7 +242,7 @@ describe("getTaskStatistics", () => {
 			createTask({ id: "task-3", title: "Task 3", status: "Done" }),
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, statuses);
 
 		expect(stats.completionPercentage).toBe(100);
 		expect(stats.completedTasks).toBe(3);

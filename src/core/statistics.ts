@@ -21,7 +21,7 @@ export interface TaskStatistics {
 /**
  * Calculate comprehensive task statistics for the overview
  */
-export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: string[]): TaskStatistics {
+export function getTaskStatistics(tasks: Task[], statuses: string[]): TaskStatistics {
 	const statusCounts = new Map<string, number>();
 	const priorityCounts = new Map<string, number>();
 
@@ -148,7 +148,7 @@ export function getTaskStatistics(tasks: Task[], drafts: Task[], statuses: strin
 		totalTasks,
 		completedTasks,
 		completionPercentage,
-		draftCount: drafts.length,
+		draftCount: tasks.filter((t) => t.status === "Draft").length,
 		recentActivity: {
 			created: recentlyCreated.slice(0, 5), // Top 5 most recent
 			updated: recentlyUpdated.slice(0, 5), // Top 5 most recent

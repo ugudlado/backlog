@@ -5,12 +5,6 @@ import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
-	type Decision,
-	DOCUMENT_TYPE_VALUES,
-	type Document,
-	type DocumentCreateInput,
-	type DocumentType,
-	type DocumentUpdateInput,
 	EntityType,
 	isLocalEditableTask,
 	type Milestone,
@@ -22,14 +16,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
-import {
-	getDocumentSubPathFromRelativePath,
-	normalizeDocumentRelativePath,
-	normalizeDocumentSubPath,
-} from "../utils/document-path.ts";
 import { openInEditor } from "../utils/editor.ts";
-import { generateNextDocId } from "../utils/id-generators.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -54,7 +41,6 @@ import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
-import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
@@ -146,16 +132,6 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 	});
 }
 
-function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
-	if (type === undefined) {
-		return undefined;
-	}
-	if (typeof type === "string" && (DOCUMENT_TYPE_VALUES as readonly string[]).includes(type)) {
-		return type as DocumentType;
-	}
-	throw new Error(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
-}
-
 /**
  * Extract IDs from state map where latest state is "task" or "completed" (not "archived" or "draft")
  * Used for ID generation to determine which IDs are in use.
@@ -190,12 +166,9 @@ export class Core {
 		return await this.fs.withCreateLock(fn);
 	}
 
-	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
+	private async resolveCreateOrdinal(inputOrdinal: number | undefined): Promise<number | undefined> {
 		if (typeof inputOrdinal === "number") {
 			return inputOrdinal;
-		}
-		if (isDraft) {
-			return undefined;
 		}
 
 		const tasks = await this.fs.listTasks();
@@ -477,25 +450,6 @@ export class Core {
 		return await Bun.file(filePath).text();
 	}
 
-	async getDocument(documentId: string): Promise<Document | null> {
-		const documents = await this.fs.listDocuments();
-		const match = documents.find((doc) => documentIdsEqual(documentId, doc.id));
-		return match ?? null;
-	}
-
-	async getDocumentContent(documentId: string): Promise<string | null> {
-		const document = await this.getDocument(documentId);
-		if (!document) return null;
-
-		const relativePath = normalizeDocumentRelativePath(document.path ?? `${document.id}.md`);
-		const filePath = join(this.fs.docsDir, ...relativePath.split("/"));
-		try {
-			return await Bun.file(filePath).text();
-		} catch {
-			return null;
-		}
-	}
-
 	/**
 	 * Re-point this Core instance to a different project root.
 	 * Disposes caches and re-creates FileSystem / GitOperations.
@@ -758,11 +712,6 @@ export class Core {
 			await this.fs.saveConfig(config);
 		}
 
-		// Run draft prefix migration if needed (one-time migration)
-		// This renames task-*.md files in drafts/ to draft-*.md
-		if (needsDraftPrefixMigration(config)) {
-			await migrateDraftPrefixes(this.fs);
-		}
 	}
 
 	// ID generation
@@ -908,53 +857,25 @@ export class Core {
 				// Archived IDs are excluded - they can be reused (soft delete behavior)
 				return this.getActiveAndCompletedTaskIds();
 			}
-			case EntityType.Draft: {
-				const drafts = await this.fs.listDrafts();
-				return drafts.map((d) => d.id);
-			}
-			case EntityType.Document: {
-				const documents = await this.fs.listDocuments();
-				return documents.map((d) => d.id);
-			}
-			case EntityType.Decision: {
-				const decisions = await this.fs.listDecisions();
-				return decisions.map((d) => d.id);
-			}
 			default:
 				return [];
 		}
 	}
 
-	private async writePreparedTask(task: Task, isDraft: boolean): Promise<string> {
-		if (isDraft) {
-			task.status = "Draft";
-			normalizeAssignee(task);
-			return await this.fs.saveDraft(task);
-		}
-
+	private async writePreparedTask(task: Task): Promise<string> {
 		normalizeAssignee(task);
 		return await this.fs.saveTask(task);
 	}
 
-	private async finalizeCreatedTask(
-		task: Task,
-		filepath: string,
-		isDraft: boolean,
-		autoCommit?: boolean,
-	): Promise<Task | null> {
-		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
+	private async finalizeCreatedTask(task: Task, filepath: string, autoCommit?: boolean): Promise<Task | null> {
+		const savedTask = await this.fs.loadTask(task.id);
 
-		if (!isDraft && this.contentStore && savedTask) {
+		if (this.contentStore && savedTask) {
 			this.contentStore.upsertTask(savedTask);
 		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			if (isDraft) {
-				await this.git.addFile(filepath);
-				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
-			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create");
-			}
+			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
 		}
 
 		return savedTask;
@@ -965,12 +886,9 @@ export class Core {
 			throw new Error("Title is required to create a task.");
 		}
 
-		// Determine if this is a draft BEFORE generating the ID
 		const requestedStatus = input.status?.trim();
+		// --draft flag maps to status: Draft stored in tasks/
 		const isDraft = requestedStatus?.toLowerCase() === "draft";
-
-		// Generate ID with appropriate entity type - drafts get DRAFT-X, tasks get TASK-X
-		const entityType = isDraft ? EntityType.Draft : EntityType.Task;
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
@@ -1022,11 +940,11 @@ export class Core {
 			add: input.definitionOfDoneAdd,
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
-		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
+		const resolvedStatus = status || config?.defaultStatus || FALLBACK_STATUS;
 
 		const { task, filePath } = await this.withCreateLock(async () => {
-			const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
-			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
+			const id = await this.generateNextId(EntityType.Task, input.parentTaskId);
+			const ordinal = await this.resolveCreateOrdinal(input.ordinal);
 			const task: Task = {
 				id,
 				title: input.title.trim(),
@@ -1054,11 +972,11 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const filePath = await this.writePreparedTask(task, isDraft);
+			const filePath = await this.writePreparedTask(task);
 			return { task, filePath };
 		});
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
+		const savedTask = await this.finalizeCreatedTask(task, filePath, autoCommit);
 		return { task: savedTask ?? task, filePath };
 	}
 
@@ -1068,8 +986,8 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
-		const filepath = await this.writePreparedTask(task, false);
-		await this.finalizeCreatedTask(task, filepath, false, autoCommit);
+		const filepath = await this.writePreparedTask(task);
+		await this.finalizeCreatedTask(task, filepath, autoCommit);
 
 		return filepath;
 	}
@@ -1598,11 +1516,6 @@ export class Core {
 			throw new Error(`Task not found: ${taskId}`);
 		}
 
-		const requestedStatus = input.status?.trim().toLowerCase();
-		if (requestedStatus === "draft") {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
-		}
-
 		const { mutated } = await this.applyTaskUpdateInput(task, input, async (status) =>
 			this.requireCanonicalStatus(status),
 		);
@@ -1614,159 +1527,6 @@ export class Core {
 		await this.updateTask(task, autoCommit);
 		const refreshed = await this.fs.loadTask(taskId);
 		return refreshed ?? task;
-	}
-
-	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
-		// Drafts always keep status Draft
-		task.status = "Draft";
-		normalizeAssignee(task);
-		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
-
-		const filepath = await this.fs.saveDraft(task);
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addFile(filepath);
-			await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
-		}
-	}
-
-	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const draft = await this.fs.loadDraft(draftId);
-		if (!draft) {
-			throw new Error(`Draft not found: ${draftId}`);
-		}
-
-		const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
-			}
-			return "Draft";
-		});
-
-		if (!mutated) {
-			return draft;
-		}
-
-		await this.updateDraft(draft, autoCommit);
-		const refreshed = await this.fs.loadDraft(draftId);
-		return refreshed ?? draft;
-	}
-
-	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const draft = await this.fs.loadDraft(taskId);
-		if (draft) {
-			const requestedStatus = input.status?.trim();
-			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
-			if (requestedStatus && !wantsDraft) {
-				return await this.promoteDraftWithUpdates(draft, input, autoCommit);
-			}
-			return await this.updateDraftFromInput(draft.id, input, autoCommit);
-		}
-
-		const task = await this.fs.loadTask(taskId);
-		if (!task) {
-			throw new Error(`Task not found: ${taskId}`);
-		}
-
-		const requestedStatus = input.status?.trim();
-		const wantsDraft = requestedStatus?.toLowerCase() === "draft";
-		if (wantsDraft) {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
-		}
-
-		return await this.updateTaskFromInput(task.id, input, autoCommit);
-	}
-
-	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const targetStatus = input.status?.trim();
-		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
-			throw new Error("Promoting a draft requires a non-draft status.");
-		}
-
-		const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
-			}
-			return "Draft";
-		});
-
-		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
-
-		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-			const draftPath = draft.filePath;
-
-			const promotedTask: Task = {
-				...draft,
-				id: newTaskId,
-				status: canonicalStatus,
-				filePath: undefined,
-				...(mutated || draft.status !== canonicalStatus
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
-
-			normalizeAssignee(promotedTask);
-			const savedPath = await this.fs.saveTask(promotedTask);
-
-			if (draftPath) {
-				await unlink(draftPath);
-			}
-
-			return { promotedTask, savedPath };
-		});
-
-		const savedTask = await this.fs.loadTask(promotedTask.id);
-		if (this.contentStore && savedTask) {
-			this.contentStore.upsertTask(savedTask);
-		}
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draft.id, "draft")}`, repoRoot);
-		}
-
-		return savedTask ?? { ...promotedTask, filePath: savedPath };
-	}
-
-	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() === "draft") {
-				return "Draft";
-			}
-			return this.requireCanonicalStatus(status);
-		});
-
-		const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
-			const newDraftId = await this.generateNextId(EntityType.Draft);
-			const taskPath = task.filePath;
-
-			const demotedDraft: Task = {
-				...task,
-				id: newDraftId,
-				status: "Draft",
-				filePath: undefined,
-				...(mutated || task.status !== "Draft"
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
-
-			normalizeAssignee(demotedDraft);
-			const savedPath = await this.fs.saveDraft(demotedDraft);
-
-			if (taskPath) {
-				await unlink(taskPath);
-			}
-
-			return { demotedDraft, savedPath };
-		});
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(task.id)}`, repoRoot);
-		}
-
-		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
 	}
 
 	/**
@@ -2138,28 +1898,6 @@ export class Core {
 		});
 	}
 
-	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.archiveDraft(draftId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, repoRoot);
-		}
-
-		return success;
-	}
-
-	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.promoteDraft(draftId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, repoRoot);
-		}
-
-		return success;
-	}
-
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const success = await this.fs.demoteTask(taskId);
 
@@ -2286,151 +2024,6 @@ export class Core {
 		}
 
 		return task.acceptanceCriteriaItems || [];
-	}
-
-	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		await this.fs.saveDecision(decision);
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Add decision ${decision.id}`, repoRoot);
-		}
-	}
-
-	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
-		const existingDecision = await this.fs.loadDecision(decisionId);
-		if (!existingDecision) {
-			throw new Error(`Decision ${decisionId} not found`);
-		}
-
-		// Parse the markdown content to extract the decision data
-		const matter = await import("gray-matter");
-		const { data } = matter.default(content);
-
-		const extractSection = (content: string, sectionName: string): string | undefined => {
-			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
-			const match = content.match(regex);
-			return match ? match[1]?.trim() : undefined;
-		};
-
-		const updatedDecision = {
-			...existingDecision,
-			title: data.title || existingDecision.title,
-			status: data.status || existingDecision.status,
-			date: data.date || existingDecision.date,
-			context: extractSection(content, "Context") || existingDecision.context,
-			decision: extractSection(content, "Decision") || existingDecision.decision,
-			consequences: extractSection(content, "Consequences") || existingDecision.consequences,
-			alternatives: extractSection(content, "Alternatives") || existingDecision.alternatives,
-		};
-
-		await this.createDecision(updatedDecision, autoCommit);
-	}
-
-	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
-		// Import the generateNextDecisionId function from CLI
-		const { generateNextDecisionId } = await import("../cli.js");
-		const id = await generateNextDecisionId(this);
-
-		const decision: Decision = {
-			id,
-			title,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
-			status: "proposed",
-			context: "[Describe the context and problem that needs to be addressed]",
-			decision: "[Describe the decision that was made]",
-			consequences: "[Describe the consequences of this decision]",
-			rawContent: "",
-		};
-
-		await this.createDecision(decision, autoCommit);
-		return decision;
-	}
-
-	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const relativePath = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
-		doc.path = relativePath;
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Add document ${doc.id}`, repoRoot);
-		}
-	}
-
-	async updateDocument(existingDoc: Document, content: string, autoCommit?: boolean): Promise<void> {
-		await this.updateDocumentFromInput(
-			{
-				id: existingDoc.id,
-				title: existingDoc.title,
-				type: existingDoc.type,
-				tags: existingDoc.tags,
-				content,
-				...(existingDoc.path !== undefined && { path: getDocumentSubPathFromRelativePath(existingDoc.path) }),
-			},
-			autoCommit,
-		);
-	}
-
-	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {
-		return await this.createDocumentFromInput({ title, content }, autoCommit);
-	}
-
-	async createDocumentFromInput(input: DocumentCreateInput, autoCommit?: boolean): Promise<Document> {
-		const title = input.title.trim();
-		if (!title) {
-			throw new Error("Title is required to create a document.");
-		}
-
-		const subPath = normalizeDocumentSubPath(input.path);
-		const tags = normalizeStringList(input.tags);
-		const type = normalizeDocumentTypeInput(input.type) ?? "other";
-		const document = await this.withCreateLock(async () => {
-			const id = normalizeDocumentId(await generateNextDocId(this));
-			const document: Document = {
-				id,
-				title,
-				type,
-				createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-				rawContent: input.content ?? "",
-				...(tags && tags.length > 0 && { tags }),
-			};
-
-			await this.createDocument(document, autoCommit, subPath);
-			return document;
-		});
-
-		return (await this.getDocument(document.id)) ?? document;
-	}
-
-	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: boolean): Promise<Document> {
-		const existingDoc = await this.getDocument(input.id);
-		if (!existingDoc) {
-			throw new Error(`Document not found: ${input.id}`);
-		}
-
-		const normalizedTitle = input.title?.trim();
-		if (input.title !== undefined && !normalizedTitle) {
-			throw new Error("Document title cannot be empty.");
-		}
-
-		const tags = input.tags !== undefined ? normalizeStringList(input.tags) : existingDoc.tags;
-		const type = normalizeDocumentTypeInput(input.type) ?? existingDoc.type;
-		const subPath =
-			input.path === undefined
-				? getDocumentSubPathFromRelativePath(existingDoc.path)
-				: normalizeDocumentSubPath(input.path);
-		const updatedDoc: Document = {
-			...existingDoc,
-			id: normalizeDocumentId(existingDoc.id),
-			title: normalizedTitle ?? existingDoc.title,
-			type,
-			rawContent: input.content,
-			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
-			tags: tags && tags.length > 0 ? tags : undefined,
-		};
-
-		await this.createDocument(updatedDoc, autoCommit, subPath);
-		return (await this.getDocument(existingDoc.id)) ?? updatedDoc;
 	}
 
 	async listTasksWithMetadata(
@@ -2583,7 +2176,7 @@ export class Core {
 	 */
 	async loadAllTasksForStatistics(
 		progressCallback?: (msg: string) => void,
-	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[] }> {
+	): Promise<{ tasks: Task[]; statuses: string[] }> {
 		const config = await this.fs.loadConfig();
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
@@ -2655,11 +2248,7 @@ export class Core {
 			activeTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
 		}
 
-		// Load drafts
-		progressCallback?.("Loading drafts...");
-		const drafts = await this.fs.listDrafts();
-
-		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
+		return { tasks: activeTasks, statuses: statuses as string[] };
 	}
 
 	/**

@@ -1686,10 +1686,10 @@ export class BacklogServer {
 	private async handleGetStatistics(): Promise<Response> {
 		try {
 			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			const { tasks, statuses } = await this.core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
-			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const statistics = getTaskStatistics(tasks, statuses);
 
 			// Convert Maps to objects for JSON serialization
 			const response = {
