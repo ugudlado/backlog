@@ -2457,7 +2457,7 @@ program
 	.allowExcessArguments()
 	.action(() => {
 		console.error(
-			"The 'draft' command has been removed. Use 'backlog task create --draft' to create tasks with Draft status.",
+			"The 'draft' command has been removed. Run 'backlog migrate drafts-to-tasks' to convert legacy drafts, then use 'backlog task create --draft' for new ones.",
 		);
 		process.exit(2);
 	});
@@ -2738,9 +2738,7 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error(
-			"The 'doc' command has been removed. Documentation links can be added to tasks via 'backlog task edit <id> --doc <url>'.",
-		);
+		console.error("The 'doc' command has been removed. Run 'backlog migrate archive-legacy' to archive legacy docs.");
 		process.exit(2);
 	});
 
@@ -2749,7 +2747,9 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error("The 'decision' command has been removed.");
+		console.error(
+			"The 'decision' command has been removed. Run 'backlog migrate archive-legacy' to archive legacy decisions.",
+		);
 		process.exit(2);
 	});
 
