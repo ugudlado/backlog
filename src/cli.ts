@@ -54,11 +54,13 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
+import { resolveStoreMode } from "./utils/store-mode.ts";
 import {
 	normalizeDependencies,
 	parseDelimitedStringList,
@@ -470,6 +472,8 @@ program
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
+	.option("--global", "use the configured globalStore for this project (skips prompt)")
+	.option("--local", "use a local backlog/ folder in this repo (skips prompt)")
 	.action(
 		async (
 			projectName: string | undefined,
@@ -490,6 +494,8 @@ program
 				taskPrefix?: string;
 				git?: boolean;
 				defaults?: boolean;
+				global?: boolean;
+				local?: boolean;
 			},
 		) => {
 			try {
@@ -533,6 +539,12 @@ program
 				const existingConfig = await core.filesystem.loadConfig();
 				const isReInitialization = !!existingConfig;
 
+				// Mutual exclusion check — always, regardless of re-init state.
+				if (options.global && options.local) {
+					console.error("Cannot use --global and --local together.");
+					process.exit(1);
+				}
+
 				if (isReInitialization) {
 					console.log(
 						"Existing backlog project detected. Current configuration will be preserved where not specified.",
@@ -549,6 +561,21 @@ program
 						);
 						process.exit(1);
 					}
+					if (options.global || options.local) {
+						console.error(
+							"The store mode is fixed after initialization. Re-run init without --global/--local for this project.",
+						);
+						process.exit(1);
+					}
+				}
+
+				// Resolve store mode (global vs local) when globalStore is configured.
+				const machineConfig = readMachineConfig();
+				const globalStoreConfigured = !!machineConfig.globalStore;
+
+				if (options.global && !globalStoreConfigured) {
+					console.error("--global requires globalStore to be set in machine config (~/.config/backlog.md/config.yml).");
+					process.exit(1);
 				}
 
 				// Helper function to parse boolean strings
@@ -569,6 +596,19 @@ program
 				}
 				function cancelInitialization(message = "Initialization cancelled.") {
 					clack.cancel(message);
+				}
+
+				// Resolve store mode (global vs local). Flags and re-init guard already handled above.
+				const storeMode = await resolveStoreMode({
+					globalFlag: !!options.global,
+					localFlag: !!options.local,
+					globalStoreConfigured,
+					isReInitialization,
+					globalStoreHint: machineConfig.globalStore ?? undefined,
+				});
+				if (storeMode === null) {
+					abortInitialization();
+					return;
 				}
 
 				// Non-interactive mode when any flag is provided or --defaults is used
@@ -740,6 +780,14 @@ program
 							}
 							configLocation = configPrompt as "folder" | "root";
 						}
+					}
+
+					// If user chose local store mode, force backlogDirectory to "backlog"
+					// regardless of what the resolution above produced. This routes init
+					// through the local branch in initializeProject (same as --backlog-dir backlog).
+					if (storeMode === "local") {
+						backlogDirectory = "backlog";
+						backlogDirectorySource = "backlog";
 					}
 				}
 
@@ -1140,6 +1188,14 @@ program
 						autoCommit: false,
 					};
 				}
+				// When local store mode is chosen with globalStore configured, ensure
+				// the filesystem is pointed at the local backlog/ dir before init runs.
+				// Without this, core.filesystem.backlogDir is the global slot, and
+				// initializeProject would take the globalStore branch.
+				if (storeMode === "local") {
+					core.filesystem.setBacklogDirectory("backlog");
+				}
+
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
