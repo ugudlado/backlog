@@ -3532,7 +3532,7 @@ if (!isMigrateCommand) {
 		const projectRoot = await findBacklogRoot(process.cwd());
 		if (projectRoot) {
 			const earlyCore = new Core(projectRoot);
-			const backlogDir = await earlyCore.filesystem.getBacklogDir();
+			const backlogDir = earlyCore.filesystem.backlogDir;
 			const earlyConfig = await earlyCore.filesystem.loadConfig();
 			await warnLegacyFolders(backlogDir, earlyConfig?.suppressLegacyFolderWarning === true);
 		}

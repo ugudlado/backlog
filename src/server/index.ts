@@ -9,11 +9,7 @@ import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
-import {
-	type SearchPriorityFilter,
-	type Task,
-	type TaskUpdateInput,
-} from "../types/index.ts";
+import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";

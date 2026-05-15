@@ -10,7 +10,7 @@ import { Core } from "../core/backlog.ts";
  */
 async function migrateDraftsToTasks(cwd: string): Promise<void> {
 	const core = new Core(cwd);
-	const backlogDir = await core.filesystem.getBacklogDir();
+	const backlogDir = core.filesystem.backlogDir;
 	const draftsDir = join(backlogDir, "drafts");
 	const tasksDir = join(backlogDir, "tasks");
 
@@ -71,7 +71,7 @@ function ensureDraftStatus(content: string): string {
 		return `---\nstatus: Draft\n---\n\n${content}`;
 	}
 
-	const fm = fmMatch[1];
+	const fm = fmMatch[1] ?? "";
 	if (/^status:/m.test(fm)) {
 		// Replace existing status value
 		return content.replace(/^(status:\s*).*$/m, "$1Draft");
@@ -89,7 +89,7 @@ function ensureDraftStatus(content: string): string {
  */
 async function archiveLegacy(cwd: string): Promise<void> {
 	const core = new Core(cwd);
-	const backlogDir = await core.filesystem.getBacklogDir();
+	const backlogDir = core.filesystem.backlogDir;
 
 	const legacyDirs = ["docs", "decisions", "drafts"];
 
