@@ -10,7 +10,6 @@ import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
-import { registerMigrateCommand } from "./commands/migrate.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { registerWorkspaceCommand } from "./commands/workspace.ts";
@@ -47,7 +46,6 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
-import { warnLegacyFolders } from "./utils/legacy-warning.ts";
 import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
@@ -2456,9 +2454,7 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error(
-			"The 'draft' command has been removed. Run 'backlog migrate drafts-to-tasks' to convert legacy drafts, then use 'backlog task create --draft' for new ones.",
-		);
+		console.error("The 'draft' command has been removed. Use 'backlog task create --draft' to create draft tasks.");
 		process.exit(2);
 	});
 
@@ -2738,7 +2734,7 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error("The 'doc' command has been removed. Run 'backlog migrate archive-legacy' to archive legacy docs.");
+		console.error("The 'doc' command has been removed.");
 		process.exit(2);
 	});
 
@@ -2747,9 +2743,7 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error(
-			"The 'decision' command has been removed. Run 'backlog migrate archive-legacy' to archive legacy decisions.",
-		);
+		console.error("The 'decision' command has been removed.");
 		process.exit(2);
 	});
 
@@ -3519,27 +3513,8 @@ registerMcpCommand(program);
 // Service command group (macOS launchd)
 registerServiceCommand(program);
 
-// Migrate command group (one-time legacy migrations)
-registerMigrateCommand(program);
-
 // Workspace registry command group
 registerWorkspaceCommand(program);
-
-// Emit legacy-folder warning before routing (skip for migrate subcommands)
-const isMigrateCommand = process.argv.slice(2).some((arg) => arg === "migrate");
-if (!isMigrateCommand) {
-	try {
-		const projectRoot = await findBacklogRoot(process.cwd());
-		if (projectRoot) {
-			const earlyCore = new Core(projectRoot);
-			const backlogDir = earlyCore.filesystem.backlogDir;
-			const earlyConfig = await earlyCore.filesystem.loadConfig();
-			await warnLegacyFolders(backlogDir, earlyConfig?.suppressLegacyFolderWarning === true);
-		}
-	} catch {
-		// Never block startup due to warning errors
-	}
-}
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands

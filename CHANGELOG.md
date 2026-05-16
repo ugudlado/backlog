@@ -21,19 +21,3 @@ Running any of these commands now prints a deprecation message and exits non-zer
 **Changed behavior:**
 - `backlog task create --draft` now writes directly to `backlog/tasks/` with `status: Draft` instead of routing to `backlog/drafts/`.
 - The `--type` option has been removed from `backlog search` (only tasks are indexed).
-
-**Removed:**
-- `backlog search --type` option
-
-### New Features
-
-**Migration commands:**
-- `backlog migrate drafts-to-tasks` — moves files from `backlog/drafts/` to `backlog/tasks/` with `status: Draft`, then removes `backlog/drafts/`.
-- `backlog migrate archive-legacy` — moves `backlog/docs/`, `backlog/decisions/`, and `backlog/drafts/` into `backlog/archive/legacy-<YYYY-MM-DD>/`.
-
-**Startup warning:**
-- When legacy folders (`backlog/drafts/`, `backlog/docs/`, `backlog/decisions/`) are detected on any non-migrate command, a warning is printed to stderr suggesting migration.
-- Set `suppressLegacyFolderWarning: true` in `backlog/config.yml` to silence this warning.
-
-**New config option:**
-- `suppressLegacyFolderWarning` (boolean) — suppresses the startup warning about legacy backlog folders when set to `true`.
