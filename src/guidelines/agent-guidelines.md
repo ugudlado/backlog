@@ -10,13 +10,12 @@ remains fully synchronized and up-to-date.
 ### Core Capabilities
 
 - ✅ **Task Management**: Create, edit, assign, prioritize, and track tasks with full metadata
-- ✅ **Search**: Fuzzy search across tasks, documents, and decisions with `backlog search`
+- ✅ **Search**: Fuzzy search across tasks with `backlog search`
 - ✅ **Acceptance Criteria**: Granular control with add/remove/check/uncheck by index
 - ✅ **Definition of Done checklists**: Per-task DoD items with add/remove/check/uncheck
 - ✅ **Board Visualization**: Terminal-based Kanban board (`backlog board`) and web UI (`backlog browser`)
 - ✅ **Git Integration**: Automatic tracking of task states across branches
 - ✅ **Dependencies**: Task relationships and subtask hierarchies
-- ✅ **Documentation & Decisions**: Structured docs and architectural decision records
 - ✅ **Export & Reporting**: Generate markdown reports and board snapshots
 - ✅ **AI-Optimized**: `--plain` flag provides clean text output for AI processing
 
@@ -56,18 +55,14 @@ remains fully synchronized and up-to-date.
 
 ### 📖 **UNDERSTANDING** (What you'll see when reading)
 
-- Markdown task files live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**)
+- Markdown task files live under **`backlog/tasks/`**
 - Files are named: `task-<id> - <title>.md` (e.g., `task-42 - Add GraphQL resolver.md`)
-- Project documentation is in **`backlog/docs/`**
-- Project decisions are in **`backlog/decisions/`**
 
 ### 🔧 **ACTING** (How to change things)
 
 - **All task operations MUST use the Backlog.md CLI tool**
 - This ensures metadata is correctly updated and the project stays in sync
 - **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output
-- Create and update project docs through Backlog.md APIs so frontmatter and paths stay valid. For CLI users, run `backlog doc create "Title" -p guides/setup` or `backlog doc update doc-1 --content "Updated markdown"`; MCP users should use `document_create` / `document_update`.
-- Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 
 ---
 
@@ -465,7 +460,7 @@ backlog search --modified-file src/server/api.ts --plain
 - Uses fuzzy matching - finds "authentication" when searching "auth"
 - Searches task titles, descriptions, and content
 - Also searches `modified_files`; `--modified-file` applies a case-insensitive path substring filter
-- Also searches documents and decisions unless filtered with `--type task`
+- Search is scoped to tasks only
 - Always use `--plain` flag for AI-readable output
 
 ---
@@ -660,52 +655,6 @@ Tasks may include images for screenshots, diagrams, or visual references. Local 
 - The path in Markdown starts with `assets/` and maps to the backlog directory's `assets/` folder; do **not** include the backlog directory name itself
 - When `backlog browser` is running, these files are automatically available at `assets/<relative-path>`
 - You can add images to descriptions, implementation notes, or final summaries using the standard CLI commands
-
-### Document Management
-
-> Docs are used for long-term project reference information, such as development standards, configuration guides, architecture documentation, etc. They differ from `tasks/` (specific tasks), `decisions/` (decision records), and `drafts/` (drafts).
-
-Use Backlog.md public interfaces for document creation and updates so IDs, frontmatter, paths, and search metadata stay consistent.
-
-#### CLI Usage
-
-The CLI supports creating, updating, listing, and viewing documents.
-
-```bash
-# Create a new doc (saved under backlog/docs/ by default)
-backlog doc create "API Guidelines"
-
-# Create in a subdirectory (nested paths supported)
-backlog doc create "Setup Guide" -p guides/setup
-
-# Specify type at creation time
-backlog doc create "Architecture" -t guide
-
-# Update content while preserving omitted metadata
-backlog doc update doc-1 --content "Updated markdown"
-
-# Update metadata or move a doc within backlog/docs/
-backlog doc update doc-1 --title "Setup Handbook" -t guide --tags setup,runbook -p guides
-
-# List all docs (searched globally across subdirectories)
-backlog doc list
-
-# View a specific doc
-backlog doc view doc-1
-```
-
-#### MCP / API Usage
-
-- Use `document_create` to create documents with title, content, optional type/tags, and optional docs-directory-relative path.
-- Use `document_update` to update document content, title, type, tags, or path while preserving document metadata.
-- Document responses include the persisted docs-relative file path so agents can reference the created file without scanning source internals.
-
-#### Key Rules
-
-- Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
-- Supported document types are `readme`, `guide`, `specification`, and `other`.
-- Document IDs are global across the entire docs tree, including nested subfolders.
-- Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
 ### Task Operations
 

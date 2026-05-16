@@ -275,25 +275,5 @@ describe("Auto-commit configuration", () => {
 			const isClean = await git.isClean();
 			expect(isClean).toBe(false);
 		});
-
-		it("should respect autoCommit config for promote draft operations", async () => {
-			// First create a draft with explicit commit
-			const { task: draft } = await core.createTaskFromInput(
-				{
-					title: "Test Draft",
-					status: "Draft",
-					description: "Test description",
-				},
-				true,
-			);
-
-			// Promote the draft (should not auto-commit)
-			await core.promoteDraft(draft.id);
-
-			// Check that there are uncommitted changes
-			const git = await core.getGitOps();
-			const isClean = await git.isClean();
-			expect(isClean).toBe(false);
-		});
 	});
 });

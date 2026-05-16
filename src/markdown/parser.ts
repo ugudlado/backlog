@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import {
 	AcceptanceCriteriaManager,
 	DefinitionOfDoneManager,
@@ -192,36 +192,6 @@ export function parseTask(content: string): Task {
 		priority: validatedPriority,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
-	};
-}
-
-export function parseDecision(content: string): Decision {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
-
-	return {
-		id: String(frontmatter.id || ""),
-		title: String(frontmatter.title || ""),
-		date: normalizeDate(frontmatter.date),
-		status: String(frontmatter.status || "proposed") as Decision["status"],
-		context: extractSection(rawContent, "Context") || "",
-		decision: extractSection(rawContent, "Decision") || "",
-		consequences: extractSection(rawContent, "Consequences") || "",
-		alternatives: extractSection(rawContent, "Alternatives"),
-		rawContent, // Raw markdown content without frontmatter
-	};
-}
-
-export function parseDocument(content: string): Document {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
-
-	return {
-		id: String(frontmatter.id || ""),
-		title: String(frontmatter.title || ""),
-		type: String(frontmatter.type || "other") as Document["type"],
-		createdDate: normalizeDate(frontmatter.created_date),
-		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		rawContent,
-		tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
 	};
 }
 

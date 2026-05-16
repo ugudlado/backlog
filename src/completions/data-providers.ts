@@ -88,13 +88,3 @@ export async function getAssignees(): Promise<string[]> {
 		return Array.from(assignees).sort();
 	}, []);
 }
-
-/**
- * Get all document IDs from the backlog
- */
-export async function getDocumentIds(): Promise<string[]> {
-	return await withCore(async (core) => {
-		const docs = await core.filesystem.listDocuments();
-		return docs.map((doc) => doc.id).sort();
-	}, []);
-}

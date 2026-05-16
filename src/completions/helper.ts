@@ -6,7 +6,7 @@ import {
 	getSubcommandNames,
 	getTopLevelCommands,
 } from "./command-structure.ts";
-import { getAssignees, getDocumentIds, getLabels, getPriorities, getStatuses, getTaskIds } from "./data-providers.ts";
+import { getAssignees, getLabels, getPriorities, getStatuses, getTaskIds } from "./data-providers.ts";
 
 export interface CompletionContext {
 	words: string[];
@@ -92,9 +92,6 @@ async function getArgumentCompletions(argumentName: string): Promise<string[]> {
 	// Match common patterns
 	if (lowerName.includes("taskid") || lowerName === "id") {
 		return await getTaskIds();
-	}
-	if (lowerName.includes("docid") || lowerName.includes("documentid")) {
-		return await getDocumentIds();
 	}
 	if (lowerName.includes("title") || lowerName.includes("name")) {
 		return []; // Free-form text, no completions

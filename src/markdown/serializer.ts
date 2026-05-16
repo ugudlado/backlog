@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, Task } from "../types/index.ts";
+import type { AcceptanceCriterion, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -101,38 +101,6 @@ export function serializeTask(task: Task): string {
 	const serialized = matter.stringify(contentBody, frontmatter);
 	// Ensure there's a blank line between frontmatter and content
 	return serialized.replace(/^(---\n(?:.*\n)*?---)\n(?!$)/, "$1\n\n");
-}
-
-export function serializeDecision(decision: Decision): string {
-	const frontmatter = {
-		id: decision.id,
-		title: decision.title,
-		date: decision.date,
-		status: decision.status,
-	};
-
-	let content = `## Context\n\n${decision.context}\n\n`;
-	content += `## Decision\n\n${decision.decision}\n\n`;
-	content += `## Consequences\n\n${decision.consequences}`;
-
-	if (decision.alternatives) {
-		content += `\n\n## Alternatives\n\n${decision.alternatives}`;
-	}
-
-	return matter.stringify(content, frontmatter);
-}
-
-export function serializeDocument(document: Document): string {
-	const frontmatter = {
-		id: document.id,
-		title: document.title,
-		type: document.type,
-		created_date: document.createdDate,
-		...(document.updatedDate && { updated_date: document.updatedDate }),
-		...(document.tags && document.tags.length > 0 && { tags: document.tags }),
-	};
-
-	return matter.stringify(document.rawContent, frontmatter);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

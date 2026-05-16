@@ -32,25 +32,17 @@ import {
 } from "./index.ts";
 import {
 	type BacklogConfig,
-	type Decision,
-	type DecisionSearchResult,
-	DOCUMENT_TYPE_VALUES,
-	type Document as DocType,
-	type DocumentSearchResult,
 	isLocalEditableTask,
 	type Milestone,
 	type SearchPriorityFilter,
 	type SearchResult,
-	type SearchResultType,
 	type Task,
 	type TaskListFilter,
 	type TaskSearchResult,
 } from "./types/index.ts";
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
-import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
-import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
@@ -1386,142 +1378,6 @@ program
 		},
 	);
 
-export async function generateNextDocId(core: Core): Promise<string> {
-	const config = await core.filesystem.loadConfig();
-	// Load local documents
-	const docs = await core.filesystem.listDocuments();
-	const allIds: string[] = [];
-
-	try {
-		const backlogDir = core.filesystem.backlogDirName;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local documents only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Load files from all branches in parallel
-		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/docs`);
-			return files
-				.map((file) => {
-					const match = file.match(/doc-(\d+)/);
-					return match ? `doc-${match[1]}` : null;
-				})
-				.filter((id): id is string => id !== null);
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote document IDs:", error);
-		}
-	}
-
-	// Add local document IDs
-	for (const doc of docs) {
-		allIds.push(doc.id);
-	}
-
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^doc-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `doc-${paddedId}`;
-	}
-
-	return `doc-${nextIdNumber}`;
-}
-
-export async function generateNextDecisionId(core: Core): Promise<string> {
-	const config = await core.filesystem.loadConfig();
-	// Load local decisions
-	const decisions = await core.filesystem.listDecisions();
-	const allIds: string[] = [];
-
-	try {
-		const backlogDir = core.filesystem.backlogDirName;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local decisions only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
-		const branches = await core.gitOps.listAllBranches();
-
-		// Load files from all branches in parallel
-		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
-			return files
-				.map((file) => {
-					const match = file.match(/decision-(\d+)/);
-					return match ? `decision-${match[1]}` : null;
-				})
-				.filter((id): id is string => id !== null);
-		});
-
-		const branchResults = await Promise.all(branchFilePromises);
-		for (const branchIds of branchResults) {
-			allIds.push(...branchIds);
-		}
-	} catch (error) {
-		// Suppress errors for offline mode or other git issues
-		if (process.env.DEBUG) {
-			console.error("Could not fetch remote decision IDs:", error);
-		}
-	}
-
-	// Add local decision IDs
-	for (const decision of decisions) {
-		allIds.push(decision.id);
-	}
-
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^decision-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `decision-${paddedId}`;
-	}
-
-	return `decision-${nextIdNumber}`;
-}
-
 const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
@@ -1678,8 +1534,7 @@ taskCmd
 
 program
 	.command("search [query]")
-	.description("search tasks, documents, and decisions using the shared index")
-	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.description("search tasks using the shared index")
 	.option("--status <status>", "filter task results by status")
 	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
 	.option(
@@ -1700,21 +1555,6 @@ program
 		};
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
-		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
-		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
-		const types = rawTypes
-			? rawTypes
-					.map((value: string) => value.toLowerCase())
-					.filter((value: string): value is SearchResultType => {
-						if (!allowedTypes.includes(value as SearchResultType)) {
-							console.warn(`Ignoring unsupported type '${value}'. Supported: task, document, decision`);
-							return false;
-						}
-						return true;
-					})
-			: modifiedFileFilters?.length
-				? ["task"]
-				: allowedTypes;
 
 		const filters: { status?: string; priority?: SearchPriorityFilter; modifiedFiles?: string[] } = {};
 		if (options.status) {
@@ -1750,7 +1590,6 @@ program
 		const searchResults = searchService.search({
 			query: query ?? "",
 			limit,
-			types,
 			filters,
 		});
 
@@ -1838,66 +1677,21 @@ function printSearchResults(results: SearchResult[]): void {
 		return;
 	}
 
-	const tasks: TaskSearchResult[] = [];
-	const documents: DocumentSearchResult[] = [];
-	const decisions: DecisionSearchResult[] = [];
-
-	for (const result of results) {
-		if (result.type === "task") {
-			tasks.push(result);
-			continue;
-		}
-		if (result.type === "document") {
-			documents.push(result);
-			continue;
-		}
-		decisions.push(result);
-	}
-
+	const tasks = results.filter(isTaskSearchResult);
 	const localTasks = tasks.filter((t) => isLocalEditableTask(t.task));
 
-	let printed = false;
-
-	if (localTasks.length > 0) {
-		console.log("Tasks:");
-		for (const taskResult of localTasks) {
-			const { task } = taskResult;
-			const scoreText = formatScore(taskResult.score);
-			const statusText = task.status ? ` (${task.status})` : "";
-			const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
-			console.log(`  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (documents.length > 0) {
-		if (printed) {
-			console.log("");
-		}
-		console.log("Documents:");
-		for (const documentResult of documents) {
-			const { document } = documentResult;
-			const scoreText = formatScore(documentResult.score);
-			console.log(`  ${document.id} - ${document.title}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (decisions.length > 0) {
-		if (printed) {
-			console.log("");
-		}
-		console.log("Decisions:");
-		for (const decisionResult of decisions) {
-			const { decision } = decisionResult;
-			const scoreText = formatScore(decisionResult.score);
-			console.log(`  ${decision.id} - ${decision.title}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (!printed) {
+	if (localTasks.length === 0) {
 		console.log("No results found.");
+		return;
+	}
+
+	console.log("Tasks:");
+	for (const taskResult of localTasks) {
+		const { task } = taskResult;
+		const scoreText = formatScore(taskResult.score);
+		const statusText = task.status ? ` (${task.status})` : "";
+		const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
+		console.log(`  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`);
 	}
 }
 
@@ -2600,21 +2394,10 @@ taskCmd
 
 taskCmd
 	.command("demote <taskId>")
-	.description("move task back to drafts")
-	.action(async (taskId: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		try {
-			const success = await core.demoteTask(taskId);
-			if (success) {
-				console.log(`Demoted task ${taskId}`);
-			} else {
-				console.error(`Task ${taskId} not found.`);
-			}
-		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
-			process.exitCode = 1;
-		}
+	.description("(removed) move task back to drafts")
+	.action(() => {
+		console.error("The 'task demote' command has been removed. Use 'backlog task edit <id> --status Draft' instead.");
+		process.exit(2);
 	});
 
 taskCmd
@@ -2666,200 +2449,13 @@ taskCmd
 		});
 	});
 
-const draftCmd = program.command("draft");
-
-draftCmd
-	.command("list")
-	.description("list all drafts")
-	.option("--sort <field>", "sort drafts by field (priority, id)")
-	.option("--plain", "use plain text output")
-	.action(async (options: { plain?: boolean; sort?: string }) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		await core.ensureConfigLoaded();
-		const drafts = await core.filesystem.listDrafts();
-
-		if (!drafts || drafts.length === 0) {
-			console.log("No drafts found.");
-			return;
-		}
-
-		// Apply sorting - default to priority sorting like the web UI
-		const { sortTasks } = await import("./utils/task-sorting.ts");
-		let sortedDrafts = drafts;
-
-		if (options.sort) {
-			const validSortFields = ["priority", "id"];
-			const sortField = options.sort.toLowerCase();
-			if (!validSortFields.includes(sortField)) {
-				console.error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
-				process.exitCode = 1;
-				return;
-			}
-			sortedDrafts = sortTasks(drafts, sortField);
-		} else {
-			// Default to priority sorting to match web UI behavior
-			sortedDrafts = sortTasks(drafts, "priority");
-		}
-
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			// Plain text output for non-interactive environments
-			console.log("Drafts:");
-			for (const draft of sortedDrafts) {
-				const priorityIndicator = draft.priority ? `[${draft.priority.toUpperCase()}] ` : "";
-				console.log(`  ${priorityIndicator}${draft.id} - ${draft.title}`);
-			}
-		} else {
-			// Interactive UI - use unified view with draft support
-			const firstDraft = sortedDrafts[0];
-			if (!firstDraft) return;
-
-			const { runUnifiedView } = await import("./ui/unified-view.ts");
-			await runUnifiedView({
-				core,
-				initialView: "task-list",
-				selectedTask: firstDraft,
-				tasks: sortedDrafts,
-				filter: {
-					filterDescription: "All Drafts",
-				},
-				title: "Drafts",
-			});
-		}
-	});
-
-draftCmd
-	.command("create <title>")
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
-	.option("--desc <text>", "alias for --description")
-	.option("-a, --assignee <assignee>")
-	.option("-s, --status <status>")
-	.option("-l, --labels <labels>")
-	.action(async (title: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		await core.ensureConfigLoaded();
-		try {
-			const { task, filePath } = await core.createTaskFromInput({
-				title,
-				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
-				status: "Draft",
-				assignee: options.assignee ? [String(options.assignee)] : undefined,
-				labels: options.labels
-					? String(options.labels)
-							.split(",")
-							.map((label: string) => label.trim())
-							.filter(Boolean)
-					: undefined,
-			});
-			console.log(`Created draft ${task.id}`);
-			console.log(`File: ${filePath}`);
-		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
-			process.exitCode = 1;
-		}
-	});
-
-draftCmd
-	.command("archive <taskId>")
-	.description("archive a draft")
-	.action(async (taskId: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const success = await core.archiveDraft(taskId);
-		if (success) {
-			console.log(`Archived draft ${taskId}`);
-		} else {
-			console.error(`Draft ${taskId} not found.`);
-		}
-	});
-
-draftCmd
-	.command("promote <taskId>")
-	.description("promote draft to task")
-	.action(async (taskId: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		try {
-			const success = await core.promoteDraft(taskId);
-			if (success) {
-				console.log(`Promoted draft ${taskId}`);
-			} else {
-				console.error(`Draft ${taskId} not found.`);
-			}
-		} catch (error) {
-			console.error(error instanceof Error ? error.message : String(error));
-			process.exitCode = 1;
-		}
-	});
-
-draftCmd
-	.command("view <taskId>")
-	.description("display draft details")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (taskId: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
-	});
-
-draftCmd
-	.argument("[taskId]")
-	.option("--plain", "use plain text output")
-	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
-		if (!taskId) {
-			draftCmd.help();
-			return;
-		}
-
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+program
+	.command("draft")
+	.allowUnknownOption()
+	.allowExcessArguments()
+	.action(() => {
+		console.error("The 'draft' command has been removed. Use 'backlog task create --draft' to create draft tasks.");
+		process.exit(2);
 	});
 
 const milestoneCmd = program.command("milestone").aliases(["milestones"]);
@@ -3133,137 +2729,22 @@ boardCmd
 		}
 	});
 
-const docCmd = program.command("doc");
-
-docCmd
-	.command("create <title>")
-	.option("-p, --path <path>")
-	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
-	.action(async (title: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const document = await core.createDocumentFromInput({
-			title: title as string,
-			type: (options.type || "other") as DocType["type"],
-			path: options.path,
-			content: "",
-		});
-		console.log(`Created document ${document.id}`);
-		if (document.path) {
-			console.log(`Path: ${core.filesystem.backlogDirName}/docs/${document.path}`);
-		}
+program
+	.command("doc")
+	.allowUnknownOption()
+	.allowExcessArguments()
+	.action(() => {
+		console.error("The 'doc' command has been removed.");
+		process.exit(2);
 	});
 
-docCmd
-	.command("update <docId>")
-	.description("update a document")
-	.option("--title <title>", "update document title")
-	.option("--content <content>", "replace document markdown content")
-	.option("-p, --path <path>", "move document under a docs-relative path (absolute paths and .. are rejected)")
-	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
-	.option("--tags <tags>", "set tags (comma-separated or use multiple times)", createMultiValueAccumulator())
-	.action(async (docId: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const existingDocument = await core.getDocument(docId);
-		if (!existingDocument) {
-			throw new Error(`Document not found: ${docId}`);
-		}
-
-		const document = await core.updateDocumentFromInput({
-			id: docId,
-			title: options.title,
-			content: options.content ?? existingDocument.rawContent,
-			type: options.type,
-			path: options.path,
-			...(options.tags !== undefined && { tags: parseDelimitedStringList(options.tags) ?? [] }),
-		});
-
-		console.log(`Updated document ${document.id}`);
-		if (document.path) {
-			console.log(`Path: ${core.filesystem.backlogDirName}/docs/${document.path}`);
-		}
-	});
-
-docCmd
-	.command("list")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.action(async (options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const docs = await core.filesystem.listDocuments();
-		if (docs.length === 0) {
-			console.log("No docs found.");
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			for (const d of docs) {
-				console.log(`${d.id} - ${d.title}`);
-			}
-			return;
-		}
-
-		// Interactive UI
-		const selected = await genericSelectList("Select a document", docs);
-		if (selected) {
-			// Show document details (recursive search)
-			const files = await Array.fromAsync(
-				new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
-			);
-			const docFile = files.find(
-				(f) => f.startsWith(`${selected.id} -`) || f.endsWith(`/${selected.id}.md`) || f === `${selected.id}.md`,
-			);
-			if (docFile) {
-				const filePath = join(core.filesystem.docsDir, docFile);
-				const content = await Bun.file(filePath).text();
-				await scrollableViewer(content);
-			}
-		}
-	});
-
-// Document view command
-docCmd
-	.command("view <docId>")
-	.description("view a document")
-	.action(async (docId: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		try {
-			const content = await core.getDocumentContent(docId);
-			if (content === null) {
-				console.error(`Document ${docId} not found.`);
-				return;
-			}
-			await scrollableViewer(content);
-		} catch {
-			console.error(`Document ${docId} not found.`);
-		}
-	});
-
-const decisionCmd = program.command("decision");
-
-decisionCmd
-	.command("create <title>")
-	.option("-s, --status <status>")
-	.action(async (title: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const id = await generateNextDecisionId(core);
-		const decision: Decision = {
-			id,
-			title: title as string,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
-			status: (options.status || "proposed") as Decision["status"],
-			context: "",
-			decision: "",
-			consequences: "",
-			rawContent: "",
-		};
-		await core.createDecision(decision);
-		console.log(`Created decision ${id}`);
+program
+	.command("decision")
+	.allowUnknownOption()
+	.allowExcessArguments()
+	.action(() => {
+		console.error("The 'decision' command has been removed.");
+		process.exit(2);
 	});
 
 // Agents command group

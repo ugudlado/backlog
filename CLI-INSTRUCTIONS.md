@@ -22,13 +22,6 @@ The advanced wizard includes interactive Definition of Done defaults editing (ad
 
 You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups, and init also supports `--backlog-dir <path>` plus `--config-location <folder|root>` for scripted configuration.
 
-## Documentation
-
-- Document IDs are global across all subdirectories under `backlog/docs`. You can organize files in nested folders (e.g., `backlog/docs/guides/`), and `backlog doc list` and `backlog doc view <id>` work across the entire tree.
-- Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
-- Use `backlog doc update doc-1 --content "Updated markdown"` to update document content. Add `--title`, `-t/--type`, `--tags`, or `-p/--path` to update metadata or move the document while preserving omitted fields.
-- Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
-
 ## Task Management
 
 | Action      | Example                                              |
@@ -120,7 +113,7 @@ The same shape works for `--plan`, `--notes`, `--final-summary`, and the `--appe
 
 ## Search
 
-Find tasks, documents, and decisions across your entire backlog with fuzzy search:
+Find tasks across your entire backlog with fuzzy search:
 
 | Action             | Example                                              |
 |--------------------|------------------------------------------------------|
@@ -139,9 +132,8 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Create draft | `backlog task create "Feature" --draft`             |
-| Draft flow  | `backlog draft create "Spike GraphQL"` → `backlog draft promote 3.1` |
-| Demote to draft| `backlog task demote <id>` |
+| Create draft task | `backlog task create "Feature" --draft` (creates task with `status: Draft`) |
+| Promote draft | `backlog task edit <id> --status "To Do"` |
 
 ## Dependency Management
 
@@ -199,26 +191,7 @@ The server picks its project from the registry's `current` pointer (set on UI sw
 
 `service start` writes `~/Library/LaunchAgents/md.backlog.browser.plist` with `KeepAlive` and `RunAtLoad`, so the server restarts on crash and on login. The plist does not bake in a project. When you switch projects in the web UI, Backlog writes the new selection to the registry and the next service start picks it up.
 
-For Linux (systemd) and Windows recipes, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
-
-## Documentation
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create doc | `backlog doc create "API Guidelines"` |
-| Create with path | `backlog doc create "Setup Guide" -p guides/setup` |
-| Create with type | `backlog doc create "Architecture" -t guide` |
-| Update content | `backlog doc update doc-1 --content "Updated markdown"` |
-| Update metadata/path | `backlog doc update doc-1 --title "Setup Handbook" -t guide --tags setup,runbook -p guides` |
-| List docs | `backlog doc list` |
-| View doc | `backlog doc view doc-1` |
-
-## Decisions
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
-| Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+For Linux (systemd) and Windows recipes, see the service setup documentation in the project README.
 
 ## Agent Instructions
 

@@ -26,7 +26,6 @@ import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerDefinitionOfDoneTools } from "./tools/definition-of-done/index.ts";
-import { registerDocumentTools } from "./tools/documents/index.ts";
 import { registerMilestoneTools } from "./tools/milestones/index.ts";
 import { registerTaskTools } from "./tools/tasks/index.ts";
 import { registerWorkflowTools } from "./tools/workflow/index.ts";
@@ -246,7 +245,6 @@ export class McpServer extends Core {
 		registerTaskTools(this, config);
 		registerMilestoneTools(this);
 		registerDefinitionOfDoneTools(this);
-		registerDocumentTools(this, config);
 
 		// Notify client that available tools/resources/prompts changed
 		await this.server.sendToolListChanged();
@@ -520,7 +518,6 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	registerTaskTools(server, config);
 	registerMilestoneTools(server);
 	registerDefinitionOfDoneTools(server);
-	registerDocumentTools(server, config);
 
 	if (options.debug) {
 		console.error("MCP server initialised (stdio transport only).");

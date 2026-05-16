@@ -223,11 +223,6 @@ describe("McpServer bootstrap", () => {
 			"milestone_archive",
 			"definition_of_done_defaults_get",
 			"definition_of_done_defaults_upsert",
-			"document_list",
-			"document_view",
-			"document_create",
-			"document_update",
-			"document_search",
 		]);
 
 		const resources = await server.testInterface.listResources();

@@ -1,4 +1,4 @@
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -9,14 +9,7 @@ import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
-import {
-	DOCUMENT_TYPE_VALUES,
-	type Document,
-	type SearchPriorityFilter,
-	type SearchResultType,
-	type Task,
-	type TaskUpdateInput,
-} from "../types/index.ts";
+import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";
@@ -26,70 +19,6 @@ import { pathExistsAsDirectory, removeWorkspaceEntry, toAbsoluteProjectRoot } fr
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
 const DEFAULT_PREFIX = "task-";
-const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
-
-class DocumentPayloadValidationError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "DocumentPayloadValidationError";
-	}
-}
-
-function parseDocumentType(value: unknown): Document["type"] | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== "string") {
-		throw new DocumentPayloadValidationError("Document type must be a string.");
-	}
-	if (!DOCUMENT_TYPES.has(value as Document["type"])) {
-		throw new DocumentPayloadValidationError(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
-	}
-	return value as Document["type"];
-}
-
-function parseDocumentTags(value: unknown): string[] | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (!Array.isArray(value)) {
-		throw new DocumentPayloadValidationError("Document tags must be an array of strings.");
-	}
-	if (value.some((tag) => typeof tag !== "string")) {
-		throw new DocumentPayloadValidationError("Document tags must be an array of strings.");
-	}
-	return Array.from(new Set(value.map((tag) => tag.trim()).filter((tag) => tag.length > 0)));
-}
-
-function parseCreateDocumentPath(value: unknown): string | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== "string") {
-		throw new DocumentPayloadValidationError("Document path must be a string.");
-	}
-	return value;
-}
-
-function parseUpdateDocumentPath(value: unknown): string | null | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (value === null || typeof value === "string") {
-		return value;
-	}
-	throw new DocumentPayloadValidationError("Document path must be a string or null.");
-}
-
-function isDocumentValidationError(error: Error): boolean {
-	return (
-		error instanceof DocumentPayloadValidationError ||
-		error.message.startsWith("Document type ") ||
-		error.message.startsWith("Document path ") ||
-		error.message === "Title is required to create a document." ||
-		error.message === "Document title cannot be empty."
-	);
-}
 
 /**
  * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
@@ -227,7 +156,7 @@ export class BacklogServer {
 					return;
 				}
 
-				// Broadcast for tasks/documents/decisions so clients refresh caches/search
+				// Broadcast for tasks so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
 				this.broadcastTasksUpdated();
 			});
@@ -306,11 +235,6 @@ export class BacklogServer {
 					"/": spaIndexHtml,
 					"/tasks": spaIndexHtml,
 					"/milestones": spaIndexHtml,
-					"/drafts": spaIndexHtml,
-					"/documentation": spaIndexHtml,
-					"/documentation/*": spaIndexHtml,
-					"/decisions": spaIndexHtml,
-					"/decisions/*": spaIndexHtml,
 					"/statistics": spaIndexHtml,
 					"/settings": spaIndexHtml,
 
@@ -336,35 +260,6 @@ export class BacklogServer {
 					"/api/config": {
 						GET: async () => await this.handleGetConfig(),
 						PUT: async (req: Request) => await this.handleUpdateConfig(req),
-					},
-					"/api/docs": {
-						GET: async () => await this.handleListDocs(),
-						POST: async (req: Request) => await this.handleCreateDoc(req),
-					},
-					"/api/doc/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
-					},
-					"/api/docs/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
-					},
-					"/api/decisions": {
-						GET: async () => await this.handleListDecisions(),
-						POST: async (req: Request) => await this.handleCreateDecision(req),
-					},
-					"/api/decision/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
-					},
-					"/api/decisions/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateDecision(req, req.params.id),
-					},
-					"/api/drafts": {
-						GET: async () => await this.handleListDrafts(),
-					},
-					"/api/drafts/:id/promote": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
 					},
 					"/api/milestones": {
 						GET: async () => await this.handleListMilestones(),
@@ -602,10 +497,7 @@ export class BacklogServer {
 			// disallow traversal
 			if (relPath.includes("..")) return new Response("Not Found", { status: 404 });
 
-			// derive backlog root from docsDir (parent of backlog/docs)
-			const docsDir = this.core.filesystem.docsDir;
-			const backlogRoot = dirname(docsDir);
-			const assetsRoot = join(backlogRoot, "assets");
+			const assetsRoot = join(this.core.filesystem.backlogDir, "assets");
 			const filePath = join(assetsRoot, relPath);
 
 			if (!filePath.startsWith(assetsRoot)) return new Response("Not Found", { status: 404 });
@@ -722,7 +614,6 @@ export class BacklogServer {
 			const url = new URL(req.url);
 			const query = url.searchParams.get("query") ?? undefined;
 			const limitParam = url.searchParams.get("limit");
-			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
 			const statusParams = url.searchParams.getAll("status");
 			const priorityParamsRaw = url.searchParams.getAll("priority");
 			const assigneeParamsRaw = [...url.searchParams.getAll("assignee"), ...url.searchParams.getAll("assignees")];
@@ -751,20 +642,6 @@ export class BacklogServer {
 					return Response.json({ error: "limit must be a positive integer" }, { status: 400 });
 				}
 				limit = parsed;
-			}
-
-			let types: SearchResultType[] | undefined;
-			if (typeParams.length > 0) {
-				const allowed: SearchResultType[] = ["task", "document", "decision"];
-				const normalizedTypes = typeParams
-					.map((value) => value.toLowerCase())
-					.filter((value): value is SearchResultType => {
-						return allowed.includes(value as SearchResultType);
-					});
-				if (normalizedTypes.length === 0) {
-					return Response.json({ error: "type must be task, document, or decision" }, { status: 400 });
-				}
-				types = normalizedTypes;
 			}
 
 			const filters: {
@@ -821,7 +698,7 @@ export class BacklogServer {
 				}
 			}
 
-			const results = searchService.search({ query, limit, types, filters });
+			const results = searchService.search({ query, limit, filters });
 			return Response.json(results);
 		} catch (error) {
 			console.error("Error performing search:", error);
@@ -1045,188 +922,6 @@ export class BacklogServer {
 		return Response.json(statuses);
 	}
 
-	// Documentation handlers
-	private async handleListDocs(): Promise<Response> {
-		try {
-			const store = await this.getContentStoreInstance();
-			const docs = store.getDocuments();
-			const docFiles = docs.map((doc) => ({
-				name: doc.path?.split(/[\\/]+/).pop() ?? `${doc.title}.md`,
-				id: doc.id,
-				title: doc.title,
-				type: doc.type,
-				path: doc.path,
-				createdDate: doc.createdDate,
-				updatedDate: doc.updatedDate,
-				lastModified: doc.updatedDate || doc.createdDate,
-				tags: doc.tags || [],
-			}));
-			return Response.json(docFiles);
-		} catch (error) {
-			console.error("Error listing documents:", error);
-			return Response.json([]);
-		}
-	}
-
-	private async handleGetDoc(docId: string): Promise<Response> {
-		try {
-			const doc = await this.core.getDocument(docId);
-			if (!doc) {
-				return Response.json({ error: "Document not found" }, { status: 404 });
-			}
-			return Response.json(doc);
-		} catch (error) {
-			console.error("Error loading document:", error);
-			return Response.json({ error: "Document not found" }, { status: 404 });
-		}
-	}
-
-	private async handleCreateDoc(req: Request): Promise<Response> {
-		try {
-			const body = await req.json();
-			const filename = typeof body?.filename === "string" ? body.filename : undefined;
-			const title = typeof body?.title === "string" ? body.title : filename?.replace(/\.md$/i, "");
-			if (!title || title.trim().length === 0) {
-				return Response.json({ error: "Document title is required" }, { status: 400 });
-			}
-			const type = parseDocumentType(body?.type);
-			const path = parseCreateDocumentPath(body?.path);
-			const tags = parseDocumentTags(body?.tags);
-
-			const document = await this.core.createDocumentFromInput({
-				title,
-				content: typeof body?.content === "string" ? body.content : "",
-				type,
-				path,
-				tags,
-			});
-			return Response.json({ success: true, ...document }, { status: 201 });
-		} catch (error) {
-			if (error instanceof SyntaxError) {
-				return Response.json({ error: "Invalid request payload" }, { status: 400 });
-			}
-			if (error instanceof Error && isDocumentValidationError(error)) {
-				return Response.json({ error: error.message }, { status: 400 });
-			}
-			console.error("Error creating document:", error);
-			return Response.json({ error: "Failed to create document" }, { status: 500 });
-		}
-	}
-
-	private async handleUpdateDoc(req: Request, docId: string): Promise<Response> {
-		try {
-			const body = await req.json();
-			const content = typeof body?.content === "string" ? body.content : undefined;
-			const title = typeof body?.title === "string" ? body.title : undefined;
-			const path = parseUpdateDocumentPath(body?.path);
-			const type = parseDocumentType(body?.type);
-			const tags = parseDocumentTags(body?.tags);
-
-			if (typeof content !== "string") {
-				return Response.json({ error: "Document content is required" }, { status: 400 });
-			}
-
-			let normalizedTitle: string | undefined;
-
-			if (typeof title === "string") {
-				normalizedTitle = title.trim();
-				if (normalizedTitle.length === 0) {
-					return Response.json({ error: "Document title cannot be empty" }, { status: 400 });
-				}
-			}
-
-			const document = await this.core.updateDocumentFromInput({
-				id: docId,
-				content,
-				...(normalizedTitle && { title: normalizedTitle }),
-				...(path !== undefined && { path }),
-				...(type !== undefined && { type }),
-				...(tags !== undefined && { tags }),
-			});
-			return Response.json({ success: true, ...document });
-		} catch (error) {
-			if (error instanceof SyntaxError) {
-				return Response.json({ error: "Invalid request payload" }, { status: 400 });
-			}
-			if (error instanceof Error) {
-				if (error.message.startsWith("Document not found")) {
-					return Response.json({ error: error.message }, { status: 404 });
-				}
-				if (isDocumentValidationError(error)) {
-					return Response.json({ error: error.message }, { status: 400 });
-				}
-			}
-			console.error("Error updating document:", error);
-			return Response.json({ error: "Failed to update document" }, { status: 500 });
-		}
-	}
-
-	// Decision handlers
-	private async handleListDecisions(): Promise<Response> {
-		try {
-			const store = await this.getContentStoreInstance();
-			const decisions = store.getDecisions();
-			const decisionFiles = decisions.map((decision) => ({
-				id: decision.id,
-				title: decision.title,
-				status: decision.status,
-				date: decision.date,
-				context: decision.context,
-				decision: decision.decision,
-				consequences: decision.consequences,
-				alternatives: decision.alternatives,
-			}));
-			return Response.json(decisionFiles);
-		} catch (error) {
-			console.error("Error listing decisions:", error);
-			return Response.json([]);
-		}
-	}
-
-	private async handleGetDecision(decisionId: string): Promise<Response> {
-		try {
-			const store = await this.getContentStoreInstance();
-			const normalizedId = decisionId.startsWith("decision-") ? decisionId : `decision-${decisionId}`;
-			const decision = store.getDecisions().find((item) => item.id === normalizedId || item.id === decisionId);
-
-			if (!decision) {
-				return Response.json({ error: "Decision not found" }, { status: 404 });
-			}
-
-			return Response.json(decision);
-		} catch (error) {
-			console.error("Error loading decision:", error);
-			return Response.json({ error: "Decision not found" }, { status: 404 });
-		}
-	}
-
-	private async handleCreateDecision(req: Request): Promise<Response> {
-		const { title } = await req.json();
-
-		try {
-			const decision = await this.core.createDecisionWithTitle(title);
-			return Response.json(decision, { status: 201 });
-		} catch (error) {
-			console.error("Error creating decision:", error);
-			return Response.json({ error: "Failed to create decision" }, { status: 500 });
-		}
-	}
-
-	private async handleUpdateDecision(req: Request, decisionId: string): Promise<Response> {
-		const content = await req.text();
-
-		try {
-			await this.core.updateDecisionFromContent(decisionId, content);
-			return Response.json({ success: true });
-		} catch (error) {
-			if (error instanceof Error && error.message.includes("not found")) {
-				return Response.json({ error: "Decision not found" }, { status: 404 });
-			}
-			console.error("Error updating decision:", error);
-			return Response.json({ error: "Failed to update decision" }, { status: 500 });
-		}
-	}
-
 	private async handleGetConfig(): Promise<Response> {
 		try {
 			const config = await this.core.filesystem.loadConfig();
@@ -1274,33 +969,6 @@ export class BacklogServer {
 	private handleError(error: Error): Response {
 		console.error("Server Error:", error);
 		return new Response("Internal Server Error", { status: 500 });
-	}
-
-	// Draft handlers
-	private async handleListDrafts(): Promise<Response> {
-		try {
-			const drafts = await this.core.filesystem.listDrafts();
-			return Response.json(drafts);
-		} catch (error) {
-			console.error("Error listing drafts:", error);
-			return Response.json([]);
-		}
-	}
-
-	private async handlePromoteDraft(draftId: string): Promise<Response> {
-		try {
-			const success = await this.core.promoteDraft(draftId);
-			if (!success) {
-				return Response.json({ error: "Draft not found" }, { status: 404 });
-			}
-			return Response.json({ success: true });
-		} catch (error) {
-			console.error("Error promoting draft:", error);
-			if (isCreateLockError(error)) {
-				return Response.json({ error: error.message }, { status: 409 });
-			}
-			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
-		}
 	}
 
 	// Milestone handlers
@@ -1686,10 +1354,10 @@ export class BacklogServer {
 	private async handleGetStatistics(): Promise<Response> {
 		try {
 			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			const { tasks, statuses } = await this.core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
-			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const statistics = getTaskStatistics(tasks, statuses);
 
 			// Convert Maps to objects for JSON serialization
 			const response = {

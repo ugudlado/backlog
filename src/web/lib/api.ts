@@ -1,8 +1,6 @@
 import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
-	Decision,
-	Document,
 	Milestone,
 	SearchPriorityFilter,
 	SearchResult,
@@ -363,117 +361,6 @@ export class ApiClient {
 		});
 		if (!response.ok) {
 			throw new Error("Failed to update config");
-		}
-		return response.json();
-	}
-
-	async fetchDocs(): Promise<Document[]> {
-		const response = await fetch(`${API_BASE}/docs`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch documentation");
-		}
-		return response.json();
-	}
-
-	async fetchDoc(filename: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch document");
-		}
-		return response.json();
-	}
-
-	async fetchDocument(id: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/doc/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch document");
-		}
-		return response.json();
-	}
-
-	async updateDoc(filename: string, content: string, title?: string, path?: string | null): Promise<Document> {
-		const payload: Record<string, unknown> = { content };
-		if (typeof title === "string") {
-			payload.title = title;
-		}
-		if (path !== undefined) {
-			payload.path = path;
-		}
-
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
-			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(payload),
-		});
-		if (!response.ok) {
-			throw new Error("Failed to update document");
-		}
-		return response.json();
-	}
-
-	async createDoc(filename: string, content: string, path?: string): Promise<Document & { success?: boolean }> {
-		const response = await fetch(`${API_BASE}/docs`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ filename, content, path }),
-		});
-		if (!response.ok) {
-			throw new Error("Failed to create document");
-		}
-		return response.json();
-	}
-
-	async fetchDecisions(): Promise<Decision[]> {
-		const response = await fetch(`${API_BASE}/decisions`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decisions");
-		}
-		return response.json();
-	}
-
-	async fetchDecision(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
-		}
-		return response.json();
-	}
-
-	async fetchDecisionData(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decision/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
-		}
-		return response.json();
-	}
-
-	async updateDecision(id: string, content: string): Promise<void> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
-			method: "PUT",
-			headers: {
-				"Content-Type": "text/plain",
-			},
-			body: content,
-		});
-		if (!response.ok) {
-			throw new Error("Failed to update decision");
-		}
-	}
-
-	async createDecision(title: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ title }),
-		});
-		if (!response.ok) {
-			throw new Error("Failed to create decision");
 		}
 		return response.json();
 	}

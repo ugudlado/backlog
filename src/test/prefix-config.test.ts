@@ -306,24 +306,6 @@ describe("prefix-config", () => {
 			const config = {} as BacklogConfig;
 			expect(getPrefixForType(EntityType.Task, config)).toBe("task");
 		});
-
-		test("returns hardcoded draft prefix (not configurable)", () => {
-			expect(getPrefixForType(EntityType.Draft)).toBe("draft");
-		});
-
-		test("draft prefix is always hardcoded regardless of config", () => {
-			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
-			// Draft prefix is hardcoded, not part of config
-			expect(getPrefixForType(EntityType.Draft, config)).toBe("draft");
-		});
-
-		test("returns doc prefix for Document type", () => {
-			expect(getPrefixForType(EntityType.Document)).toBe("doc");
-		});
-
-		test("returns decision prefix for Decision type", () => {
-			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
-		});
 	});
 
 	describe("extractAnyPrefix", () => {
