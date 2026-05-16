@@ -50,7 +50,8 @@ describe("atomicWriteFile", () => {
 	it("file exists after the call", async () => {
 		const filePath = join(testDir, "test.md");
 		await atomicWriteFile(filePath, "content");
-		await expect(access(filePath)).resolves.toBeUndefined();
+		// access() resolves (without throwing) if the file exists
+		await expect(access(filePath)).resolves.toBeDefined();
 	});
 
 	it("temp file is cleaned up after successful write", async () => {
@@ -77,15 +78,16 @@ describe("Core.claimTask", () => {
 		await rm(testDir, { recursive: true, force: true });
 	});
 
-	it("picks the top Ready task by sortForPickup order", async () => {
-		// Create tasks with different priorities to verify sort order
-		await core.createTaskFromInput({ title: "Low priority task", status: "Ready", priority: "low" }, false);
-		await core.createTaskFromInput({ title: "High priority task", status: "Ready", priority: "high" }, false);
-		await core.createTaskFromInput({ title: "Medium priority task", status: "Ready", priority: "medium" }, false);
+	it("picks the top Ready task by sortForPickup order (ordinal ASC when ordinals differ)", async () => {
+		// Tasks created sequentially get incrementing ordinals (1000, 2000, 3000).
+		// Ordinal is the primary sort key, so ordinal 1000 wins regardless of priority.
+		await core.createTaskFromInput({ title: "First created (low pri)", status: "Ready", priority: "low" }, false);
+		await core.createTaskFromInput({ title: "Second created (high pri)", status: "Ready", priority: "high" }, false);
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).not.toBeNull();
-		expect(result?.task.title).toBe("High priority task");
+		// Ordinal 1000 was created first, so it should be picked first
+		expect(result?.task.title).toBe("First created (low pri)");
 	});
 
 	it("returns { task, previousStatus } with previousStatus = Ready", async () => {

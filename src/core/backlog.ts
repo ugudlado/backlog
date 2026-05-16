@@ -1,8 +1,9 @@
 import { rename as moveFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem } from "../file-system/operations.ts";
+import { atomicWriteFile, FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import {
 	type AcceptanceCriterion,
 	EntityType,
@@ -36,6 +37,7 @@ import {
 	validateDependencies,
 } from "../utils/task-builders.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import { sortForPickup } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
@@ -2414,9 +2416,74 @@ export class Core {
 
 	/**
 	 * Atomically claim the next task with the given status.
-	 * Stub implementation — replaced in T-5.
+	 * The entire read→filter→sort→pick→mutate→write sequence runs inside withCreateLock
+	 * so two concurrent callers can never claim the same task (AC-5).
 	 */
-	async claimTask(_opts: { status?: string; agent?: string }): Promise<{ task: Task; previousStatus: string } | null> {
-		throw new Error("claimTask not implemented yet");
+	async claimTask(opts: { status?: string; agent?: string }): Promise<{ task: Task; previousStatus: string } | null> {
+		return await this.withCreateLock(async () => {
+			// 1. Resolve status filter
+			const statusFilter = opts.status
+				? await this.requireCanonicalStatus(opts.status)
+				: await (async () => {
+						// Default to "Ready" if configured, else config.defaultStatus
+						const readyCanonical = await resolveCanonicalStatus("Ready", this);
+						if (readyCanonical) return readyCanonical;
+						const config = await this.fs.loadConfig();
+						return config?.defaultStatus ?? FALLBACK_STATUS;
+					})();
+
+			// 2. Load and filter tasks
+			const allTasks = (await this.fs.listTasks()).filter(isLocalEditableTask);
+			const eligible = allTasks.filter((t) => (t.status ?? "").toLowerCase() === statusFilter.toLowerCase());
+
+			// 3. Return null if no eligible tasks
+			if (eligible.length === 0) return null;
+
+			// 4. Pick the top task by pickup sort order
+			const sorted = sortForPickup(eligible);
+			const top = sorted[0] as Task; // safe: eligible.length > 0 checked above
+			const previousStatus = top.status ?? "";
+
+			// 5. Mutate: flip status to "In Progress"
+			const inProgressCanonical = (await resolveCanonicalStatus("In Progress", this)) ?? "In Progress";
+			top.status = inProgressCanonical;
+
+			// 6. Append agent to assignee (strip leading @)
+			if (opts.agent) {
+				normalizeAssignee(top);
+				const handle = opts.agent.replace(/^@/, "");
+				if (!top.assignee!.includes(handle)) {
+					top.assignee!.push(handle);
+				}
+			}
+
+			// 7. Stamp updatedDate (same format as updateTask)
+			top.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+			// 8. Write atomically (crash-safe, same filesystem as the original)
+			if (!top.filePath) {
+				throw new Error(`Task ${top.id} has no filePath — cannot claim`);
+			}
+			const content = serializeTask(top);
+			await atomicWriteFile(top.filePath, content);
+
+			// 9. Sync contentStore if present
+			if (this.contentStore) {
+				const refreshed = await this.fs.loadTask(top.id);
+				if (refreshed) {
+					this.contentStore.upsertTask(refreshed);
+				}
+			}
+
+			// 10. Fire status-change callback
+			await this.executeStatusChangeCallback(top, previousStatus, top.status);
+
+			// 11. Auto-commit if configured
+			if (await this.shouldAutoCommit()) {
+				await this.git.addAndCommitTaskFile(top.id, top.filePath, "update");
+			}
+
+			return { task: top, previousStatus };
+		});
 	}
 }

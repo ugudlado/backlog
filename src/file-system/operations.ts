@@ -1245,9 +1245,12 @@ ${description || `Milestone: ${title}`}`,
 }
 
 /**
- * Atomically write content to filePath by writing to a temp file then renaming.
- * Stub implementation — replaced in T-5.
+ * Atomically write content to filePath by writing to a sibling .tmp file then
+ * renaming over the target. rename() is atomic on the same filesystem, so a
+ * process death mid-write leaves the original intact and an inert orphan .tmp.
  */
-export async function atomicWriteFile(_filePath: string, _content: string): Promise<void> {
-	throw new Error("atomicWriteFile not implemented yet");
+export async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+	const tmpPath = `${filePath}.tmp`;
+	await Bun.write(tmpPath, content);
+	await rename(tmpPath, filePath);
 }
