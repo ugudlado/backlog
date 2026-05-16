@@ -54,7 +54,7 @@ If you can simplify the code, do it.
 - `bunx tsc --noEmit` - Type-check code
 - `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
-- `bun run cli` - Uses the CLI tool directly
+- `bun run cli` - Dev build only; do NOT use for task management commands
 
 ### Testing
 
@@ -63,9 +63,13 @@ If you can simplify the code, do it.
 
 ### Configuration Management
 
-- `bun run cli config list` - View all configuration values
-- `bun run cli config get <key>` - Get a specific config value (e.g. defaultEditor)
-- `bun run cli config set <key> <value>` - Set a config value with validation
+Use the globally installed `backlog` binary for all task and config commands:
+
+- `backlog config list` - View all configuration values
+- `backlog config get <key>` - Get a specific config value (e.g. defaultEditor)
+- `backlog config set <key> <value>` - Set a config value with validation
+
+> **Agents:** Always use `backlog <command>`, never `bun run cli <command>`. The dev build triggers a slow CSS rebuild and hits sandbox write restrictions on `~/.config/backlog/` paths.
 
 ## Core Structure
 
