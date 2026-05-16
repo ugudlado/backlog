@@ -147,12 +147,6 @@ export async function remoteTaskEdit(taskId: string, updates: TaskUpdateInput): 
 	});
 }
 
-// ─── Task complete ────────────────────────────────────────────────────────────
-
-export async function remoteTaskComplete(taskId: string): Promise<void> {
-	return apiFetchVoid(`/api/tasks/${encodeURIComponent(taskId)}/complete`, { method: "POST" });
-}
-
 // ─── Task archive ─────────────────────────────────────────────────────────────
 
 export async function remoteTaskArchive(taskId: string): Promise<void> {

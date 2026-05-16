@@ -149,6 +149,16 @@ export class BacklogServer {
 		return null;
 	}
 
+	// Wraps a route handler with auth enforcement. Used for all routes registered
+	// in the `routes` dict — those never pass through the `fetch` fallback where
+	// the global auth check lives.
+	private guard<T extends Request>(handler: (req: T) => Promise<Response>): (req: T) => Promise<Response> {
+		return async (req: T) => {
+			const denied = this.checkAuth(req);
+			return denied ?? handler(req);
+		};
+	}
+
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
 		const [activeMilestones, archivedMilestones] = await Promise.all([
 			this.core.filesystem.listMilestones(),
@@ -256,91 +266,97 @@ export class BacklogServer {
 					"/statistics": spaIndexHtml,
 					"/settings": spaIndexHtml,
 
-					// API Routes using Bun's native route syntax
+					// API Routes using Bun's native route syntax.
+					// Each handler is wrapped with guard() because Bun dispatches named routes
+					// directly, bypassing the fetch fallback where the global auth check lives.
 					"/api/tasks": {
-						GET: async (req: Request) => await this.handleListTasks(req),
-						POST: async (req: Request) => await this.handleCreateTask(req),
+						GET: this.guard((req) => this.handleListTasks(req)),
+						POST: this.guard((req) => this.handleCreateTask(req)),
 					},
 					"/api/task/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
+						GET: this.guard((req: Request & { params: { id: string } }) => this.handleGetTask(req.params.id)),
 					},
 					"/api/tasks/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						GET: this.guard((req: Request & { params: { id: string } }) => this.handleGetTask(req.params.id)),
+						PUT: this.guard((req: Request & { params: { id: string } }) => this.handleUpdateTask(req, req.params.id)),
+						DELETE: this.guard((req: Request & { params: { id: string } }) => this.handleDeleteTask(req.params.id)),
 					},
 					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						POST: this.guard((req: Request & { params: { id: string } }) => this.handleCompleteTask(req.params.id)),
 					},
 					"/api/statuses": {
-						GET: async () => await this.handleGetStatuses(),
+						GET: this.guard(() => this.handleGetStatuses()),
 					},
 					"/api/config": {
-						GET: async () => await this.handleGetConfig(),
-						PUT: async (req: Request) => await this.handleUpdateConfig(req),
+						GET: this.guard(() => this.handleGetConfig()),
+						PUT: this.guard((req) => this.handleUpdateConfig(req)),
 					},
 					"/api/milestones": {
-						GET: async () => await this.handleListMilestones(),
-						POST: async (req: Request) => await this.handleCreateMilestone(req),
+						GET: this.guard(() => this.handleListMilestones()),
+						POST: this.guard((req) => this.handleCreateMilestone(req)),
 					},
 					"/api/milestones/archived": {
-						GET: async () => await this.handleListArchivedMilestones(),
+						GET: this.guard(() => this.handleListArchivedMilestones()),
 					},
 					"/api/milestones/:id": {
-						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateMilestone(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) =>
-							await this.handleRemoveMilestone(req, req.params.id),
+						GET: this.guard((req: Request & { params: { id: string } }) => this.handleGetMilestone(req.params.id)),
+						PUT: this.guard((req: Request & { params: { id: string } }) =>
+							this.handleUpdateMilestone(req, req.params.id),
+						),
+						DELETE: this.guard((req: Request & { params: { id: string } }) =>
+							this.handleRemoveMilestone(req, req.params.id),
+						),
 					},
 					"/api/milestones/:id/archive": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						POST: this.guard((req: Request & { params: { id: string } }) => this.handleArchiveMilestone(req.params.id)),
 					},
 					"/api/tasks/reorder": {
-						POST: async (req: Request) => await this.handleReorderTask(req),
+						POST: this.guard((req) => this.handleReorderTask(req)),
 					},
 					"/api/tasks/cleanup": {
-						GET: async (req: Request) => await this.handleCleanupPreview(req),
+						GET: this.guard((req) => this.handleCleanupPreview(req)),
 					},
 					"/api/tasks/cleanup/execute": {
-						POST: async (req: Request) => await this.handleCleanupExecute(req),
+						POST: this.guard((req) => this.handleCleanupExecute(req)),
 					},
 					"/api/version": {
-						GET: async () => await this.handleGetVersion(),
+						GET: this.guard(() => this.handleGetVersion()),
 					},
 					"/api/statistics": {
-						GET: async () => await this.handleGetStatistics(),
+						GET: this.guard(() => this.handleGetStatistics()),
 					},
 					"/api/status": {
-						GET: async () => await this.handleGetStatus(),
+						GET: this.guard(() => this.handleGetStatus()),
 					},
 					"/api/init": {
-						POST: async (req: Request) => await this.handleInit(req),
+						POST: this.guard((req) => this.handleInit(req)),
 					},
 					"/api/search": {
-						GET: async (req: Request) => await this.handleSearch(req),
+						GET: this.guard((req) => this.handleSearch(req)),
 					},
 					"/sequences": {
-						GET: async () => await this.handleGetSequences(),
+						GET: this.guard(() => this.handleGetSequences()),
 					},
 					"/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
+						POST: this.guard((req) => this.handleMoveSequence(req)),
 					},
 					"/api/sequences": {
-						GET: async () => await this.handleGetSequences(),
+						GET: this.guard(() => this.handleGetSequences()),
 					},
 					"/api/sequences/move": {
-						POST: async (req: Request) => await this.handleMoveSequence(req),
+						POST: this.guard((req) => this.handleMoveSequence(req)),
 					},
 					"/api/workspaces": {
-						GET: async () => await this.handleListWorkspaces(),
-						POST: async (req: Request) => await this.handleAddWorkspace(req),
+						GET: this.guard(() => this.handleListWorkspaces()),
+						POST: this.guard((req) => this.handleAddWorkspace(req)),
 					},
 					"/api/workspaces/:id": {
-						PATCH: async (req: Request & { params: { id: string } }) =>
-							await this.handlePatchWorkspace(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) =>
-							await this.handleDeleteWorkspace(req.params.id),
+						PATCH: this.guard((req: Request & { params: { id: string } }) =>
+							this.handlePatchWorkspace(req, req.params.id),
+						),
+						DELETE: this.guard((req: Request & { params: { id: string } }) =>
+							this.handleDeleteWorkspace(req.params.id),
+						),
 					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
@@ -348,21 +364,21 @@ export class BacklogServer {
 					},
 					// MCP over HTTP (Streamable HTTP transport, stateless)
 					"/mcp": {
-						GET: async (req: Request) => {
-							const authDenied = this.checkAuth(req);
-							if (authDenied) return authDenied;
-							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
-						},
-						POST: async (req: Request) => {
-							const authDenied = this.checkAuth(req);
-							if (authDenied) return authDenied;
-							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
-						},
-						DELETE: async (req: Request) => {
-							const authDenied = this.checkAuth(req);
-							if (authDenied) return authDenied;
-							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
-						},
+						GET: this.guard(
+							(req) =>
+								this.mcpServer?.handleHttpRequest(req) ??
+								Promise.resolve(new Response("MCP unavailable", { status: 503 })),
+						),
+						POST: this.guard(
+							(req) =>
+								this.mcpServer?.handleHttpRequest(req) ??
+								Promise.resolve(new Response("MCP unavailable", { status: 503 })),
+						),
+						DELETE: this.guard(
+							(req) =>
+								this.mcpServer?.handleHttpRequest(req) ??
+								Promise.resolve(new Response("MCP unavailable", { status: 503 })),
+						),
 					},
 				},
 				fetch: async (req: Request, server: Server<unknown>) => {
@@ -613,6 +629,7 @@ export class BacklogServer {
 		const status = url.searchParams.get("status") || undefined;
 		const assignee = url.searchParams.get("assignee") || undefined;
 		const parent = url.searchParams.get("parent") || undefined;
+		const milestone = url.searchParams.get("milestone") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
 		const crossBranch = url.searchParams.get("crossBranch") === "true";
 		const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
@@ -655,7 +672,7 @@ export class BacklogServer {
 
 		// Use Core.queryTasks which handles all filtering and cross-branch logic
 		const tasks = await this.core.queryTasks({
-			filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
+			filters: { status, assignee, priority, parentTaskId, milestone, labels: labels.length > 0 ? labels : undefined },
 			includeCrossBranch: crossBranch,
 		});
 
@@ -1609,6 +1626,7 @@ export class BacklogServer {
 				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) !== targetPath) {
 					this.core.reinitializeProjectRoot(targetPath);
 					await this.core.ensureConfigLoaded();
+					this.mcpServer?.reinitializeProjectRoot(targetPath);
 				}
 				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
 				await setCurrentWorkspaceId(id);
