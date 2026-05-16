@@ -1402,7 +1402,7 @@ taskCmd
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
-	.option("--draft")
+
 	.option("-p, --parent <taskId>", "specify parent task ID")
 	.option(
 		"--depends-on <taskIds>",
@@ -1467,7 +1467,6 @@ taskCmd
 			return;
 		}
 
-		const createAsDraft = Boolean(options.draft);
 		const usePlainOutput = isPlainRequested(options);
 		let ordinalValue: number | undefined;
 
@@ -1488,7 +1487,7 @@ taskCmd
 			const { task, filePath } = await core.createTaskFromInput({
 				title: title ?? "",
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
-				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
+				status: options.status ? String(options.status) : undefined,
 				assignee: options.assignee ? [String(options.assignee)] : undefined,
 				labels: options.labels
 					? String(options.labels)
@@ -1515,12 +1514,6 @@ taskCmd
 
 			if (usePlainOutput) {
 				console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
-				return;
-			}
-
-			if (createAsDraft) {
-				console.log(`Created draft ${task.id}`);
-				console.log(`File: ${filePath}`);
 				return;
 			}
 
@@ -2454,7 +2447,9 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error("The 'draft' command has been removed. Use 'backlog task create --draft' to create draft tasks.");
+		console.error(
+			"The 'draft' command has been removed. Use 'backlog task create --status Draft' to create draft tasks.",
+		);
 		process.exit(2);
 	});
 

@@ -9,18 +9,16 @@ export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 	const configuredStatuses =
 		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
 	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
-	const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
-	const enumStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
 	const defaultStatus = normalizedStatuses[0] ?? DEFAULT_STATUSES[0];
 
 	return {
 		type: "string",
 		maxLength: 100,
-		enum: enumStatuses,
+		enum: normalizedStatuses,
 		enumCaseInsensitive: true,
 		enumNormalizeWhitespace: true,
 		default: defaultStatus,
-		description: `Status value (case-insensitive). Valid values: ${enumStatuses.join(", ")}`,
+		description: `Status value (case-insensitive). Valid values: ${normalizedStatuses.join(", ")}`,
 	};
 }
 

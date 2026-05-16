@@ -886,8 +886,6 @@ export class Core {
 		}
 
 		const requestedStatus = input.status?.trim();
-		// --draft flag maps to status: Draft stored in tasks/
-		const isDraft = requestedStatus?.toLowerCase() === "draft";
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
@@ -908,11 +906,7 @@ export class Core {
 
 		let status = "";
 		if (requestedStatus) {
-			if (isDraft) {
-				status = "Draft";
-			} else {
-				status = await this.requireCanonicalStatus(requestedStatus);
-			}
+			status = await this.requireCanonicalStatus(requestedStatus);
 		}
 
 		const priority = this.normalizePriority(input.priority);
@@ -939,7 +933,7 @@ export class Core {
 			add: input.definitionOfDoneAdd,
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
-		const resolvedStatus = status || config?.defaultStatus || FALLBACK_STATUS;
+		const resolvedStatus = status || config?.statuses?.[0] || config?.defaultStatus || FALLBACK_STATUS;
 
 		const { task, filePath } = await this.withCreateLock(async () => {
 			const id = await this.generateNextId(EntityType.Task, input.parentTaskId);
