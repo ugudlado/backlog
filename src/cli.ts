@@ -62,7 +62,14 @@ import {
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
-import { isRemoteMode, remoteTaskList } from "./utils/remote-backend.ts";
+import {
+	isRemoteMode,
+	remoteTaskArchive,
+	remoteTaskCreate,
+	remoteTaskEdit,
+	remoteTaskList,
+	remoteTaskView,
+} from "./utils/remote-backend.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { getVersion } from "./utils/version.ts";
@@ -228,6 +235,66 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.doc !== undefined ||
 			options.modifiedFile !== undefined,
 	);
+}
+
+// Builds TaskEditArgs from CLI options without requiring Core (used by remote mode).
+// Skips milestone resolution and status validation — the server handles those.
+function buildCliEditArgs(taskId: string, options: Record<string, unknown>): TaskEditArgs & { id: string } {
+	const labelValues = parseDelimitedStringList(options.label as string | undefined) ?? [];
+	const addLabelValues = parseDelimitedStringList(options.addLabel as string | undefined) ?? [];
+	const removeLabelValues = parseDelimitedStringList(options.removeLabel as string | undefined) ?? [];
+	const assigneeValues = parseDelimitedStringList(options.assignee as string | undefined) ?? [];
+	const normalizedReferences = parseDelimitedStringList(options.ref as string | undefined);
+	const normalizedDocumentation = parseDelimitedStringList(options.doc as string | undefined);
+	const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile as string | undefined);
+	const notesAppendValues = toStringArray(options.appendNotes);
+	const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
+	const combinedDeps = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+	const dependencyValues = combinedDeps.length > 0 ? normalizeDependencies(combinedDeps) : undefined;
+	const acceptanceAdditions = processAcceptanceCriteriaOptions(options as Parameters<typeof processAcceptanceCriteriaOptions>[0]);
+	const dodAdditions = toStringArray(options.dod).map((v) => String(v).trim()).filter(Boolean);
+	const removeCriteria = parsePositiveIndexList(options.removeAc as string[] | undefined);
+	const checkCriteria = parsePositiveIndexList(options.checkAc as string[] | undefined);
+	const uncheckCriteria = parsePositiveIndexList(options.uncheckAc as string[] | undefined);
+	const removeDod = parsePositiveIndexList(options.removeDod as string[] | undefined);
+	const checkDod = parsePositiveIndexList(options.checkDod as string[] | undefined);
+	const uncheckDod = parsePositiveIndexList(options.uncheckDod as string[] | undefined);
+
+	const args: TaskEditArgs & { id: string } = { id: normalizeTaskId(taskId) };
+	if (options.title) args.title = String(options.title);
+	const desc = options.description ?? options.desc;
+	if (desc !== undefined) args.description = String(desc);
+	if (options.status) args.status = String(options.status);
+	if (options.priority) {
+		const p = String(options.priority).toLowerCase();
+		if (p === "high" || p === "medium" || p === "low") args.priority = p;
+	}
+	if (options.ordinal !== undefined) args.ordinal = Number(options.ordinal);
+	if (typeof options.milestone === "string") args.milestone = options.milestone;
+	else if (options.clearMilestone) args.milestone = null;
+	if (labelValues.length > 0) args.labels = labelValues;
+	if (addLabelValues.length > 0) args.addLabels = addLabelValues;
+	if (removeLabelValues.length > 0) args.removeLabels = removeLabelValues;
+	if (assigneeValues.length > 0) args.assignee = assigneeValues;
+	if (dependencyValues?.length) args.dependencies = dependencyValues;
+	if (normalizedReferences?.length) args.references = normalizedReferences;
+	if (normalizedDocumentation?.length) args.documentation = normalizedDocumentation;
+	if (normalizedModifiedFiles?.length) args.modifiedFiles = normalizedModifiedFiles;
+	if (typeof options.plan === "string") args.planSet = options.plan;
+	if (typeof options.notes === "string") args.notesSet = options.notes;
+	if (notesAppendValues.length > 0) args.notesAppend = notesAppendValues;
+	if (typeof options.finalSummary === "string") args.finalSummary = options.finalSummary;
+	if (finalSummaryAppendValues.length > 0) args.finalSummaryAppend = finalSummaryAppendValues;
+	if (options.clearFinalSummary) args.finalSummaryClear = true;
+	if (acceptanceAdditions.length > 0) args.acceptanceCriteriaAdd = acceptanceAdditions;
+	if (removeCriteria.length > 0) args.acceptanceCriteriaRemove = removeCriteria;
+	if (checkCriteria.length > 0) args.acceptanceCriteriaCheck = checkCriteria;
+	if (uncheckCriteria.length > 0) args.acceptanceCriteriaUncheck = uncheckCriteria;
+	if (dodAdditions.length > 0) args.definitionOfDoneAdd = dodAdditions;
+	if (removeDod.length > 0) args.definitionOfDoneRemove = removeDod;
+	if (checkDod.length > 0) args.definitionOfDoneCheck = checkDod;
+	if (uncheckDod.length > 0) args.definitionOfDoneUncheck = uncheckDod;
+	return args;
 }
 
 async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<string> {
@@ -1444,6 +1511,33 @@ taskCmd
 			return;
 		}
 
+		if (isRemoteMode() && !shouldUseWizard && title) {
+			const labels = options.labels ? String(options.labels).split(",").map((l: string) => l.trim()) : undefined;
+			const task = await remoteTaskCreate({
+				title: title.trim(),
+				description: options.description ?? options.desc,
+				status: options.status,
+				priority: options.priority,
+				assignee: options.assignee,
+				labels,
+				milestone: options.milestone,
+				parentTaskId: options.parent,
+				dependencies: options.dependsOn ?? options.dep,
+				references: options.ref,
+				acceptanceCriteria: options.ac ?? options.acceptanceCriteria,
+				plan: options.plan,
+				notes: options.notes,
+			}).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return null;
+			});
+			if (!task) return;
+			console.log(`Created task ${task.id}`);
+			if (isPlainRequested(options)) console.log(formatTaskPlainText(task));
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		await core.ensureConfigLoaded();
@@ -2107,6 +2201,23 @@ taskCmd
 			return;
 		}
 
+		if (isRemoteMode() && !shouldUseWizard && taskId) {
+			const editArgs = buildCliEditArgs(taskId, options);
+			const updateInput = buildTaskUpdateInput(editArgs);
+			const task = await remoteTaskEdit(taskId, updateInput).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return null;
+			});
+			if (!task) return;
+			if (isPlainRequested(options)) {
+				console.log(formatTaskPlainText(task));
+			} else {
+				console.log(`Updated task ${task.id}`);
+			}
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 
@@ -2382,6 +2493,16 @@ taskCmd
 	.description("display task details")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
+		if (isRemoteMode()) {
+			const task = await remoteTaskView(taskId).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return null;
+			});
+			if (!task) return;
+			console.log(formatTaskPlainText(task));
+			return;
+		}
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const localTasks = await core.fs.listTasks();
@@ -2410,6 +2531,15 @@ taskCmd
 	.command("archive <taskId>")
 	.description("archive a task")
 	.action(async (taskId: string) => {
+		if (isRemoteMode()) {
+			await remoteTaskArchive(taskId).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return;
+			});
+			console.log(`Archived task ${taskId}`);
+			return;
+		}
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const success = await core.archiveTask(taskId);

@@ -128,9 +128,21 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	// Set once at startup from BACKLOG_TOKEN env var. Empty string = no auth required.
+	private readonly authToken: string = process.env.BACKLOG_TOKEN?.trim() ?? "";
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
+	}
+
+	private checkAuth(req: Request): Response | null {
+		if (!this.authToken) return null;
+		const header = req.headers.get("Authorization") ?? "";
+		const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+		if (token !== this.authToken) {
+			return Response.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		return null;
 	}
 
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
@@ -358,6 +370,11 @@ export class BacklogServer {
 			const url = `http://localhost:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
 			console.log(`📊 Project: ${this.projectName}`);
+			if (this.authToken) {
+				console.log("🔒 API auth: bearer token required (BACKLOG_TOKEN is set)");
+			} else {
+				console.log("⚠️  API auth: none — set BACKLOG_TOKEN=<secret> before exposing publicly");
+			}
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
 			console.log(`⏹️  Press ${stopKey} to stop the server`);
 
@@ -531,6 +548,12 @@ export class BacklogServer {
 	private async handleRequest(req: Request, server: Server<unknown>): Promise<Response> {
 		const url = new URL(req.url);
 		const pathname = url.pathname;
+
+		// Protect API routes with bearer token when BACKLOG_TOKEN is set
+		if (pathname.startsWith("/api/")) {
+			const authDenied = this.checkAuth(req);
+			if (authDenied) return authDenied;
+		}
 
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
