@@ -2389,7 +2389,9 @@ taskCmd
 	.command("demote <taskId>")
 	.description("(removed) move task back to drafts")
 	.action(() => {
-		console.error("The 'task demote' command has been removed. Use 'backlog task edit <id> --status Draft' instead.");
+		console.error(
+			"The 'task demote' command has been removed. Use 'backlog task edit <id> --status <status>' instead.",
+		);
 		process.exit(2);
 	});
 
@@ -2447,9 +2449,7 @@ program
 	.allowUnknownOption()
 	.allowExcessArguments()
 	.action(() => {
-		console.error(
-			"The 'draft' command has been removed. Use 'backlog task create --status Draft' to create draft tasks.",
-		);
+		console.error("The 'draft' command has been removed. Use 'backlog task create' instead.");
 		process.exit(2);
 	});
 
