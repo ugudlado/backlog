@@ -8,6 +8,7 @@ import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
+import { createMcpServer, type McpServer } from "../mcp/server.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
@@ -119,8 +120,10 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
 
 export class BacklogServer {
+	private readonly projectPath: string;
 	private core: Core;
 	private server: Server<unknown> | null = null;
+	private mcpServer: McpServer | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
@@ -132,6 +135,7 @@ export class BacklogServer {
 	private readonly authToken: string = process.env.BACKLOG_TOKEN?.trim() ?? "";
 
 	constructor(projectPath: string) {
+		this.projectPath = projectPath;
 		this.core = new Core(projectPath, { enableWatchers: true });
 	}
 
@@ -240,6 +244,8 @@ export class BacklogServer {
 
 		try {
 			await this.ensureServicesReady();
+			this.mcpServer = await createMcpServer(this.projectPath);
+
 			const serveOptions = {
 				port: finalPort,
 				development: process.env.NODE_ENV === "development",
@@ -340,6 +346,24 @@ export class BacklogServer {
 					"/assets/*": {
 						GET: async (req: Request) => await this.handleAssetRequest(req),
 					},
+					// MCP over HTTP (Streamable HTTP transport, stateless)
+					"/mcp": {
+						GET: async (req: Request) => {
+							const authDenied = this.checkAuth(req);
+							if (authDenied) return authDenied;
+							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
+						},
+						POST: async (req: Request) => {
+							const authDenied = this.checkAuth(req);
+							if (authDenied) return authDenied;
+							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
+						},
+						DELETE: async (req: Request) => {
+							const authDenied = this.checkAuth(req);
+							if (authDenied) return authDenied;
+							return this.mcpServer?.handleHttpRequest(req) ?? new Response("MCP unavailable", { status: 503 });
+						},
+					},
 				},
 				fetch: async (req: Request, server: Server<unknown>) => {
 					const res = await this.handleRequest(req, server);
@@ -369,6 +393,7 @@ export class BacklogServer {
 
 			const url = `http://localhost:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
+			console.log(`🔌 MCP over HTTP endpoint: ${url}/mcp`);
 			console.log(`📊 Project: ${this.projectName}`);
 			if (this.authToken) {
 				console.log("🔒 API auth: bearer token required (BACKLOG_TOKEN is set)");
@@ -451,6 +476,12 @@ export class BacklogServer {
 		this.searchService = null;
 		this.contentStore = null;
 		this.storeReadyBroadcasted = false;
+
+		// Stop MCP server
+		try {
+			await this.mcpServer?.stop();
+		} catch {}
+		this.mcpServer = null;
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {

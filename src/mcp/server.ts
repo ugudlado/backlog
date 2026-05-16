@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
 	CallToolRequestSchema,
@@ -361,6 +362,42 @@ export class McpServer extends Core {
 
 	public getServer(): Server {
 		return this.server;
+	}
+
+	/**
+	 * Handle a single HTTP request using the MCP Streamable HTTP transport.
+	 * Creates a fresh SDK Server per request (required for stateless HTTP mode).
+	 * The application logic (tools, resources, prompts) is shared via delegation.
+	 */
+	public async handleHttpRequest(req: Request): Promise<Response> {
+		const httpServer = new Server(
+			{ name: APP_NAME, version: APP_VERSION },
+			{
+				capabilities: {
+					tools: { listChanged: true },
+					resources: { listChanged: true },
+					prompts: { listChanged: true },
+					logging: {},
+				},
+				instructions: INSTRUCTIONS,
+			},
+		);
+
+		httpServer.setRequestHandler(ListToolsRequestSchema, async (_req, extra) => this.listTools(extra));
+		httpServer.setRequestHandler(CallToolRequestSchema, async (request, extra) => this.callTool(request, extra));
+		httpServer.setRequestHandler(ListResourcesRequestSchema, async (_req, extra) => this.listResources(extra));
+		httpServer.setRequestHandler(ListResourceTemplatesRequestSchema, async (_req, extra) =>
+			this.listResourceTemplates(extra),
+		);
+		httpServer.setRequestHandler(ReadResourceRequestSchema, async (request, extra) =>
+			this.readResource(request, extra),
+		);
+		httpServer.setRequestHandler(ListPromptsRequestSchema, async (_req, extra) => this.listPrompts(extra));
+		httpServer.setRequestHandler(GetPromptRequestSchema, async (request, extra) => this.getPrompt(request, extra));
+
+		const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+		await httpServer.connect(transport);
+		return transport.handleRequest(req);
 	}
 
 	// -- Internal handlers --------------------------------------------------
