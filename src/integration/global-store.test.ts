@@ -10,12 +10,14 @@
  *   (b) task create/list operate against external slot
  *   (c) git log in code repo shows no new commits even with autoCommit: true
  *   (d) missing globalStore dir → clean error message
+ *   (e) backlog init --global registers workspace in machine index
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { $ } from "bun";
+import { readWorkspacesIndex } from "../utils/workspaces-index.ts";
 
 const TMP_BASE = join(tmpdir(), "backlog-integration-test");
 const CLI_PATH = join(import.meta.dir, "..", "cli.ts");
@@ -159,5 +161,17 @@ describe("globalStore end-to-end integration", () => {
 
 		const output = result.stdout.toString() + result.stderr.toString();
 		expect(output).toMatch(/Global store directory does not exist/i);
+	});
+
+	it("(e) backlog init --global registers workspace in machine index", async () => {
+		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
+			.cwd(repoDir)
+			.env(cliEnv())
+			.nothrow()
+			.quiet();
+
+		const index = await readWorkspacesIndex(machineConfigDir);
+		const registered = index.workspaces.some((w) => w.path === repoDir);
+		expect(registered).toBe(true);
 	});
 });
