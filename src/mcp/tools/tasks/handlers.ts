@@ -370,6 +370,23 @@ export class TaskHandlers {
 			throw new BacklogToolError(String(error), "VALIDATION_ERROR");
 		}
 	}
+
+	async nextTask(args: { status?: string; agent?: string }): Promise<CallToolResult> {
+		let result: Awaited<ReturnType<typeof this.core.claimTask>>;
+		try {
+			result = await this.core.claimTask({ status: args.status, agent: args.agent });
+		} catch (error) {
+			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "OPERATION_FAILED");
+		}
+
+		if (!result) {
+			const displayStatus = args.status ?? "Ready";
+			throw new BacklogToolError(`No tasks found with status "${displayStatus}".`, "OPERATION_FAILED");
+		}
+
+		const { task, previousStatus } = result;
+		return await formatTaskCallResult(task, [`Claimed task ${task.id}.`, `${previousStatus} → In Progress`]);
+	}
 }
 
 export type { TaskEditArgs, TaskEditRequest };
