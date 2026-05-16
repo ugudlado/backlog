@@ -1243,3 +1243,11 @@ ${description || `Milestone: ${title}`}`,
 			.filter((item) => item.length > 0);
 	}
 }
+
+/**
+ * Atomically write content to filePath by writing to a temp file then renaming.
+ * Stub implementation — replaced in T-5.
+ */
+export async function atomicWriteFile(_filePath: string, _content: string): Promise<void> {
+	throw new Error("atomicWriteFile not implemented yet");
+}

@@ -2411,4 +2411,12 @@ export class Core {
 
 		return filteredTasks;
 	}
+
+	/**
+	 * Atomically claim the next task with the given status.
+	 * Stub implementation — replaced in T-5.
+	 */
+	async claimTask(_opts: { status?: string; agent?: string }): Promise<{ task: Task; previousStatus: string } | null> {
+		throw new Error("claimTask not implemented yet");
+	}
 }
