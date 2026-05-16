@@ -62,6 +62,7 @@ import {
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { isRemoteMode, remoteTaskList } from "./utils/remote-backend.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { getVersion } from "./utils/version.ts";
@@ -1712,6 +1713,40 @@ taskCmd
 	.option("--sort <field>", "sort tasks by field (priority, id)")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
+		if (isRemoteMode()) {
+			const tasks = await remoteTaskList({
+				status: options.status,
+				assignee: options.assignee,
+				milestone: options.milestone,
+				priority: options.priority,
+				parent: options.parent,
+			}).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return null;
+			});
+			if (!tasks) return;
+			if (tasks.length === 0) {
+				console.log("No tasks found.");
+				return;
+			}
+			const sorted = options.sort ? sortTasks(tasks, options.sort.toLowerCase()) : sortTasks(tasks, "priority");
+			const groups = new Map<string, Task[]>();
+			for (const task of sorted) {
+				const status = (task.status || "No Status").trim();
+				const list = groups.get(status) ?? [];
+				list.push(task);
+				groups.set(status, list);
+			}
+			for (const [status, list] of groups) {
+				console.log(`${status}:`);
+				for (const t of list) {
+					const pri = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
+					console.log(`  ${pri}${t.id} - ${t.title}`);
+				}
+			}
+			return;
+		}
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const cleanup = () => {
