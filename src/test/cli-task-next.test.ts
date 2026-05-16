@@ -7,7 +7,10 @@ import { createUniqueTestDir } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
-// Fast setup: write minimal config directly rather than calling initializeProject
+// Fast setup: write minimal config directly rather than calling initializeProject.
+// Config must use the format that operations.ts parseConfig understands:
+// - snake_case keys (project_name, default_status, check_active_branches, etc.)
+// - statuses and labels as inline arrays: statuses: ["A", "B"]
 async function setupProject(testDir: string, statuses?: string[], defaultStatus?: string): Promise<void> {
 	await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
@@ -15,15 +18,15 @@ async function setupProject(testDir: string, statuses?: string[], defaultStatus?
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
 	const effectiveStatuses = statuses ?? ["Backlog", "Ready", "To Do", "In Progress", "Done"];
 	const effectiveDefault = defaultStatus ?? "To Do";
-	const config = `projectName: Test
-statuses:
-${effectiveStatuses.map((s) => `  - ${s}`).join("\n")}
+	const statusList = effectiveStatuses.map((s) => `"${s}"`).join(", ");
+	const config = `project_name: "Test"
+default_status: "${effectiveDefault}"
+statuses: [${statusList}]
 labels: []
-defaultStatus: ${effectiveDefault}
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
-filesystemOnly: true
-autoCommit: false
+date_format: yyyy-mm-dd
+check_active_branches: false
+filesystem_only: true
+auto_commit: false
 `;
 	await writeFile(join(testDir, "backlog", "config.yml"), config);
 }

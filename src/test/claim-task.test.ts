@@ -5,25 +5,22 @@ import { Core } from "../core/backlog.ts";
 import { atomicWriteFile } from "../file-system/operations.ts";
 import { createUniqueTestDir } from "./test-utils.ts";
 
-// Write a minimal backlog config directly to avoid slow initializeProject
+// Write a minimal backlog config directly to avoid slow initializeProject.
+// Config must use the format that operations.ts parseConfig understands:
+// - snake_case keys and inline array syntax for statuses/labels.
 async function setupTestProject(testDir: string): Promise<void> {
 	await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	const config = `projectName: Test
-statuses:
-  - Backlog
-  - Ready
-  - To Do
-  - In Progress
-  - Done
+	const config = `project_name: "Test"
+default_status: "To Do"
+statuses: ["Backlog", "Ready", "To Do", "In Progress", "Done"]
 labels: []
-defaultStatus: To Do
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
-filesystemOnly: true
-autoCommit: false
+date_format: yyyy-mm-dd
+check_active_branches: false
+filesystem_only: true
+auto_commit: false
 `;
 	await writeFile(join(testDir, "backlog", "config.yml"), config);
 }
