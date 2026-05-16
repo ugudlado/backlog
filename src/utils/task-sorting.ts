@@ -168,11 +168,40 @@ export function sortByOrdinalAndPriority<
  * Sort tasks for agent pickup: ordinal ASC (defined before undefined), then priority DESC,
  * then createdDate ASC (oldest first, missing dates sort last), then task ID as final tiebreaker.
  * Returns a new array without mutating the original.
+ *
+ * createdDate comparison is lexicographic — correct for consistently zero-padded ISO-like
+ * format ("yyyy-mm-dd HH:mm" or "yyyy-mm-dd"). Missing dates sort after valid dates.
  */
 export function sortForPickup<
 	T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low"; createdDate?: string },
 >(items: T[]): T[] {
-	return items;
+	const priorityWeight = { high: 3, medium: 2, low: 1 };
+
+	return [...items].sort((a, b) => {
+		// 1. Ordinal: defined before undefined, then ASC
+		if (a.ordinal !== undefined && b.ordinal === undefined) return -1;
+		if (a.ordinal === undefined && b.ordinal !== undefined) return 1;
+		if (a.ordinal !== undefined && b.ordinal !== undefined && a.ordinal !== b.ordinal) {
+			return a.ordinal - b.ordinal;
+		}
+
+		// 2. Priority: DESC (high > medium > low > undefined)
+		const aWeight = a.priority ? priorityWeight[a.priority] : 0;
+		const bWeight = b.priority ? priorityWeight[b.priority] : 0;
+		if (aWeight !== bWeight) return bWeight - aWeight;
+
+		// 3. createdDate: ASC (oldest first); missing dates sort last
+		const aDate = a.createdDate ?? "";
+		const bDate = b.createdDate ?? "";
+		if (aDate !== bDate) {
+			if (!aDate) return 1;
+			if (!bDate) return -1;
+			return aDate < bDate ? -1 : 1;
+		}
+
+		// 4. Task ID: stable final tiebreaker (ASC)
+		return compareTaskIds(a.id, b.id);
+	});
 }
 
 /**
