@@ -380,7 +380,7 @@ export class TaskHandlers {
 		}
 
 		if (!result) {
-			const displayStatus = args.status ?? "Ready";
+			const displayStatus = await this.core.resolveClaimStatus(args.status);
 			throw new BacklogToolError(`No tasks found with status "${displayStatus}".`, "OPERATION_FAILED");
 		}
 

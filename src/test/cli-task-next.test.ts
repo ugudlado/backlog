@@ -166,4 +166,22 @@ describe("CLI task next", () => {
 		const output = result.stdout.toString();
 		expect(output).toContain("Legacy Default Task");
 	});
+
+	it("legacy regression: empty queue error message uses config.defaultStatus when Ready is not configured", async () => {
+		// Bug fix: error message must reflect the actual status used for filtering,
+		// not a hardcoded "Ready" fallback.
+		await rm(testDir, { recursive: true, force: true });
+		testDir = createUniqueTestDir("cli-task-next-legacy-error");
+		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
+		core = new Core(testDir);
+
+		// No tasks at all — empty queue with legacy config
+		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		expect(result.exitCode).not.toBe(0);
+
+		const stderr = result.stderr.toString();
+		// Should say "To Do" (the actual defaultStatus), not "Ready"
+		expect(stderr).toContain('No tasks found with status "To Do"');
+		expect(stderr).not.toContain('"Ready"');
+	});
 });

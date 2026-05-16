@@ -2406,8 +2406,7 @@ taskCmd
 		try {
 			const result = await core.claimTask({ status: options.status, agent: options.agent });
 			if (!result) {
-				// Determine which status was used for the error message (mirrors claimTask default logic)
-				const displayStatus = options.status ?? "Ready";
+				const displayStatus = await core.resolveClaimStatus(options.status);
 				console.error(`No tasks found with status "${displayStatus}".`);
 				process.exit(1);
 			}

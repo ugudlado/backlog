@@ -131,6 +131,50 @@ describe("MCP task_next", () => {
 		expect(getText(result.content)).toContain("Invalid status");
 	});
 
+	it("task_next error message uses config.defaultStatus when Ready is not configured", async () => {
+		// Bug fix: on a legacy repo without Ready status, the error must say "To Do"
+		// not the hardcoded fallback "Ready".
+		const legacyDir = createUniqueTestDir("mcp-task-next-legacy-err");
+		await mkdir(join(legacyDir, "backlog", "tasks"), { recursive: true });
+		await mkdir(join(legacyDir, "backlog", "archive", "tasks"), { recursive: true });
+		await mkdir(join(legacyDir, "backlog", "milestones"), { recursive: true });
+		await mkdir(join(legacyDir, "backlog", "completed"), { recursive: true });
+		await writeFile(
+			join(legacyDir, "backlog", "config.yml"),
+			`project_name: "Legacy"
+default_status: "To Do"
+statuses: ["To Do", "In Progress", "Done"]
+labels: []
+date_format: yyyy-mm-dd
+check_active_branches: false
+filesystem_only: true
+auto_commit: false
+`,
+		);
+		const legacyServer = new McpServer(legacyDir, "Test instructions");
+		const legacyConfig = await legacyServer.filesystem.loadConfig();
+		if (!legacyConfig) throw new Error("Failed to load config");
+		registerTaskTools(legacyServer, legacyConfig);
+
+		try {
+			// No tasks — empty queue
+			const result = await legacyServer.testInterface.callTool({
+				params: { name: "task_next", arguments: {} },
+			});
+			expect(result.isError).toBe(true);
+			const text = getText(result.content);
+			expect(text).toContain('"To Do"');
+			expect(text).not.toContain('"Ready"');
+		} finally {
+			try {
+				await legacyServer.stop();
+			} catch {
+				// ignore
+			}
+			await rm(legacyDir, { recursive: true, force: true });
+		}
+	});
+
 	it("MCP and CLI produce equivalent claim behavior (parity test)", async () => {
 		// Create two tasks with same status
 		await server.testInterface.callTool({

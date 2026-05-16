@@ -2419,18 +2419,22 @@ export class Core {
 	 * The entire read→filter→sort→pick→mutate→write sequence runs inside withCreateLock
 	 * so two concurrent callers can never claim the same task (AC-5).
 	 */
+	/**
+	 * Returns the status string that claimTask will use as its filter.
+	 * Callers can use this to build accurate error messages without duplicating the resolution logic.
+	 */
+	async resolveClaimStatus(status?: string): Promise<string> {
+		if (status) return this.requireCanonicalStatus(status);
+		const readyCanonical = await resolveCanonicalStatus("Ready", this);
+		if (readyCanonical) return readyCanonical;
+		const config = await this.fs.loadConfig();
+		return config?.defaultStatus ?? FALLBACK_STATUS;
+	}
+
 	async claimTask(opts: { status?: string; agent?: string }): Promise<{ task: Task; previousStatus: string } | null> {
 		return await this.withCreateLock(async () => {
 			// 1. Resolve status filter
-			const statusFilter = opts.status
-				? await this.requireCanonicalStatus(opts.status)
-				: await (async () => {
-						// Default to "Ready" if configured, else config.defaultStatus
-						const readyCanonical = await resolveCanonicalStatus("Ready", this);
-						if (readyCanonical) return readyCanonical;
-						const config = await this.fs.loadConfig();
-						return config?.defaultStatus ?? FALLBACK_STATUS;
-					})();
+			const statusFilter = await this.resolveClaimStatus(opts.status);
 
 			// 2. Load and filter tasks
 			const allTasks = (await this.fs.listTasks()).filter(isLocalEditableTask);
