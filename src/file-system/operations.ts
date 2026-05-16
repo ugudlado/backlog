@@ -1243,3 +1243,14 @@ ${description || `Milestone: ${title}`}`,
 			.filter((item) => item.length > 0);
 	}
 }
+
+/**
+ * Atomically write content to filePath by writing to a sibling .tmp file then
+ * renaming over the target. rename() is atomic on the same filesystem, so a
+ * process death mid-write leaves the original intact and an inert orphan .tmp.
+ */
+export async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+	const tmpPath = `${filePath}.tmp`;
+	await Bun.write(tmpPath, content);
+	await rename(tmpPath, filePath);
+}

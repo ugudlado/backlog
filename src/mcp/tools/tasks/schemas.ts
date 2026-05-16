@@ -114,3 +114,13 @@ export const taskDemoteSchema: JsonSchema = {
 	required: ["id"],
 	additionalProperties: false,
 };
+
+export const taskNextSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		status: { type: "string", minLength: 1, maxLength: 50 },
+		agent: { type: "string", minLength: 1, maxLength: 100 },
+	},
+	required: [],
+	additionalProperties: false,
+};

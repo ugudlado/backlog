@@ -2396,6 +2396,32 @@ taskCmd
 	});
 
 taskCmd
+	.command("next")
+	.description("atomically claim the next ready task")
+	.option("--status <name>", "status lane to pick from (default: Ready)")
+	.option("--agent <handle>", "assign the claimed task to this handle")
+	.action(async (options: { status?: string; agent?: string }) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const result = await core.claimTask({ status: options.status, agent: options.agent });
+			if (!result) {
+				const displayStatus = await core.resolveClaimStatus(options.status);
+				console.error(`No tasks found with status "${displayStatus}".`);
+				process.exit(1);
+			}
+			const { task, previousStatus } = result;
+			console.log(`${task.id} — ${task.title}`);
+			console.log(`${previousStatus} → In Progress`);
+			console.log("");
+			console.log(formatTaskPlainText(task));
+		} catch (err) {
+			console.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
+	});
+
+taskCmd
 	.argument("[taskId]")
 	.option("--plain", "use plain text output")
 	.action(async (taskId: string | undefined, options: { plain?: boolean }) => {
@@ -2403,7 +2429,7 @@ taskCmd
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
-		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote", "next"];
 		if (taskId && reservedCommands.includes(taskId)) {
 			console.error(`Unknown command: ${taskId}`);
 			taskCmd.help();
