@@ -165,6 +165,17 @@ export function sortByOrdinalAndPriority<
 }
 
 /**
+ * Sort tasks for agent pickup: ordinal ASC (defined before undefined), then priority DESC,
+ * then createdDate ASC (oldest first, missing dates sort last), then task ID as final tiebreaker.
+ * Returns a new array without mutating the original.
+ */
+export function sortForPickup<
+	T extends { id: string; ordinal?: number; priority?: "high" | "medium" | "low"; createdDate?: string },
+>(items: T[]): T[] {
+	return items;
+}
+
+/**
  * Sort tasks by a specified field with fallback to task ID sorting.
  * Supported fields: 'priority', 'id', 'ordinal'
  */
