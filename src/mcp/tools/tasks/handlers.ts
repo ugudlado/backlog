@@ -376,7 +376,9 @@ export class TaskHandlers {
 		try {
 			result = await this.core.claimTask({ status: args.status, agent: args.agent });
 		} catch (error) {
-			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "OPERATION_FAILED");
+			const message = error instanceof Error ? error.message : String(error);
+			const code = message.startsWith("Invalid status") ? "VALIDATION_ERROR" : "OPERATION_FAILED";
+			throw new BacklogToolError(message, code);
 		}
 
 		if (!result) {
