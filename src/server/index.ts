@@ -360,7 +360,7 @@ export class BacklogServer {
 					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
-						GET: async (req: Request) => await this.handleAssetRequest(req),
+						GET: this.guard((req) => this.handleAssetRequest(req)),
 					},
 					// MCP over HTTP (Streamable HTTP transport, stateless)
 					"/mcp": {
@@ -596,11 +596,9 @@ export class BacklogServer {
 		const url = new URL(req.url);
 		const pathname = url.pathname;
 
-		// Protect API routes with bearer token when BACKLOG_TOKEN is set
-		if (pathname.startsWith("/api/")) {
-			const authDenied = this.checkAuth(req);
-			if (authDenied) return authDenied;
-		}
+		// Protect WebSocket upgrades (named routes use guard(); this fallback covers upgrades)
+		const authDenied = this.checkAuth(req);
+		if (authDenied) return authDenied;
 
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
@@ -1624,6 +1622,13 @@ export class BacklogServer {
 					return Response.json({ error: `Workspace path no longer exists: ${targetPath}` }, { status: 410 });
 				}
 				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) !== targetPath) {
+					// Clear subscription and cached services before reinitializing so
+					// ensureServicesReady() re-subscribes to the new project's content store.
+					this.unsubscribeContentStore?.();
+					this.unsubscribeContentStore = undefined;
+					this.contentStore = null;
+					this.searchService = null;
+					this.storeReadyBroadcasted = false;
 					this.core.reinitializeProjectRoot(targetPath);
 					await this.core.ensureConfigLoaded();
 					this.mcpServer?.reinitializeProjectRoot(targetPath);
