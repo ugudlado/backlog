@@ -3607,7 +3607,7 @@ async function runServer(options: { port?: string; project?: string; open?: bool
 	const config = await core.filesystem.loadConfig();
 	const defaultPort = config?.defaultPort ?? 6420;
 
-	const port = Number.parseInt(options.port || defaultPort.toString(), 10);
+	const port = Number.parseInt(options.port || process.env.PORT || defaultPort.toString(), 10);
 	if (Number.isNaN(port) || port < 1 || port > 65535) {
 		console.error("Invalid port number. Must be between 1 and 65535.");
 		process.exit(1);
