@@ -34,19 +34,16 @@ describe("next id across remote branches", () => {
 		await $`git push -u origin main`.cwd(LOCAL_DIR).quiet();
 
 		await $`git checkout -b feature`.cwd(LOCAL_DIR).quiet();
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Remote Task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-08",
-				labels: [],
-				dependencies: [],
-				rawContent: "",
-			},
-			true,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Remote Task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-08",
+			labels: [],
+			dependencies: [],
+			rawContent: "",
+		});
 		await $`git push -u origin feature`.cwd(LOCAL_DIR).quiet();
 		await $`git checkout main`.cwd(LOCAL_DIR).quiet();
 	});

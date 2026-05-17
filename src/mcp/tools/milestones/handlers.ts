@@ -1,4 +1,3 @@
-import { rename as moveFile } from "node:fs/promises";
 import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
@@ -222,43 +221,12 @@ export class MilestoneHandlers {
 		const failedTaskIds: string[] = [];
 		for (const [taskId, milestone] of previousMilestones.entries()) {
 			try {
-				await this.core.editTask(taskId, { milestone: milestone ?? null }, false);
+				await this.core.editTask(taskId, { milestone: milestone ?? null });
 			} catch {
 				failedTaskIds.push(taskId);
 			}
 		}
 		return failedTaskIds.sort((a, b) => a.localeCompare(b));
-	}
-
-	private async commitMilestoneMutation(
-		commitMessage: string,
-		options: {
-			sourcePath?: string;
-			targetPath?: string;
-			taskFilePaths?: Iterable<string>;
-		},
-	): Promise<void> {
-		const shouldAutoCommit = await this.core.shouldAutoCommit();
-		if (!shouldAutoCommit) {
-			return;
-		}
-
-		let repoRoot: string | null = null;
-		const commitPaths: string[] = [];
-		if (options.sourcePath && options.targetPath) {
-			repoRoot = await this.core.git.stageFileMove(options.sourcePath, options.targetPath);
-			commitPaths.push(options.sourcePath, options.targetPath);
-		}
-		for (const filePath of options.taskFilePaths ?? []) {
-			await this.core.git.addFile(filePath);
-			commitPaths.push(filePath);
-		}
-		try {
-			await this.core.git.commitFiles(commitMessage, commitPaths, repoRoot);
-		} catch (error) {
-			await this.core.git.resetPaths(commitPaths, repoRoot);
-			throw error;
-		}
 	}
 
 	private async listFileMilestones(): Promise<Milestone[]> {
@@ -424,7 +392,7 @@ export class MilestoneHandlers {
 		let updatedTaskIds: string[] = [];
 		const updatedTaskFilePaths = new Set<string>();
 
-		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName, false);
+		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName);
 		if (!renameResult.success || !renameResult.milestone) {
 			throw new BacklogToolError(`Failed to rename milestone "${sourceMilestone.title}".`, "INTERNAL_ERROR");
 		}
@@ -435,7 +403,7 @@ export class MilestoneHandlers {
 			try {
 				for (const task of matches) {
 					previousMilestones.set(task.id, task.milestone);
-					const updatedTask = await this.core.editTask(task.id, { milestone: targetMilestone }, false);
+					const updatedTask = await this.core.editTask(task.id, { milestone: targetMilestone });
 					const taskFilePath = updatedTask.filePath ?? task.filePath;
 					if (taskFilePath) {
 						updatedTaskFilePaths.add(taskFilePath);
@@ -445,7 +413,7 @@ export class MilestoneHandlers {
 				updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 			} catch {
 				const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-				const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
+				const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title);
 				const rollbackDetails: string[] = [];
 				if (!rollbackRenameResult.success) {
 					rollbackDetails.push("failed to rollback milestone file rename");
@@ -460,29 +428,6 @@ export class MilestoneHandlers {
 				);
 			}
 		}
-		try {
-			await this.commitMilestoneMutation(`backlog: Rename milestone ${sourceMilestone.id}`, {
-				sourcePath: renameResult.sourcePath,
-				targetPath: renameResult.targetPath,
-				taskFilePaths: updatedTaskFilePaths,
-			});
-		} catch {
-			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-			const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
-			const rollbackDetails: string[] = [];
-			if (!rollbackRenameResult.success) {
-				rollbackDetails.push("failed to rollback milestone file rename");
-			}
-			if (rollbackTaskFailures.length > 0) {
-				rollbackDetails.push(`failed to rollback task milestones for: ${rollbackTaskFailures.join(", ")}`);
-			}
-			const detailSuffix = rollbackDetails.length > 0 ? ` (${rollbackDetails.join("; ")})` : "";
-			throw new BacklogToolError(
-				`Failed while finalizing milestone rename "${sourceMilestone.title}"${detailSuffix}.`,
-				"INTERNAL_ERROR",
-			);
-		}
-
 		const summaryLines: string[] = [
 			`Renamed milestone "${sourceMilestone.title}" (${sourceMilestone.id}) → "${renamedMilestone.title}" (${renamedMilestone.id}).`,
 		];
@@ -552,11 +497,9 @@ export class MilestoneHandlers {
 			try {
 				for (const task of matches) {
 					previousMilestones.set(task.id, task.milestone);
-					const updatedTask = await this.core.editTask(
-						task.id,
-						{ milestone: taskHandling === "reassign" ? reassignedMilestone : null },
-						false,
-					);
+					const updatedTask = await this.core.editTask(task.id, {
+						milestone: taskHandling === "reassign" ? reassignedMilestone : null,
+					});
 					const taskFilePath = updatedTask.filePath ?? task.filePath;
 					if (taskFilePath) {
 						updatedTaskFilePaths.add(taskFilePath);
@@ -575,7 +518,7 @@ export class MilestoneHandlers {
 			}
 		}
 
-		const archiveResult = await this.core.archiveMilestone(sourceMilestone.id, false);
+		const archiveResult = await this.core.archiveMilestone(sourceMilestone.id);
 		if (!archiveResult.success) {
 			let detailSuffix = "";
 			if (taskHandling !== "keep") {
@@ -589,34 +532,6 @@ export class MilestoneHandlers {
 				"INTERNAL_ERROR",
 			);
 		}
-		try {
-			await this.commitMilestoneMutation(`backlog: Remove milestone ${sourceMilestone.id}`, {
-				sourcePath: archiveResult.sourcePath,
-				targetPath: archiveResult.targetPath,
-				taskFilePaths: updatedTaskFilePaths,
-			});
-		} catch {
-			const rollbackDetails: string[] = [];
-			if (archiveResult.sourcePath && archiveResult.targetPath) {
-				try {
-					await moveFile(archiveResult.targetPath, archiveResult.sourcePath);
-				} catch {
-					rollbackDetails.push("failed to rollback milestone archive");
-				}
-			}
-			if (taskHandling !== "keep") {
-				const rollbackFailures = await this.rollbackTaskMilestones(previousMilestones);
-				if (rollbackFailures.length > 0) {
-					rollbackDetails.push(`failed rollback for: ${rollbackFailures.join(", ")}`);
-				}
-			}
-			const detailSuffix = rollbackDetails.length > 0 ? ` (${rollbackDetails.join("; ")})` : "";
-			throw new BacklogToolError(
-				`Failed while finalizing milestone removal "${sourceMilestone.title}"${detailSuffix}.`,
-				"INTERNAL_ERROR",
-			);
-		}
-
 		const summaryLines: string[] = [`Removed milestone "${sourceMilestone.title}" (${sourceMilestone.id}).`];
 		if (taskHandling === "keep") {
 			summaryLines.push("Kept task milestone values unchanged (taskHandling=keep).");

@@ -45,9 +45,9 @@ describe("Board Loading with checkActiveBranches", () => {
 	describe("Core.loadTasks()", () => {
 		beforeEach(async () => {
 			// Create some test tasks
-			await core.createTask(createTestTask("task-1", "To Do"), false);
-			await core.createTask(createTestTask("task-2", "In Progress"), false);
-			await core.createTask(createTestTask("task-3", "Done"), false);
+			await core.createTask(createTestTask("task-1", "To Do"));
+			await core.createTask(createTestTask("task-2", "In Progress"));
+			await core.createTask(createTestTask("task-3", "Done"));
 
 			// Commit them to have a clean state
 			await $`git add .`.cwd(TEST_DIR).quiet();
@@ -119,7 +119,7 @@ describe("Board Loading with checkActiveBranches", () => {
 		it("should respect activeBranchDays configuration", async () => {
 			// Create a new branch with an old commit date
 			await $`git checkout -b old-branch`.cwd(TEST_DIR).quiet();
-			await core.createTask(createTestTask("task-4", "To Do"), false);
+			await core.createTask(createTestTask("task-4", "To Do"));
 			await $`git add .`.cwd(TEST_DIR).quiet();
 
 			// Commit with an old date (40 days ago)
@@ -210,19 +210,16 @@ describe("Board Loading with checkActiveBranches", () => {
 			await core.filesystem.saveConfig(minimalConfig);
 
 			// Create a task to ensure we have something to load
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Test Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-01-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Test",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Test Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-01-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Test",
+			});
 
 			const progressMessages: string[] = [];
 			const tasks = await core.loadTasks((msg) => {
@@ -262,14 +259,14 @@ describe("Board Loading with checkActiveBranches", () => {
 
 		it("should not load tasks from other branches when checkActiveBranches is false", async () => {
 			// 0. Ensure main has at least one commit so it exists
-			await core.createTask(createTestTask("task-main"), false);
+			await core.createTask(createTestTask("task-main"));
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`git commit -m "Initial commit on main"`.cwd(TEST_DIR).quiet();
 
 			// 1. Create a task on a different branch
 			await $`git checkout -b other-branch`.cwd(TEST_DIR).quiet();
 			const otherTask = createTestTask("task-other", "To Do");
-			await core.createTask(otherTask, false);
+			await core.createTask(otherTask);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`git commit -m "Add task on other branch"`.cwd(TEST_DIR).quiet();
 

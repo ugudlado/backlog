@@ -15,7 +15,6 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		autoOpenBrowser: true,
 		defaultPort: 6420,
 		remoteOperations: true,
-		autoCommit: false,
 		bypassGitHooks: false,
 		checkActiveBranches: true,
 		activeBranchDays: 30,
@@ -49,7 +48,6 @@ export function needsMigration(config: Partial<BacklogConfig>): boolean {
 		{ field: "defaultPort", hasDefault: true },
 		{ field: "autoOpenBrowser", hasDefault: true },
 		{ field: "remoteOperations", hasDefault: true },
-		{ field: "autoCommit", hasDefault: true },
 	];
 
 	return expectedFieldsWithDefaults.some(({ field }) => {

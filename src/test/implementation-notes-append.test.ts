@@ -39,7 +39,7 @@ describe("Implementation Notes - append", () => {
 			description: "Test description",
 			implementationNotes: "First block",
 		};
-		await core.createTask(task, false);
+		await core.createTask(task);
 
 		const result = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Second block"]}`
 			.cwd(TEST_DIR)
@@ -64,7 +64,7 @@ describe("Implementation Notes - append", () => {
 			acceptanceCriteriaItems: [{ index: 1, text: "A", checked: false }],
 			implementationPlan: "1. Do A\n2. Do B",
 		};
-		await core.createTask(t, false);
+		await core.createTask(t);
 
 		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Followed plan"]}`
 			.cwd(TEST_DIR)
@@ -90,7 +90,7 @@ describe("Implementation Notes - append", () => {
 			dependencies: [],
 			description: "Some description",
 		};
-		await core.createTask(task, false);
+		await core.createTask(task);
 
 		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "First", "--append-notes", "Second"]}`
 			.cwd(TEST_DIR)

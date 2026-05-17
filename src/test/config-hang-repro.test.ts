@@ -27,7 +27,7 @@ milestones: []
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 
@@ -59,7 +59,7 @@ milestones: []
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(hiddenConfigPath, hiddenConfig);
 
@@ -86,7 +86,7 @@ milestones: ["Release 1", "Release 2"]
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 		const core = new Core(testRoot);
@@ -107,7 +107,7 @@ milestones: ["Release, Part 1", "Release 2"]
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 		const core = new Core(testRoot);
@@ -128,7 +128,7 @@ milestones:
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 		const core = new Core(testRoot);
@@ -156,7 +156,7 @@ milestones: [
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 		const core = new Core(testRoot);
@@ -175,7 +175,7 @@ milestones:
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
+`;
 
 		await writeFile(configPath, config);
 		const core = new Core(testRoot);

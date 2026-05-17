@@ -42,19 +42,16 @@ describe("CLI description newline handling", () => {
 
 	it("should preserve literal newlines when editing task", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Edit me",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Original",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Edit me",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Original",
+		});
 
 		const desc = "First line\nSecond line\n\nThird paragraph";
 		await $`bun ${[cliPath, "task", "edit", "1", "--desc", desc]}`.cwd(TEST_DIR).quiet();

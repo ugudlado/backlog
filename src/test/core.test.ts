@@ -74,71 +74,18 @@ describe("Core", () => {
 		});
 
 		it("should create task without auto-commit", async () => {
-			await core.createTask(sampleTask, false);
+			await core.createTask(sampleTask);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
 			expect(loadedTask?.id).toBe("TASK-1");
 			expect(loadedTask?.title).toBe("Test Task");
 		});
 
-		it("should create task with auto-commit", async () => {
-			await core.createTask(sampleTask, true);
-
-			// Check if task file was created
-			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.id).toBe("TASK-1");
-
-			// Check git status to see if there are uncommitted changes
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			// For now, just check that we have a commit (could be initialization or task)
-			expect(lastCommit).toBeDefined();
-			expect(lastCommit.length).toBeGreaterThan(0);
-		});
-
-		it("should update task with auto-commit", async () => {
-			await core.createTask(sampleTask, true);
-
-			// Check original task
-			const originalTask = await core.filesystem.loadTask("task-1");
-			expect(originalTask?.title).toBe("Test Task");
-
-			await core.updateTaskFromInput("task-1", { title: "Updated Task" }, true);
-
-			// Check if task was updated
-			const loadedTask = await core.filesystem.loadTask("task-1");
-			expect(loadedTask?.title).toBe("Updated Task");
-
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			// For now, just check that we have a commit (could be initialization or task)
-			expect(lastCommit).toBeDefined();
-			expect(lastCommit.length).toBeGreaterThan(0);
-		});
-
-		it("should archive task with auto-commit", async () => {
-			await core.createTask(sampleTask, true);
-
-			const archived = await core.archiveTask("task-1", true);
-			expect(archived).toBe(true);
-
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Archive task TASK-1");
-		});
-
-		it("should demote task with auto-commit", async () => {
-			await core.createTask(sampleTask, true);
-
-			const demoted = await core.demoteTask("task-1", true);
-			expect(demoted).toBe(true);
-
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Demote task TASK-1");
-		});
-
 		it("should resolve tasks using flexible ID formats", async () => {
 			const standardTask: Task = { ...sampleTask, id: "task-5", title: "Standard" };
 			const paddedTask: Task = { ...sampleTask, id: "task-007", title: "Padded" };
-			await core.createTask(standardTask, false);
-			await core.createTask(paddedTask, false);
+			await core.createTask(standardTask);
+			await core.createTask(paddedTask);
 
 			const uppercase = await core.getTask("TASK-5");
 			expect(uppercase?.id).toBe("TASK-5");
@@ -167,8 +114,8 @@ describe("Core", () => {
 			// Create tasks with custom prefix
 			const task1: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
 			const task2: Task = { ...sampleTask, id: "back-5.1", title: "Custom Prefix Subtask" };
-			await core.createTask(task1, false);
-			await core.createTask(task2, false);
+			await core.createTask(task1);
+			await core.createTask(task2);
 
 			// Numeric-only lookup should find task with custom prefix
 			const byNumeric = await core.getTask("358");
@@ -283,7 +230,7 @@ describe("Core", () => {
 
 			// Create task with custom prefix
 			const task: Task = { ...sampleTask, id: "back-358", title: "Custom Prefix Task" };
-			await core.createTask(task, false);
+			await core.createTask(task);
 
 			// Typos should NOT match (prevent parseInt coercion bug)
 			const withTypo = await core.getTask("358a");
@@ -294,7 +241,7 @@ describe("Core", () => {
 		});
 
 		it("should return false when archiving non-existent task", async () => {
-			const archived = await core.archiveTask("non-existent", true);
+			const archived = await core.archiveTask("non-existent");
 			expect(archived).toBe(false);
 		});
 
@@ -304,7 +251,7 @@ describe("Core", () => {
 				status: "",
 			};
 
-			await core.createTask(taskWithoutStatus, false);
+			await core.createTask(taskWithoutStatus);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
 			expect(loadedTask?.status).toBe("To Do"); // Should use default from config
@@ -316,7 +263,7 @@ describe("Core", () => {
 				status: "In Progress",
 			};
 
-			await core.createTask(taskWithStatus, false);
+			await core.createTask(taskWithStatus);
 
 			const loadedTask = await core.filesystem.loadTask("task-1");
 			expect(loadedTask?.status).toBe("In Progress");
@@ -329,7 +276,7 @@ describe("Core", () => {
 				description: "Just text",
 			};
 
-			await core.createTask(taskNoHeader, false);
+			await core.createTask(taskNoHeader);
 			const loaded = await core.filesystem.loadTask("task-2");
 			expect(loaded?.description).toBe("Just text");
 			const body = await core.getTaskContent("task-2");
@@ -344,7 +291,7 @@ describe("Core", () => {
 				description: "Existing",
 			};
 
-			await core.createTask(taskWithHeader, false);
+			await core.createTask(taskWithHeader);
 			const body = await core.getTaskContent("task-3");
 			const matches = (body?.match(/## Description/g) ?? []).length;
 			expect(matches).toBe(1);
@@ -356,7 +303,7 @@ describe("Core", () => {
 			await nonGitCore.filesystem.ensureBacklogStructure();
 
 			// This should succeed even without git
-			await nonGitCore.createTask(sampleTask, false);
+			await nonGitCore.createTask(sampleTask);
 
 			const loadedTask = await nonGitCore.filesystem.loadTask("task-1");
 			expect(loadedTask?.id).toBe("TASK-1");
@@ -369,7 +316,7 @@ describe("Core", () => {
 				title: "String Assignee",
 				assignee: "@alice",
 			} as unknown as Task;
-			await core.createTask(stringTask, false);
+			await core.createTask(stringTask);
 			const loadedString = await core.filesystem.loadTask("task-2");
 			expect(loadedString?.assignee).toEqual(["@alice"]);
 
@@ -379,19 +326,19 @@ describe("Core", () => {
 				title: "Array Assignee",
 				assignee: ["@bob"],
 			};
-			await core.createTask(arrayTask, false);
+			await core.createTask(arrayTask);
 			const loadedArray = await core.filesystem.loadTask("task-3");
 			expect(loadedArray?.assignee).toEqual(["@bob"]);
 		});
 
 		it("should normalize assignee when updating tasks", async () => {
-			await core.createTask(sampleTask, false);
+			await core.createTask(sampleTask);
 
-			await core.updateTaskFromInput("task-1", { assignee: ["@carol"] }, false);
+			await core.updateTaskFromInput("task-1", { assignee: ["@carol"] });
 			let loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@carol"]);
 
-			await core.updateTaskFromInput("task-1", { assignee: ["@dave"] }, false);
+			await core.updateTaskFromInput("task-1", { assignee: ["@dave"] });
 			loaded = await core.filesystem.loadTask("task-1");
 			expect(loaded?.assignee).toEqual(["@dave"]);
 		});
@@ -456,7 +403,7 @@ describe("Core", () => {
 				description: "Task without status",
 			};
 
-			await core.createTask(taskWithoutStatus, false);
+			await core.createTask(taskWithoutStatus);
 
 			const loadedTask = await core.filesystem.loadTask("task-custom");
 			expect(loadedTask?.status).toBe("Custom Status");
@@ -484,7 +431,7 @@ describe("Core", () => {
 				description: "Task without status",
 			};
 
-			await core.createTask(taskWithoutStatus, false);
+			await core.createTask(taskWithoutStatus);
 
 			const loadedTask = await core.filesystem.loadTask("task-fallback");
 			expect(loadedTask?.status).toBe("To Do");
@@ -507,7 +454,7 @@ describe("Core", () => {
 			};
 
 			// Create task without auto-commit to avoid potential git timing issues
-			await core.createTask(task, false);
+			await core.createTask(task);
 
 			// Verify the task file was created in the correct directory
 			// List all files to see what was actually created

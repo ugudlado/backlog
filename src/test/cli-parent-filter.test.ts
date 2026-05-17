@@ -29,65 +29,53 @@ describe("CLI parent task filtering", () => {
 		await initializeTestProject(core, "Parent Filter Test Project");
 
 		// Create a parent task
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Parent task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Parent task description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Parent task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Parent task description",
+		});
 
 		// Create child tasks
-		await core.createTask(
-			{
-				id: "task-1.1",
-				title: "Child task 1",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Child task 1 description",
-				parentTaskId: "task-1",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1.1",
+			title: "Child task 1",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Child task 1 description",
+			parentTaskId: "task-1",
+		});
 
-		await core.createTask(
-			{
-				id: "task-1.2",
-				title: "Child task 2",
-				status: "In Progress",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Child task 2 description",
-				parentTaskId: "task-1",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1.2",
+			title: "Child task 2",
+			status: "In Progress",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Child task 2 description",
+			parentTaskId: "task-1",
+		});
 
 		// Create another standalone task
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "Standalone task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Standalone task description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "Standalone task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Standalone task description",
+		});
 	});
 
 	afterEach(async () => {

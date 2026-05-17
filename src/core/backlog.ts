@@ -1,5 +1,3 @@
-import { rename as moveFile } from "node:fs/promises";
-import { join } from "node:path";
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { atomicWriteFile, FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -502,20 +500,6 @@ export class Core {
 		return this.fs.backlogDirName;
 	}
 
-	async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
-		const config = await this.fs.loadConfig();
-		this.git.setConfig(config);
-		if (config?.filesystemOnly) {
-			return false;
-		}
-		// If override is explicitly provided, use it
-		if (overrideValue !== undefined) {
-			return overrideValue;
-		}
-		// Otherwise, check config (default to false for safety)
-		return config?.autoCommit ?? false;
-	}
-
 	async getGitOps() {
 		await this.ensureConfigLoaded();
 		return this.git;
@@ -868,21 +852,17 @@ export class Core {
 		return await this.fs.saveTask(task);
 	}
 
-	private async finalizeCreatedTask(task: Task, filepath: string, autoCommit?: boolean): Promise<Task | null> {
+	private async finalizeCreatedTask(task: Task): Promise<Task | null> {
 		const savedTask = await this.fs.loadTask(task.id);
 
 		if (this.contentStore && savedTask) {
 			this.contentStore.upsertTask(savedTask);
 		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addAndCommitTaskFile(task.id, filepath, "create");
-		}
-
 		return savedTask;
 	}
 
-	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
+	async createTaskFromInput(input: TaskCreateInput): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
@@ -971,23 +951,23 @@ export class Core {
 			return { task, filePath };
 		});
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, autoCommit);
+		const savedTask = await this.finalizeCreatedTask(task);
 		return { task: savedTask ?? task, filePath };
 	}
 
-	async createTask(task: Task, autoCommit?: boolean): Promise<string> {
+	async createTask(task: Task): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
 		const filepath = await this.writePreparedTask(task);
-		await this.finalizeCreatedTask(task, filepath, autoCommit);
+		await this.finalizeCreatedTask(task);
 
 		return filepath;
 	}
 
-	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateTask(task: Task): Promise<void> {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -1005,13 +985,6 @@ export class Core {
 			const savedTask = await this.fs.loadTask(task.id);
 			if (savedTask) {
 				this.contentStore.upsertTask(savedTask);
-			}
-		}
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePath = await getTaskPath(task.id, this);
-			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 			}
 		}
 
@@ -1505,7 +1478,7 @@ export class Core {
 		return { task, mutated };
 	}
 
-	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async updateTaskFromInput(taskId: string, input: TaskUpdateInput): Promise<Task> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -1519,7 +1492,7 @@ export class Core {
 			return task;
 		}
 
-		await this.updateTask(task, autoCommit);
+		await this.updateTask(task);
 		const refreshed = await this.fs.loadTask(taskId);
 		return refreshed ?? task;
 	}
@@ -1561,20 +1534,13 @@ export class Core {
 		}
 	}
 
-	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		return await this.updateTaskFromInput(taskId, input, autoCommit);
+	async editTask(taskId: string, input: TaskUpdateInput): Promise<Task> {
+		return await this.updateTaskFromInput(taskId, input);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
-		// Update all tasks without committing individually
+	async updateTasksBulk(tasks: Task[], _commitMessage?: string): Promise<void> {
 		for (const task of tasks) {
-			await this.updateTask(task, false); // Don't auto-commit each one
-		}
-
-		// Commit all changes at once if auto-commit is enabled
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(commitMessage || `Update ${tasks.length} tasks`, repoRoot);
+			await this.updateTask(task);
 		}
 	}
 
@@ -1584,7 +1550,6 @@ export class Core {
 		orderedTaskIds: string[];
 		targetMilestone?: string | null;
 		commitMessage?: string;
-		autoCommit?: boolean;
 		defaultStep?: number;
 	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
 		const taskId = normalizeTaskId(String(params.taskId || "").trim());
@@ -1690,11 +1655,7 @@ export class Core {
 		});
 
 		if (changedTasks.length > 0) {
-			await this.updateTasksBulk(
-				changedTasks,
-				params.commitMessage ?? `Reorder tasks in ${targetStatus}`,
-				params.autoCommit,
-			);
+			await this.updateTasksBulk(changedTasks, params.commitMessage ?? `Reorder tasks in ${targetStatus}`);
 		}
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
@@ -1743,7 +1704,7 @@ export class Core {
 		return computeSequences(afterActive);
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+	async archiveTask(taskId: string): Promise<boolean> {
 		const taskToArchive = await this.fs.loadTask(taskId);
 		if (!taskToArchive) {
 			return false;
@@ -1756,9 +1717,6 @@ export class Core {
 
 		if (!taskPath || !taskFilename) return false;
 
-		const fromPath = taskPath;
-		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
-
 		const success = await this.fs.archiveTask(normalizedTaskId);
 		if (!success) {
 			return false;
@@ -1767,18 +1725,7 @@ export class Core {
 		const activeTasks = await this.fs.listTasks();
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
 		if (sanitizedTasks.length > 0) {
-			await this.updateTasksBulk(sanitizedTasks, undefined, false);
-		}
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			for (const sanitizedTask of sanitizedTasks) {
-				if (sanitizedTask.filePath) {
-					await this.git.addFile(sanitizedTask.filePath);
-				}
-			}
-			await this.git.commitChanges(`backlog: Archive task ${normalizedTaskId}`, repoRoot);
+			await this.updateTasksBulk(sanitizedTasks);
 		}
 
 		return true;
@@ -1786,26 +1733,8 @@ export class Core {
 
 	async archiveMilestone(
 		identifier: string,
-		autoCommit?: boolean,
 	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
 		const result = await this.fs.archiveMilestone(identifier);
-
-		if (result.success && result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
-			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
-			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
-			const commitPaths = [result.sourcePath, result.targetPath];
-			try {
-				await this.git.commitFiles(`backlog: Archive milestone${label}`, commitPaths, repoRoot);
-			} catch (error) {
-				await this.git.resetPaths(commitPaths, repoRoot);
-				try {
-					await moveFile(result.targetPath, result.sourcePath);
-				} catch {
-					// Ignore rollback failure and propagate original commit error.
-				}
-				throw error;
-			}
-		}
 
 		return {
 			success: result.success,
@@ -1818,7 +1747,6 @@ export class Core {
 	async renameMilestone(
 		identifier: string,
 		title: string,
-		autoCommit?: boolean,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -1831,47 +1759,16 @@ export class Core {
 			return result;
 		}
 
-		if (result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
-			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
-			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
-			const commitPaths = [result.sourcePath, result.targetPath];
-			try {
-				await this.git.commitFiles(`backlog: Rename milestone${label}`, commitPaths, repoRoot);
-			} catch (error) {
-				await this.git.resetPaths(commitPaths, repoRoot);
-				const rollbackTitle = result.previousTitle ?? title;
-				try {
-					await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
-				} catch {
-					// Ignore rollback failure and propagate original commit error.
-				}
-				throw error;
-			}
-		}
-
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		// Get paths before moving the file
-		const completedDir = this.fs.completedDir;
+	async completeTask(taskId: string): Promise<boolean> {
 		const taskPath = await getTaskPath(taskId, this);
 		const taskFilename = await getTaskFilename(taskId, this);
 
 		if (!taskPath || !taskFilename) return false;
 
-		const fromPath = taskPath;
-		const toPath = join(completedDir, taskFilename);
-
-		const success = await this.fs.completeTask(taskId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`, repoRoot);
-		}
-
-		return success;
+		return await this.fs.completeTask(taskId);
 	}
 
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
@@ -1893,21 +1790,14 @@ export class Core {
 		});
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.demoteTask(taskId);
-
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const repoRoot = await this.git.stageBacklogDirectory(this.fs.backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`, repoRoot);
-		}
-
-		return success;
+	async demoteTask(taskId: string): Promise<boolean> {
+		return await this.fs.demoteTask(taskId);
 	}
 
 	/**
 	 * Add acceptance criteria to a task
 	 */
-	async addAcceptanceCriteria(taskId: string, criteria: string[], autoCommit?: boolean): Promise<void> {
+	async addAcceptanceCriteria(taskId: string, criteria: string[]): Promise<void> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -1924,14 +1814,14 @@ export class Core {
 		task.acceptanceCriteriaItems = [...current, ...newCriteria];
 
 		// Save the task
-		await this.updateTask(task, autoCommit);
+		await this.updateTask(task);
 	}
 
 	/**
 	 * Remove acceptance criteria by indices (supports batch operations)
 	 * @returns Array of removed indices
 	 */
-	async removeAcceptanceCriteria(taskId: string, indices: number[], autoCommit?: boolean): Promise<number[]> {
+	async removeAcceptanceCriteria(taskId: string, indices: number[]): Promise<number[]> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -1960,7 +1850,7 @@ export class Core {
 		task.acceptanceCriteriaItems = list;
 
 		// Save the task
-		await this.updateTask(task, autoCommit);
+		await this.updateTask(task);
 
 		return removed.sort((a, b) => a - b); // Return in ascending order
 	}
@@ -1970,12 +1860,7 @@ export class Core {
 	 * Silently ignores invalid indices and only updates valid ones.
 	 * @returns Array of updated indices
 	 */
-	async checkAcceptanceCriteria(
-		taskId: string,
-		indices: number[],
-		checked: boolean,
-		autoCommit?: boolean,
-	): Promise<number[]> {
+	async checkAcceptanceCriteria(taskId: string, indices: number[], checked: boolean): Promise<number[]> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -2004,7 +1889,7 @@ export class Core {
 		task.acceptanceCriteriaItems = list;
 
 		// Save the task
-		await this.updateTask(task, autoCommit);
+		await this.updateTask(task);
 
 		return updated.sort((a, b) => a - b);
 	}
@@ -2481,11 +2366,6 @@ export class Core {
 
 			// 10. Fire status-change callback
 			await this.executeStatusChangeCallback(top, previousStatus, top.status);
-
-			// 11. Auto-commit if configured
-			if (await this.shouldAutoCommit()) {
-				await this.git.addAndCommitTaskFile(top.id, top.filePath, "update");
-			}
 
 			return { task: top, previousStatus };
 		});

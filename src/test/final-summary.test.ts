@@ -49,17 +49,17 @@ describe("Final Summary", () => {
 			dependencies: [],
 			description: "Initial description",
 		};
-		await core.createTask(base, false);
+		await core.createTask(base);
 
-		await core.updateTaskFromInput("task-1", { finalSummary: "Initial summary" }, false);
+		await core.updateTaskFromInput("task-1", { finalSummary: "Initial summary" });
 		let body = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBe("Initial summary");
 
-		await core.updateTaskFromInput("task-1", { appendFinalSummary: ["Second", "Third"] }, false);
+		await core.updateTaskFromInput("task-1", { appendFinalSummary: ["Second", "Third"] });
 		body = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBe("Initial summary\n\nSecond\n\nThird");
 
-		await core.updateTaskFromInput("task-1", { clearFinalSummary: true }, false);
+		await core.updateTaskFromInput("task-1", { clearFinalSummary: true });
 		body = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBeUndefined();
 		expect(body).not.toContain("## Final Summary");
@@ -80,7 +80,7 @@ describe("Final Summary", () => {
 			implementationNotes: "Notes",
 			finalSummary: "Summary",
 		};
-		await core.createTask(task, false);
+		await core.createTask(task);
 
 		const body = (await core.getTaskContent("task-2")) ?? "";
 		const notesIndex = body.indexOf("## Implementation Notes");

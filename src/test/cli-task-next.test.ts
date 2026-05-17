@@ -26,7 +26,6 @@ labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false
 filesystem_only: true
-auto_commit: false
 `;
 	await writeFile(join(testDir, "backlog", "config.yml"), config);
 }
@@ -46,7 +45,7 @@ describe("CLI task next", () => {
 	});
 
 	it("picks the top Ready task and outputs id, title, and status transition", async () => {
-		await core.createTaskFromInput({ title: "My Ready Task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "My Ready Task", status: "Ready" });
 
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -60,7 +59,7 @@ describe("CLI task next", () => {
 	});
 
 	it("output contains task id", async () => {
-		await core.createTaskFromInput({ title: "Task With ID", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Task With ID", status: "Ready" });
 
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -71,14 +70,11 @@ describe("CLI task next", () => {
 	});
 
 	it("output contains full task body via formatTaskPlainText", async () => {
-		await core.createTaskFromInput(
-			{
-				title: "Task With Body",
-				status: "Ready",
-				description: "This is the task description",
-			},
-			false,
-		);
+		await core.createTaskFromInput({
+			title: "Task With Body",
+			status: "Ready",
+			description: "This is the task description",
+		});
 
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -88,8 +84,8 @@ describe("CLI task next", () => {
 	});
 
 	it("--status picks from a different status lane", async () => {
-		await core.createTaskFromInput({ title: "To Do Task", status: "To Do" }, false);
-		await core.createTaskFromInput({ title: "Ready Task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "To Do Task", status: "To Do" });
+		await core.createTaskFromInput({ title: "Ready Task", status: "Ready" });
 
 		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -100,7 +96,7 @@ describe("CLI task next", () => {
 	});
 
 	it("--agent @alice strips @ and sets assignee", async () => {
-		await core.createTaskFromInput({ title: "Agent Task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Agent Task", status: "Ready" });
 
 		const result = await $`bun ${CLI_PATH} task next --agent @alice`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -114,7 +110,7 @@ describe("CLI task next", () => {
 
 	it("empty queue exits non-zero with correct message", async () => {
 		// No Ready tasks
-		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" }, false);
+		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" });
 
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).not.toBe(0);
@@ -139,7 +135,7 @@ describe("CLI task next", () => {
 		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
 		core = new Core(testDir);
 
-		await core.createTaskFromInput({ title: "Legacy Task", status: "To Do" }, false);
+		await core.createTaskFromInput({ title: "Legacy Task", status: "To Do" });
 
 		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
@@ -157,7 +153,7 @@ describe("CLI task next", () => {
 		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
 		core = new Core(testDir);
 
-		await core.createTaskFromInput({ title: "Legacy Default Task", status: "To Do" }, false);
+		await core.createTaskFromInput({ title: "Legacy Default Task", status: "To Do" });
 
 		// No --status flag: should fall back to defaultStatus (To Do) since Ready isn't configured
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();

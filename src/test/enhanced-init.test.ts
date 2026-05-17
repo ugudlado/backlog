@@ -29,7 +29,6 @@ describe("Enhanced init command", () => {
 		// Verify initial config
 		const initialConfig = await core.filesystem.loadConfig();
 		expect(initialConfig?.projectName).toBe("Test Project");
-		expect(initialConfig?.autoCommit).toBe(false);
 
 		// Modify some config values to test preservation
 		expect(initialConfig).toBeTruthy();
@@ -37,7 +36,6 @@ describe("Enhanced init command", () => {
 		const modifiedConfig: BacklogConfig = {
 			...initialConfig,
 			projectName: initialConfig?.projectName ?? "Test Project",
-			autoCommit: true,
 			defaultEditor: "vim",
 			defaultPort: 8080,
 		};
@@ -47,7 +45,6 @@ describe("Enhanced init command", () => {
 		const existingConfig = await core.filesystem.loadConfig();
 		expect(existingConfig).toBeTruthy();
 		expect(existingConfig?.projectName).toBe("Test Project");
-		expect(existingConfig?.autoCommit).toBe(true);
 		expect(existingConfig?.defaultEditor).toBe("vim");
 		expect(existingConfig?.defaultPort).toBe(8080);
 
@@ -70,7 +67,6 @@ describe("Enhanced init command", () => {
 		const config = await core.filesystem.loadConfig();
 		expect(config).toBeTruthy();
 		expect(config?.projectName).toBe("New Project");
-		expect(config?.autoCommit).toBe(false); // Default value
 		expect(config?.statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
 	});
@@ -87,7 +83,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			remoteOperations: true,
 			defaultEditor: "code --wait",
 		};
@@ -120,7 +115,6 @@ describe("Enhanced init command", () => {
 		const loadedConfig = await core.filesystem.loadConfig();
 		expect(loadedConfig).toBeTruthy();
 		expect(loadedConfig?.projectName).toBe("Legacy Project");
-		expect(loadedConfig?.autoCommit).toBeUndefined(); // Missing fields should be undefined, not cause errors
 	});
 
 	test("should preserve existing statuses and labels during re-initialization", async () => {
@@ -136,7 +130,6 @@ describe("Enhanced init command", () => {
 			dateFormat: "dd/mm/yyyy",
 			maxColumnWidth: 30,
 			backlogDirectory: "backlog",
-			autoCommit: true,
 		};
 
 		await core.filesystem.ensureBacklogStructure();
@@ -236,7 +229,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			remoteOperations: true,
 			zeroPaddedIds: 3,
 		};
@@ -265,7 +257,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			remoteOperations: true,
 			zeroPaddedIds: 0,
 		};
@@ -294,7 +285,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			zeroPaddedIds: 4,
 		};
 
@@ -335,7 +325,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			prefixes: {
 				task: "JIRA",
 				draft: "draft",
@@ -362,7 +351,6 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			backlogDirectory: "backlog",
-			autoCommit: false,
 			prefixes: {
 				task: "BUG",
 				draft: "draft",

@@ -123,7 +123,7 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Test description",
 			};
-			await core.createTask(task1, false);
+			await core.createTask(task1);
 
 			let result = await editTaskPlatformAware(
 				{
@@ -151,7 +151,7 @@ describe("Implementation Notes CLI", () => {
 				description: "Test description",
 				implementationNotes: "Initial implementation completed",
 			};
-			await core.createTask(task2, false);
+			await core.createTask(task2);
 
 			result = await editTaskPlatformAware(
 				{
@@ -183,7 +183,7 @@ describe("Implementation Notes CLI", () => {
 					{ index: 2, text: "Tests pass", checked: false },
 				],
 			};
-			await core.createTask(task3, false);
+			await core.createTask(task3);
 
 			result = await editTaskPlatformAware(
 				{
@@ -214,7 +214,7 @@ describe("Implementation Notes CLI", () => {
 				dependencies: [],
 				description: "Complex task description",
 			};
-			await core.createTask(task4, false);
+			await core.createTask(task4);
 
 			const multiLineNotes = `Completed the following:
 - Refactored the main module
@@ -252,7 +252,7 @@ Technical decisions:
 				rawContent:
 					"Task with plan\n\n## Acceptance Criteria\n\n- [ ] Works\n\n## Implementation Plan\n\n1. Design\n2. Build\n3. Test",
 			};
-			await core.createTask(task5, false);
+			await core.createTask(task5);
 
 			result = await editTaskPlatformAware(
 				{
@@ -284,7 +284,7 @@ Technical decisions:
 				dependencies: [],
 				description: "Test description",
 			};
-			await core.createTask(task6, false);
+			await core.createTask(task6);
 
 			result = await editTaskPlatformAware(
 				{
@@ -314,7 +314,7 @@ Technical decisions:
 				rawContent:
 					"Initial description\n\n## Implementation Notes\n\nSummary of work\n\n## Follow-up\n\nCapture additional findings",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task);
 
 			const appendResult = await $`bun ${CLI_PATH} task edit 7 --append-notes "Added verification details"`
 				.cwd(TEST_DIR)

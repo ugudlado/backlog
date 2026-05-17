@@ -507,7 +507,6 @@ export class ApiClient {
 			remoteOperations?: boolean;
 			activeBranchDays?: number;
 			bypassGitHooks?: boolean;
-			autoCommit?: boolean;
 			zeroPaddedIds?: number;
 			taskPrefix?: string;
 			defaultEditor?: string;

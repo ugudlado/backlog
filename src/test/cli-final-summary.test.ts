@@ -52,7 +52,7 @@ describe("Final Summary CLI", () => {
 			dependencies: [],
 			description: "Initial description",
 		};
-		await core.createTask(base, false);
+		await core.createTask(base);
 
 		let res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--final-summary", "Initial summary"]}`
 			.cwd(TEST_DIR)
@@ -91,21 +91,18 @@ describe("Final Summary CLI", () => {
 
 	it("renders Final Summary in plain output after Implementation Notes when present", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Plain output task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-03",
-				labels: [],
-				dependencies: [],
-				description: "Desc",
-				implementationNotes: "Notes",
-				finalSummary: "Summary",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Plain output task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-03",
+			labels: [],
+			dependencies: [],
+			description: "Desc",
+			implementationNotes: "Notes",
+			finalSummary: "Summary",
+		});
 
 		const result = await $`bun ${[CLI_PATH, "task", "view", "1", "--plain"]}`.cwd(TEST_DIR).quiet().nothrow();
 		expect(result.exitCode).toBe(0);

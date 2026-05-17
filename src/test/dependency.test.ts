@@ -54,8 +54,8 @@ describe("Task Dependencies", () => {
 			description: "Another base task",
 		};
 
-		await core.createTask(task1, false);
-		await core.createTask(task2, false);
+		await core.createTask(task1);
+		await core.createTask(task2);
 
 		// Create task with dependencies
 		const dependentTask: Task = {
@@ -69,7 +69,7 @@ describe("Task Dependencies", () => {
 			description: "Task that depends on others",
 		};
 
-		await core.createTask(dependentTask, false);
+		await core.createTask(dependentTask);
 
 		// Verify the task was created with dependencies
 		const savedTask = await core.filesystem.loadTask("task-3");
@@ -112,60 +112,17 @@ describe("Task Dependencies", () => {
 			description: "Task without dependencies initially",
 		};
 
-		await core.createTask(task1, false);
-		await core.createTask(task2, false);
-		await core.createTask(task3, false);
+		await core.createTask(task1);
+		await core.createTask(task2);
+		await core.createTask(task3);
 
 		// Update task to add dependencies
-		await core.updateTaskFromInput(task3.id, { dependencies: ["task-1", "task-2"] }, false);
+		await core.updateTaskFromInput(task3.id, { dependencies: ["task-1", "task-2"] });
 
 		// Verify the dependencies were updated
 		const savedTask = await core.filesystem.loadTask("task-3");
 		expect(savedTask).not.toBeNull();
 		expect(savedTask?.dependencies).toEqual(["TASK-1", "TASK-2"]);
-	});
-
-	test("should handle tasks with dependencies in drafts", async () => {
-		// Create a draft task
-		const draftTask: Task = {
-			id: "task-1",
-			title: "Draft Task",
-			status: "Draft",
-			assignee: [],
-			createdDate: "2024-01-01",
-			labels: [],
-			dependencies: [],
-			description: "Draft task",
-		};
-
-		await core.createTaskFromInput(
-			{
-				title: draftTask.title,
-				status: "Draft",
-				description: draftTask.description,
-				dependencies: draftTask.dependencies,
-			},
-			false,
-		);
-
-		// Create task that depends on draft
-		const task2: Task = {
-			id: "task-2",
-			title: "Task depending on draft",
-			status: "To Do",
-			assignee: [],
-			createdDate: "2024-01-01",
-			labels: [],
-			dependencies: ["task-1"], // Depends on draft task
-			description: "Task depending on draft",
-		};
-
-		await core.createTask(task2, false);
-
-		// Verify the task was created with dependency on draft
-		const savedTask = await core.filesystem.loadTask("task-2");
-		expect(savedTask).not.toBeNull();
-		expect(savedTask?.dependencies).toEqual(["task-1"]);
 	});
 
 	test("should serialize and deserialize dependencies correctly", async () => {
@@ -192,10 +149,10 @@ describe("Task Dependencies", () => {
 				dependencies: [],
 				description: `Dependency task ${i}`,
 			};
-			await core.createTask(depTask, false);
+			await core.createTask(depTask);
 		}
 
-		await core.createTask(task, false);
+		await core.createTask(task);
 
 		// Load the task back and verify all fields
 		const loadedTask = await core.filesystem.loadTask("task-1");
@@ -220,7 +177,7 @@ describe("Task Dependencies", () => {
 			description: "Task without dependencies",
 		};
 
-		await core.createTask(task, false);
+		await core.createTask(task);
 
 		const loadedTask = await core.filesystem.loadTask("task-1");
 		expect(loadedTask).not.toBeNull();
@@ -273,13 +230,13 @@ describe("Task Dependencies", () => {
 			description: "Parent relationship is out of scope for archive sanitization",
 		};
 
-		await core.createTask(archivedTarget, false);
-		await core.createTask(activeDependent, false);
-		await core.createTask(completedDependent, false);
-		await core.createTask(childTask, false);
-		await core.completeTask("task-3", false);
+		await core.createTask(archivedTarget);
+		await core.createTask(activeDependent);
+		await core.createTask(completedDependent);
+		await core.createTask(childTask);
+		await core.completeTask("task-3");
 
-		const archived = await core.archiveTask("task-1", false);
+		const archived = await core.archiveTask("task-1");
 		expect(archived).toBe(true);
 
 		const updatedActive = await core.filesystem.loadTask("task-2");
@@ -310,50 +267,11 @@ describe("Task Dependencies", () => {
 			dependencies: [archiveTarget.id],
 		});
 
-		const archived = await core.archiveTask("1", false);
+		const archived = await core.archiveTask("1");
 		expect(archived).toBe(true);
 
 		const updatedDependent = await core.filesystem.loadTask(dependentTask.id);
 		expect(updatedDependent?.dependencies).toEqual([]);
-	});
-
-	test("should not sanitize draft dependencies when archiving", async () => {
-		const archiveTarget: Task = {
-			id: "task-1",
-			title: "Archive target",
-			status: "To Do",
-			assignee: [],
-			createdDate: "2024-01-01",
-			labels: [],
-			dependencies: [],
-			description: "Task that will be archived",
-		};
-
-		const draftTask: Task = {
-			id: "draft-1",
-			title: "Draft dependent task",
-			status: "Draft",
-			assignee: [],
-			createdDate: "2024-01-01",
-			labels: [],
-			dependencies: ["task-1"],
-			description: "Draft should not be sanitized by archive cleanup",
-		};
-
-		await core.createTask(archiveTarget, false);
-		const { task: createdDraft } = await core.createTaskFromInput(
-			{
-				title: draftTask.title,
-				status: "Draft",
-				description: draftTask.description,
-				dependencies: draftTask.dependencies,
-			},
-			false,
-		);
-		await core.archiveTask("task-1", false);
-
-		const draft = await core.filesystem.loadTask(createdDraft.id);
-		expect(draft?.dependencies).toEqual(["TASK-1"]);
 	});
 });
 

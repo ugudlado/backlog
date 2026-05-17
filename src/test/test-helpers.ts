@@ -168,7 +168,7 @@ async function editTaskViaCore(
 			...(options.plan && { implementationPlan: options.plan }),
 		};
 
-		await core.updateTaskFromInput(taskId, updateInput, false);
+		await core.updateTaskFromInput(taskId, updateInput);
 		return {
 			exitCode: 0,
 			stdout: `Updated task ${taskId}`,

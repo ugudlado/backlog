@@ -20,7 +20,6 @@ labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false
 filesystem_only: true
-auto_commit: false
 `;
 	await writeFile(join(testDir, "backlog", "config.yml"), config);
 }
@@ -78,8 +77,8 @@ describe("Core.claimTask", () => {
 	it("picks the top Ready task by sortForPickup order (ordinal ASC when ordinals differ)", async () => {
 		// Tasks created sequentially get incrementing ordinals (1000, 2000, 3000).
 		// Ordinal is the primary sort key, so ordinal 1000 wins regardless of priority.
-		await core.createTaskFromInput({ title: "First created (low pri)", status: "Ready", priority: "low" }, false);
-		await core.createTaskFromInput({ title: "Second created (high pri)", status: "Ready", priority: "high" }, false);
+		await core.createTaskFromInput({ title: "First created (low pri)", status: "Ready", priority: "low" });
+		await core.createTaskFromInput({ title: "Second created (high pri)", status: "Ready", priority: "high" });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).not.toBeNull();
@@ -88,7 +87,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("returns { task, previousStatus } with previousStatus = Ready", async () => {
-		await core.createTaskFromInput({ title: "My task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "My task", status: "Ready" });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).not.toBeNull();
@@ -98,7 +97,7 @@ describe("Core.claimTask", () => {
 
 	it("returns null when no tasks have the given status", async () => {
 		// Create task with a different status
-		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" }, false);
+		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).toBeNull();
@@ -110,7 +109,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("strips @ prefix from agent and writes to assignee", async () => {
-		await core.createTaskFromInput({ title: "Agent task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Agent task", status: "Ready" });
 
 		const result = await core.claimTask({ status: "Ready", agent: "@alice" });
 		expect(result).not.toBeNull();
@@ -119,7 +118,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("handles agent without @ prefix", async () => {
-		await core.createTaskFromInput({ title: "Agent task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Agent task", status: "Ready" });
 
 		const result = await core.claimTask({ status: "Ready", agent: "bob" });
 		expect(result).not.toBeNull();
@@ -127,7 +126,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("leaves assignee untouched when no agent provided", async () => {
-		await core.createTaskFromInput({ title: "No agent task", status: "Ready", assignee: ["existing-person"] }, false);
+		await core.createTaskFromInput({ title: "No agent task", status: "Ready", assignee: ["existing-person"] });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).not.toBeNull();
@@ -135,7 +134,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("flips status to In Progress on the persisted file", async () => {
-		await core.createTaskFromInput({ title: "Task to claim", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Task to claim", status: "Ready" });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).not.toBeNull();
@@ -151,8 +150,8 @@ describe("Core.claimTask", () => {
 
 	it("concurrency: two concurrent claimTask calls never both claim the same task", async () => {
 		// Create exactly 2 Ready tasks so both callers can potentially succeed
-		await core.createTaskFromInput({ title: "Task A", status: "Ready" }, false);
-		await core.createTaskFromInput({ title: "Task B", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Task A", status: "Ready" });
+		await core.createTaskFromInput({ title: "Task B", status: "Ready" });
 
 		// Two Core instances pointing at the same repo (separate in-memory state)
 		const coreA = new Core(testDir);
@@ -172,7 +171,7 @@ describe("Core.claimTask", () => {
 	});
 
 	it("concurrency: when only one Ready task, one caller gets it and the other gets null", async () => {
-		await core.createTaskFromInput({ title: "Only task", status: "Ready" }, false);
+		await core.createTaskFromInput({ title: "Only task", status: "Ready" });
 
 		const coreA = new Core(testDir);
 		const coreB = new Core(testDir);

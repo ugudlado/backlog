@@ -91,19 +91,16 @@ describe("Implementation Plan CLI", () => {
 	describe("task edit with implementation plan", () => {
 		beforeEach(async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Existing Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent: "## Description\n\nExisting task description",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Existing Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent: "## Description\n\nExisting task description",
+			});
 		});
 
 		it("should handle all task editing scenarios with implementation plans", async () => {
@@ -123,11 +120,7 @@ describe("Implementation Plan CLI", () => {
 
 			// Test 2: replace existing implementation plan
 			// First add an old plan via structured field (serializer will compose)
-			await core.updateTaskFromInput(
-				"task-1",
-				{ implementationPlan: "Old plan:\n1. Old step 1\n2. Old step 2" },
-				false,
-			);
+			await core.updateTaskFromInput("task-1", { implementationPlan: "Old plan:\n1. Old step 1\n2. Old step 2" });
 
 			// Now update with new plan
 			const result2 = await editTaskPlatformAware(

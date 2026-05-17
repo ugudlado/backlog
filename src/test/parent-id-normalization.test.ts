@@ -43,7 +43,7 @@ describe("CLI parent task id normalization", () => {
 			labels: [],
 			dependencies: [],
 		};
-		await core.createTask(parent, true);
+		await core.createTask(parent);
 
 		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(TEST_DIR).quiet();
 

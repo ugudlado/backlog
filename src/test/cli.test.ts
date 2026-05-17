@@ -142,7 +142,7 @@ describe("CLI Integration", () => {
 
 			// Import and call addAgentInstructions directly (simulating user saying "y")
 			const { addAgentInstructions } = await import("../index.ts");
-			await addAgentInstructions(TEST_DIR, core.gitOps);
+			await addAgentInstructions(TEST_DIR);
 
 			// Verify agent files were created
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
@@ -384,34 +384,6 @@ describe("CLI Integration", () => {
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Create Command Test", true);
-
-			const config = await core.filesystem.loadConfig();
-			if (!config) {
-				throw new Error("Expected backlog config to exist");
-			}
-
-			config.autoCommit = true;
-			await core.filesystem.saveConfig(config);
-			const git = await core.getGitOps();
-			await git.addFile(join(TEST_DIR, "backlog", "config.yml"));
-			await git.commitChanges("backlog: Enable autoCommit for CLI create tests");
-		});
-
-		it("should honor autoCommit config for task create", async () => {
-			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
-			const output = await $`bun ${CLI_PATH} task create "CLI Auto Commit Task"`.cwd(TEST_DIR).text();
-			const afterCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
-
-			const core = new Core(TEST_DIR);
-			const git = await core.getGitOps();
-			const task = await core.filesystem.loadTask("task-1");
-
-			expect(task).not.toBeNull();
-			expect(output).toContain(`Created task ${task?.id}`);
-			expect(afterCount).toBe(beforeCount + 1);
-			expect(await git.isClean()).toBe(true);
-			expect(await git.getLastCommitMessage()).toContain(`Create task ${task?.id}`);
-			expect(task?.title).toBe("CLI Auto Commit Task");
 		});
 
 		it("should accept dependencies from other active branches", async () => {
@@ -423,19 +395,16 @@ describe("CLI Integration", () => {
 			await $`git push -u origin main`.cwd(TEST_DIR).quiet();
 
 			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Cross-branch dependency target",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-09",
-					labels: [],
-					dependencies: [],
-					rawContent: "Created on feature branch",
-				},
-				true,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Cross-branch dependency target",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-09",
+				labels: [],
+				dependencies: [],
+				rawContent: "Created on feature branch",
+			});
 			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
 			await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
 			await $`git checkout main`.cwd(TEST_DIR).quiet();
@@ -475,47 +444,38 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create test tasks with different statuses
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "First Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "First test task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "First Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "First test task",
+			});
 
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Second Task",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Second test task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-2",
+				title: "Second Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Second test task",
+			});
 
-			await core.createTask(
-				{
-					id: "task-3",
-					title: "Third Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Third test task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-3",
+				title: "Third Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Third test task",
+			});
 
 			const tasks = await core.filesystem.listTasks();
 			expect(tasks).toHaveLength(3);
@@ -541,32 +501,26 @@ describe("CLI Integration", () => {
 		it("should filter tasks by status", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "First Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "First test task",
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Second Task",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Second test task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "First Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "First test task",
+			});
+			await core.createTask({
+				id: "task-2",
+				title: "Second Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Second test task",
+			});
 
 			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
@@ -578,32 +532,26 @@ describe("CLI Integration", () => {
 		it("should filter tasks by status case-insensitively", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "First Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "First test task",
-				},
-				true,
-			);
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Second Task",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Second test task",
-				},
-				true,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "First Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "First test task",
+			});
+			await core.createTask({
+				id: "task-2",
+				title: "Second Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Second test task",
+			});
 
 			const testCases = ["done", "DONE", "DoNe"];
 
@@ -626,32 +574,26 @@ describe("CLI Integration", () => {
 		it("should filter tasks by assignee", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Assigned Task",
-					status: "To Do",
-					assignee: ["alice"],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Assigned task",
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Unassigned Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Other task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Assigned Task",
+				status: "To Do",
+				assignee: ["alice"],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Assigned task",
+			});
+			await core.createTask({
+				id: "task-2",
+				title: "Unassigned Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Other task",
+			});
 
 			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
@@ -686,7 +628,7 @@ describe("CLI Integration", () => {
 				rawContent: "This is a test task for view command",
 			};
 
-			await core.createTask(testTask, false);
+			await core.createTask(testTask);
 
 			// Load the task back
 			const loadedTask = await core.filesystem.loadTask("task-1");
@@ -703,19 +645,16 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-5",
-					title: "Prefix Test Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing task ID normalization",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-5",
+				title: "Prefix Test Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Testing task ID normalization",
+			});
 
 			// Test loading with full task-5 ID
 			const taskWithPrefix = await core.filesystem.loadTask("task-5");
@@ -749,7 +688,7 @@ describe("CLI Integration", () => {
 				rawContent: "Original description",
 			};
 
-			await core.createTask(originalTask, false);
+			await core.createTask(originalTask);
 
 			// Load the task (simulating view operation)
 			const viewedTask = await core.filesystem.loadTask("task-1");
@@ -776,19 +715,16 @@ describe("CLI Integration", () => {
 		it("should display formatted task details like the view command", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Shortcut Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Shortcut description",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Shortcut Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Shortcut description",
+			});
 
 			const resultShortcut = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
 			const resultView = await viewTaskPlatformAware({ taskId: "1", plain: true, useViewCommand: true }, TEST_DIR);
@@ -816,33 +752,26 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Original Title",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Original description",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Original Title",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Original description",
+			});
 
 			// Load and edit the task
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 
-			await core.updateTaskFromInput(
-				"task-1",
-				{
-					title: "Updated Title",
-					description: "Updated description",
-					status: "In Progress",
-				},
-				false,
-			);
+			await core.updateTaskFromInput("task-1", {
+				title: "Updated Title",
+				description: "Updated description",
+				status: "In Progress",
+			});
 
 			// Verify changes were persisted
 			const updatedTask = await core.filesystem.loadTask("task-1");
@@ -857,22 +786,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Assignee Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing assignee updates",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-2",
+				title: "Assignee Test",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "Testing assignee updates",
+			});
 
 			// Update assignee
-			await core.updateTaskFromInput("task-2", { assignee: ["newuser@example.com"] }, false);
+			await core.updateTaskFromInput("task-2", { assignee: ["newuser@example.com"] });
 
 			// Verify assignee was updated
 			const updatedTask = await core.filesystem.loadTask("task-2");
@@ -883,22 +809,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task with existing labels
-			await core.createTask(
-				{
-					id: "task-3",
-					title: "Label Replace Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["old1", "old2"],
-					dependencies: [],
-					rawContent: "Testing label replacement",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-3",
+				title: "Label Replace Test",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: ["old1", "old2"],
+				dependencies: [],
+				rawContent: "Testing label replacement",
+			});
 
 			// Replace all labels
-			await core.updateTaskFromInput("task-3", { labels: ["new1", "new2", "new3"] }, false);
+			await core.updateTaskFromInput("task-3", { labels: ["new1", "new2", "new3"] });
 
 			// Verify labels were replaced
 			const updatedTask = await core.filesystem.loadTask("task-3");
@@ -909,22 +832,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task with existing labels
-			await core.createTask(
-				{
-					id: "task-4",
-					title: "Label Add Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["existing"],
-					dependencies: [],
-					rawContent: "Testing label addition",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-4",
+				title: "Label Add Test",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: ["existing"],
+				dependencies: [],
+				rawContent: "Testing label addition",
+			});
 
 			// Add new labels
-			await core.updateTaskFromInput("task-4", { addLabels: ["added1", "added2"] }, false);
+			await core.updateTaskFromInput("task-4", { addLabels: ["added1", "added2"] });
 
 			// Verify labels were added
 			const updatedTask = await core.filesystem.loadTask("task-4");
@@ -935,22 +855,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task with multiple labels
-			await core.createTask(
-				{
-					id: "task-5",
-					title: "Label Remove Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["keep1", "remove", "keep2"],
-					dependencies: [],
-					rawContent: "Testing label removal",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-5",
+				title: "Label Remove Test",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: ["keep1", "remove", "keep2"],
+				dependencies: [],
+				rawContent: "Testing label removal",
+			});
 
 			// Remove specific label
-			await core.updateTaskFromInput("task-5", { removeLabels: ["remove"] }, false);
+			await core.updateTaskFromInput("task-5", { removeLabels: ["remove"] });
 
 			// Verify label was removed
 			const updatedTask = await core.filesystem.loadTask("task-5");
@@ -968,22 +885,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-6",
-					title: "Updated Date Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-07",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing updated date",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-6",
+				title: "Updated Date Test",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				rawContent: "Testing updated date",
+			});
 
 			// Edit the task (without manually setting updatedDate)
-			await core.updateTaskFromInput("task-6", { title: "Updated Title" }, false);
+			await core.updateTaskFromInput("task-6", { title: "Updated Title" });
 
 			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
@@ -992,62 +906,26 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
 		});
 
-		it("should commit changes automatically", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task
-			await core.createTask(
-				{
-					id: "task-7",
-					title: "Commit Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing auto-commit",
-				},
-				false,
-			);
-
-			// Edit the task with auto-commit enabled
-			await core.updateTaskFromInput("task-7", { title: "Updated for Commit" }, true);
-
-			// Verify the task was updated (this confirms the update functionality works)
-			const updatedTask = await core.filesystem.loadTask("task-7");
-			expect(updatedTask?.title).toBe("Updated for Commit");
-
-			// For now, just verify that updateTask with autoCommit=true doesn't throw
-			// The actual git commit functionality is tested at the Core level
-		});
-
 		it("should preserve YAML frontmatter formatting", async () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-8",
-					title: "YAML Test",
-					status: "To Do",
-					assignee: ["testuser"],
-					createdDate: "2025-06-08",
-					labels: ["yaml", "test"],
-					dependencies: ["task-1"],
-					rawContent: "Testing YAML preservation",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-8",
+				title: "YAML Test",
+				status: "To Do",
+				assignee: ["testuser"],
+				createdDate: "2025-06-08",
+				labels: ["yaml", "test"],
+				dependencies: ["task-1"],
+				rawContent: "Testing YAML preservation",
+			});
 
 			// Edit the task
-			await core.updateTaskFromInput(
-				"task-8",
-				{
-					title: "Updated YAML Test",
-					status: "In Progress",
-				},
-				false,
-			);
+			await core.updateTaskFromInput("task-8", {
+				title: "Updated YAML Test",
+				status: "In Progress",
+			});
 
 			// Verify all frontmatter fields are preserved
 			const updatedTask = await core.filesystem.loadTask("task-8");
@@ -1079,22 +957,19 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Archive Test Task",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["completed"],
-					dependencies: [],
-					rawContent: "Task ready for archiving",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Archive Test Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: ["completed"],
+				dependencies: [],
+				rawContent: "Task ready for archiving",
+			});
 
 			// Archive the task
-			const success = await core.archiveTask("task-1", false);
+			const success = await core.archiveTask("task-1");
 			expect(success).toBe(true);
 
 			// Verify task is no longer in tasks directory
@@ -1110,34 +985,8 @@ describe("CLI Integration", () => {
 		it("should handle archiving non-existent task", async () => {
 			const core = new Core(TEST_DIR);
 
-			const success = await core.archiveTask("task-999", false);
+			const success = await core.archiveTask("task-999");
 			expect(success).toBe(false);
-		});
-
-		it("should commit archive operations automatically", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create and archive a task with auto-commit
-			await core.createTask(
-				{
-					id: "task-5",
-					title: "Commit Archive Test",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing auto-commit on archive",
-				},
-				false,
-			);
-
-			const success = await core.archiveTask("task-5", true); // autoCommit = true
-			expect(success).toBe(true);
-
-			// Verify operation completed successfully
-			const task = await core.filesystem.loadTask("task-5");
-			expect(task).toBeNull();
 		});
 	});
 
@@ -1155,47 +1004,38 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create test tasks with different statuses
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Todo Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "A task in todo",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Todo Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "A task in todo",
+			});
 
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Progress Task",
-					status: "In Progress",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "A task in progress",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-2",
+				title: "Progress Task",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "A task in progress",
+			});
 
-			await core.createTask(
-				{
-					id: "task-3",
-					title: "Done Task",
-					status: "Done",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "A completed task",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-3",
+				title: "Done Task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "A completed task",
+			});
 
 			const tasks = await core.filesystem.listTasks();
 			expect(tasks).toHaveLength(3);
@@ -1250,19 +1090,16 @@ describe("CLI Integration", () => {
 		it("should support vertical layout option", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Todo Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "A task in todo",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Todo Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-08",
+				labels: [],
+				dependencies: [],
+				rawContent: "A task in todo",
+			});
 
 			const tasks = await core.filesystem.listTasks();
 			const config = await core.filesystem.loadConfig();
@@ -1281,19 +1118,16 @@ describe("CLI Integration", () => {
 		it("should support --vertical shortcut flag", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Shortcut Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-09",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing vertical shortcut",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Shortcut Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-09",
+				labels: [],
+				dependencies: [],
+				rawContent: "Testing vertical shortcut",
+			});
 
 			const tasks = await core.filesystem.listTasks();
 			const config = await core.filesystem.loadConfig();
@@ -1324,7 +1158,7 @@ describe("CLI Integration", () => {
 				rawContent: "from remote",
 			} as Task;
 
-			await core.createTask(task, true);
+			await core.createTask(task);
 
 			// set up remote repository
 			const remoteDir = join(TEST_DIR, "remote.git");
@@ -1334,7 +1168,7 @@ describe("CLI Integration", () => {
 
 			// create branch with updated status
 			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
-			await core.updateTaskFromInput("task-1", { status: "Done" }, true);
+			await core.updateTaskFromInput("task-1", { status: "Done" });
 			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
 
 			// Update remote-tracking branches to ensure they are recognized
@@ -1373,19 +1207,16 @@ describe("CLI Integration", () => {
 		it("should default to view when no subcommand is provided", async () => {
 			const core = new Core(TEST_DIR);
 
-			await core.createTask(
-				{
-					id: "task-99",
-					title: "Default Cmd Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-10",
-					labels: [],
-					dependencies: [],
-					rawContent: "test",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-99",
+				title: "Default Cmd Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-10",
+				labels: [],
+				dependencies: [],
+				rawContent: "test",
+			});
 
 			const resultDefault = await $`bun ${["src/cli.ts", "board"]}`.cwd(TEST_DIR).quiet().nothrow();
 			const resultView = await $`bun ${["src/cli.ts", "board", "view"]}`.cwd(TEST_DIR).quiet().nothrow();
@@ -1397,19 +1228,16 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 
 			// Create test tasks
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Export Test Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-09",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing board export",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Export Test Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-09",
+				labels: [],
+				dependencies: [],
+				rawContent: "Testing board export",
+			});
 
 			const { exportKanbanBoardToFile } = await import("../index.ts");
 			const outputPath = join(TEST_DIR, "test-export.md");

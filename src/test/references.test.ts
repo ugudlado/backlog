@@ -178,9 +178,9 @@ describe("Task References", () => {
 				title: "Completed referencing task",
 				references: ["task-1", "https://example.com/tasks/task-1"],
 			});
-			await core.completeTask(completedTask.id, false);
+			await core.completeTask(completedTask.id);
 
-			const archived = await core.archiveTask(archiveTarget.id, false);
+			const archived = await core.archiveTask(archiveTarget.id);
 			expect(archived).toBe(true);
 
 			const updatedActive = await core.loadTaskById(activeTask.id);

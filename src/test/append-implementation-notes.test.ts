@@ -33,20 +33,17 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 
 	it("appends to existing Implementation Notes with single blank line separation", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Existing notes",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-09-10 00:00",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-				implementationNotes: "Original notes",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Existing notes",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-09-10 00:00",
+			labels: [],
+			dependencies: [],
+			description: "Test description",
+			implementationNotes: "Original notes",
+		});
 
 		// Append twice in one call and once again afterwards
 		let res = await $`bun ${CLI_PATH} task edit 1 --append-notes "First addition" --append-notes "Second addition"`
@@ -67,21 +64,18 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 
 	it("creates Implementation Notes at correct position when missing (after Plan)", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "No notes yet",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-09-10 00:00",
-				labels: [],
-				dependencies: [],
-				description: "Desc here",
-				acceptanceCriteriaItems: [{ index: 1, text: "Do X", checked: false }],
-				implementationPlan: "1. A\n2. B",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "No notes yet",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-09-10 00:00",
+			labels: [],
+			dependencies: [],
+			description: "Desc here",
+			acceptanceCriteriaItems: [{ index: 1, text: "Do X", checked: false }],
+			implementationPlan: "1. A\n2. B",
+		});
 
 		const res = await $`bun ${CLI_PATH} task edit 2 --append-notes "Notes after plan"`.cwd(TEST_DIR).quiet().nothrow();
 		expect(res.exitCode).toBe(0);
@@ -97,19 +91,16 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 
 	it("supports multi-line appended content and preserves literal newlines", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-3",
-				title: "Multiline append",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-09-10 00:00",
-				labels: [],
-				dependencies: [],
-				description: "Simple description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-3",
+			title: "Multiline append",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-09-10 00:00",
+			labels: [],
+			dependencies: [],
+			description: "Simple description",
+		});
 
 		// Pass a JS string containing real newlines as an argument
 		const multiline = "Line1\nLine2\n\nPara2";
@@ -126,19 +117,16 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 
 	it("allows combining --notes (replace) with --append-notes (append)", async () => {
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-4",
-				title: "Mix flags",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-09-10 00:00",
-				labels: [],
-				dependencies: [],
-				description: "Description only",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-4",
+			title: "Mix flags",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-09-10 00:00",
+			labels: [],
+			dependencies: [],
+			description: "Description only",
+		});
 
 		const res = await $`bun ${CLI_PATH} task edit 4 --notes "Replace" --append-notes "Append"`
 			.cwd(TEST_DIR)

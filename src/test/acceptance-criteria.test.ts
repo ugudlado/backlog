@@ -110,19 +110,16 @@ describe("Acceptance Criteria CLI", () => {
 	describe("task edit with acceptance criteria", () => {
 		beforeEach(async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Existing Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent: "## Description\n\nExisting task description",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-1",
+				title: "Existing Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent: "## Description\n\nExisting task description",
+			});
 		});
 
 		it("should add acceptance criteria to existing task", async () => {
@@ -143,20 +140,17 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-9",
-					title: "Dup AC Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent:
-						"## Description\n\nX\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old A\n<!-- AC:END -->\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old B\n<!-- AC:END -->",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-9",
+				title: "Dup AC Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent:
+					"## Description\n\nX\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old A\n<!-- AC:END -->\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Old B\n<!-- AC:END -->",
+			});
 
 			// Add a new criterion via CLI; this triggers consolidation
 			const result = await $`bun ${CLI_PATH} task edit 9 --ac "New C"`.cwd(TEST_DIR).quiet();
@@ -177,20 +171,17 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("consolidates legacy and marked AC sections to a single marked section", async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-10",
-					title: "Mixed AC Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent:
-						"## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
-				},
-				false,
-			);
+			await core.createTask({
+				id: "task-10",
+				title: "Mixed AC Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent:
+					"## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
+			});
 
 			const result = await $`bun ${CLI_PATH} task edit 10 --ac "Marked 2"`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);
@@ -276,16 +267,15 @@ describe("Acceptance Criteria CLI", () => {
 	describe("new AC management features", () => {
 		beforeEach(async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Test Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent: `## Description
+			await core.createTask({
+				id: "task-1",
+				title: "Test Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent: `## Description
 
 Test task with acceptance criteria
 
@@ -295,9 +285,7 @@ Test task with acceptance criteria
 - [ ] #2 Second criterion
 - [ ] #3 Third criterion
 <!-- AC:END -->`,
-				},
-				false,
-			);
+			});
 		});
 
 		it("should add new acceptance criteria with --ac", async () => {
@@ -424,24 +412,21 @@ Test task with acceptance criteria
 	describe("stable format migration", () => {
 		it("should convert old format to stable format when editing", async () => {
 			const core = new Core(TEST_DIR);
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Old Format Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-19",
-					labels: [],
-					dependencies: [],
-					rawContent: `## Description
+			await core.createTask({
+				id: "task-2",
+				title: "Old Format Task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-19",
+				labels: [],
+				dependencies: [],
+				rawContent: `## Description
 
 ## Acceptance Criteria
 
 - [ ] Old format criterion 1
 - [x] Old format criterion 2`,
-				},
-				false,
-			);
+			});
 
 			const result = await $`bun ${CLI_PATH} task edit 2 --ac "New criterion"`.cwd(TEST_DIR).quiet();
 			expect(result.exitCode).toBe(0);

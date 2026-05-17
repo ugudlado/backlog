@@ -1129,11 +1129,7 @@ export async function viewTaskEnhanced(
 		}
 
 		try {
-			const config = await core.fs.loadConfig();
-			const success =
-				action === "complete"
-					? await core.completeTask(task.id, config?.autoCommit ?? false)
-					: await core.archiveTask(task.id, config?.autoCommit ?? false);
+			const success = action === "complete" ? await core.completeTask(task.id) : await core.archiveTask(task.id);
 
 			if (success) {
 				removeTaskFromCurrentView(task.id);

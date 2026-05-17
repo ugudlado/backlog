@@ -134,7 +134,7 @@ setTimeout(() => {
 		dependencies: [],
 		description: "TUI interactive editor test",
 	};
-	await core.createTask(task, false);
+	await core.createTask(task);
 
 	await writeFile(
 		expectScriptPath,

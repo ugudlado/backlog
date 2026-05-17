@@ -50,6 +50,14 @@ import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import {
+	isRemoteMode,
+	remoteTaskArchive,
+	remoteTaskCreate,
+	remoteTaskEdit,
+	remoteTaskList,
+	remoteTaskView,
+} from "./utils/remote-backend.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
 import { resolveStoreMode } from "./utils/store-mode.ts";
@@ -62,14 +70,6 @@ import {
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
-import {
-	isRemoteMode,
-	remoteTaskArchive,
-	remoteTaskCreate,
-	remoteTaskEdit,
-	remoteTaskList,
-	remoteTaskView,
-} from "./utils/remote-backend.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { getVersion } from "./utils/version.ts";
@@ -251,8 +251,12 @@ function buildCliEditArgs(taskId: string, options: Record<string, unknown>): Tas
 	const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
 	const combinedDeps = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 	const dependencyValues = combinedDeps.length > 0 ? normalizeDependencies(combinedDeps) : undefined;
-	const acceptanceAdditions = processAcceptanceCriteriaOptions(options as Parameters<typeof processAcceptanceCriteriaOptions>[0]);
-	const dodAdditions = toStringArray(options.dod).map((v) => String(v).trim()).filter(Boolean);
+	const acceptanceAdditions = processAcceptanceCriteriaOptions(
+		options as Parameters<typeof processAcceptanceCriteriaOptions>[0],
+	);
+	const dodAdditions = toStringArray(options.dod)
+		.map((v) => String(v).trim())
+		.filter(Boolean);
 	const removeCriteria = parsePositiveIndexList(options.removeAc as string[] | undefined);
 	const checkCriteria = parsePositiveIndexList(options.checkAc as string[] | undefined);
 	const uncheckCriteria = parsePositiveIndexList(options.uncheckAc as string[] | undefined);
@@ -316,7 +320,6 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 		remoteOperations: existingConfig?.remoteOperations ?? true,
 		activeBranchDays: existingConfig?.activeBranchDays ?? 30,
 		bypassGitHooks: existingConfig?.bypassGitHooks ?? false,
-		autoCommit: existingConfig?.autoCommit ?? false,
 		zeroPaddedIds: existingConfig?.zeroPaddedIds,
 		defaultEditor: existingConfig?.defaultEditor,
 		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
@@ -360,12 +363,22 @@ async function requireProjectRoot(): Promise<string> {
 		process.exit(1);
 	}
 
-	const root = await findBacklogRoot(runtimeCwd.cwd);
-	if (!root) {
-		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
+	const { resolveCliProjectRoot } = await import("./utils/workspaces-index.ts");
+	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
+	const resolved = await resolveCliProjectRoot(runtimeCwd.cwd);
+	if (!resolved.ok) {
+		if (resolved.kind === "ambiguous") {
+			console.error(
+				`Multiple Backlog.md workspaces match the current directory:\n  ${resolved.paths.join("\n  ")}\n` +
+					"Run the command from inside one workspace, or disambiguate with `backlog workspace switch`.",
+			);
+		} else {
+			console.error("No Backlog.md project found. Run `backlog init` to initialize.");
+		}
 		process.exit(1);
 	}
-	return root;
+	setActiveWorkspaceDataDir(resolved.projectRoot, resolved.dataDir);
+	return resolved.projectRoot;
 }
 
 // Windows color fix
@@ -528,6 +541,10 @@ program
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
+	.option(
+		"--workspace-data <path>",
+		"record an absolute data: location in the machine workspace index (task data lives outside <project>/backlog)",
+	)
 	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--no-git", "initialize without Git integration")
@@ -550,6 +567,7 @@ program
 				installClaudeAgent?: string;
 				integrationMode?: string;
 				backlogDir?: string;
+				workspaceData?: string;
 				configLocation?: string;
 				taskPrefix?: string;
 				git?: boolean;
@@ -1245,7 +1263,6 @@ program
 						checkActiveBranches: false,
 						remoteOperations: false,
 						bypassGitHooks: false,
-						autoCommit: false,
 					};
 				}
 				// When local store mode is chosen with globalStore configured, ensure
@@ -1259,6 +1276,7 @@ program
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
+					workspaceDataDir: options.workspaceData || undefined,
 					backlogDirectory,
 					backlogDirectorySource,
 					configLocation,
@@ -1271,7 +1289,6 @@ program
 						remoteOperations: advancedConfig.remoteOperations,
 						activeBranchDays: advancedConfig.activeBranchDays,
 						bypassGitHooks: advancedConfig.bypassGitHooks,
-						autoCommit: advancedConfig.autoCommit,
 						zeroPaddedIds: advancedConfig.zeroPaddedIds,
 						defaultEditor: advancedConfig.defaultEditor,
 						definitionOfDone: advancedConfig.definitionOfDone,
@@ -1360,7 +1377,6 @@ program
 					summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
 					summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
 					summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
-					summaryLines.push(`  ${label("Auto commit:")} ${boolValue(Boolean(config.autoCommit))}`);
 					summaryLines.push(
 						`  ${label("Zero-padded IDs:")} ${
 							config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
@@ -1512,7 +1528,11 @@ taskCmd
 		}
 
 		if (isRemoteMode() && !shouldUseWizard && title) {
-			const labels = options.labels ? String(options.labels).split(",").map((l: string) => l.trim()) : undefined;
+			const labels = options.labels
+				? String(options.labels)
+						.split(",")
+						.map((l: string) => l.trim())
+				: undefined;
 			const task = await remoteTaskCreate({
 				title: title.trim(),
 				description: options.description ?? options.desc,
@@ -2978,10 +2998,7 @@ agentsCmd
 
 			const files: AgentInstructionFile[] = Array.isArray(selected) ? (selected as AgentInstructionFile[]) : [];
 			if (files.length > 0) {
-				// Get autoCommit setting from config
-				const config = await core.filesystem.loadConfig();
-				const shouldAutoCommit = config?.autoCommit ?? false;
-				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
+				await addAgentInstructions(cwd, files);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");
@@ -3036,7 +3053,6 @@ const configCmd = program
 			console.log(`  Web UI port: ${mergedConfig.defaultPort ?? 6420}`);
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
-			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
 			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
 			if (completionResult) {
 				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
@@ -3178,9 +3194,6 @@ configCmd
 				case "remoteOperations":
 					console.log(config.remoteOperations?.toString() || "");
 					break;
-				case "autoCommit":
-					console.log(config.autoCommit?.toString() || "");
-					break;
 				case "filesystemOnly":
 					console.log(config.filesystemOnly?.toString() || "false");
 					break;
@@ -3199,7 +3212,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -3288,25 +3301,12 @@ configCmd
 					}
 					break;
 				}
-				case "autoCommit": {
-					const boolValue = value.toLowerCase();
-					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
-						config.autoCommit = true;
-					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
-						config.autoCommit = false;
-					} else {
-						console.error("autoCommit must be true or false");
-						process.exit(1);
-					}
-					break;
-				}
 				case "filesystemOnly": {
 					const boolValue = value.toLowerCase();
 					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
 						config.filesystemOnly = true;
 						config.checkActiveBranches = false;
 						config.remoteOperations = false;
-						config.autoCommit = false;
 						config.bypassGitHooks = false;
 					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
 						config.filesystemOnly = false;
@@ -3394,7 +3394,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -3435,7 +3435,6 @@ configCmd
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
-			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
 			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
@@ -3539,7 +3538,6 @@ program
 
 			// Move tasks to completed folder
 			let successCount = 0;
-			const shouldAutoCommit = config.autoCommit ?? false;
 
 			console.log("Moving tasks...");
 			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
@@ -3564,9 +3562,9 @@ program
 				}
 			}
 
-			// If autoCommit is disabled, stage the moves so Git recognizes them
+			// Stage the moves so Git recognizes them; the user commits manually.
 			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
+			if (successCount > 0 && hasGitRepository) {
 				console.log("Staging file moves for Git...");
 				for (const { fromPath, toPath } of movedTasks) {
 					try {
@@ -3578,7 +3576,7 @@ program
 			}
 
 			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
+			if (successCount > 0 && hasGitRepository) {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
 			}
 		} catch (err) {

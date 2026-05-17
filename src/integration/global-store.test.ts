@@ -8,7 +8,6 @@
  * These tests verify the full wire-up:
  *   (a) backlog init creates external slot, code repo stays clean
  *   (b) task create/list operate against external slot
- *   (c) git log in code repo shows no new commits even with autoCommit: true
  *   (d) missing globalStore dir → clean error message
  *   (e) backlog init --global registers workspace in machine index
  */
@@ -117,34 +116,6 @@ describe("globalStore end-to-end integration", () => {
 		// Code repo backlog/ should still not exist
 		const backlogStat = await stat(join(repoDir, "backlog")).catch(() => null);
 		expect(backlogStat).toBeNull();
-	});
-
-	it("(c) git log in code repo shows no new commits even with autoCommit: true", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
-			.cwd(repoDir)
-			.env(cliEnv())
-			.nothrow()
-			.quiet();
-
-		// Enable autoCommit in the external slot config
-		await $`bun run ${CLI_PATH} config set autoCommit true`.cwd(repoDir).env(cliEnv()).nothrow().quiet();
-
-		// Record git commit count before task creation
-		const logBefore = await $`git -C ${repoDir} log --oneline`.nothrow().text();
-		const commitCountBefore = logBefore.trim() === "" ? 0 : logBefore.trim().split("\n").length;
-
-		// Create a task (would normally trigger autoCommit in a local-backlog project)
-		await $`bun run ${CLI_PATH} task create "AutoCommit test task" --plain`
-			.cwd(repoDir)
-			.env(cliEnv())
-			.nothrow()
-			.quiet();
-
-		// Code repo git log should be unchanged
-		const logAfter = await $`git -C ${repoDir} log --oneline`.nothrow().text();
-		const commitCountAfter = logAfter.trim() === "" ? 0 : logAfter.trim().split("\n").length;
-
-		expect(commitCountAfter).toBe(commitCountBefore);
 	});
 
 	it("(d) missing globalStore directory → clean error message", async () => {

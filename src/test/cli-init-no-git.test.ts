@@ -56,7 +56,6 @@ describe("CLI init without Git", () => {
 		expect(config?.projectName).toBe("Filesystem Project");
 		expect(config?.checkActiveBranches).toBe(false);
 		expect(config?.remoteOperations).toBe(false);
-		expect(config?.autoCommit).toBe(false);
 		expect(config?.bypassGitHooks).toBe(false);
 		expect(config?.filesystemOnly).toBe(true);
 		expect(result.stdout.toString()).toContain("Git integration: disabled (filesystem-only)");
@@ -72,7 +71,6 @@ describe("CLI init without Git", () => {
 			advancedConfig: {
 				checkActiveBranches: true,
 				remoteOperations: true,
-				autoCommit: true,
 				bypassGitHooks: true,
 			},
 		});
@@ -81,7 +79,6 @@ describe("CLI init without Git", () => {
 
 		expect(config?.checkActiveBranches).toBe(false);
 		expect(config?.remoteOperations).toBe(false);
-		expect(config?.autoCommit).toBe(false);
 		expect(config?.bypassGitHooks).toBe(false);
 		expect(config?.filesystemOnly).toBe(true);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
@@ -99,7 +96,7 @@ describe("CLI init without Git", () => {
 		expect(taskResult.stdout.toString()).toContain("Task TASK-1 - No Git Task");
 
 		const milestone = await core.filesystem.createMilestone("No Git Milestone");
-		const archiveMilestoneResult = await core.archiveMilestone(milestone.id, true);
+		const archiveMilestoneResult = await core.archiveMilestone(milestone.id);
 		expect(archiveMilestoneResult.success).toBe(true);
 
 		const tasks = await core.loadTasks();

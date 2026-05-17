@@ -50,6 +50,11 @@ export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
+	/**
+	 * Optional `data:` override recorded in the machine workspace index, for
+	 * when this workspace's task data lives outside `<projectRoot>/backlog`.
+	 */
+	workspaceDataDir?: string;
 	backlogDirectory?: string;
 	backlogDirectorySource?: "backlog" | ".backlog" | "custom";
 	configLocation?: "folder" | "root";
@@ -63,7 +68,6 @@ export interface InitializeProjectOptions {
 		remoteOperations?: boolean;
 		activeBranchDays?: number;
 		bypassGitHooks?: boolean;
-		autoCommit?: boolean;
 		zeroPaddedIds?: number;
 		defaultEditor?: string;
 		definitionOfDone?: string[];
@@ -132,7 +136,6 @@ export async function initializeProject(
 				checkActiveBranches: false,
 				remoteOperations: false,
 				bypassGitHooks: false,
-				autoCommit: false,
 			}
 		: advancedConfig;
 	const hasDefaultEditorOverride = Object.hasOwn(normalizedAdvancedConfig, "defaultEditor");
@@ -150,7 +153,6 @@ export async function initializeProject(
 		dateFormat: "yyyy-mm-dd",
 		maxColumnWidth: 20,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
-		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -171,7 +173,6 @@ export async function initializeProject(
 		...(existingConfig ?? {}),
 		projectName,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
-		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -273,7 +274,7 @@ export async function initializeProject(
 	// read-only setups), init still succeeds.
 	try {
 		const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
-		const { entry } = await registerWorkspaceAtPath(projectRoot);
+		const { entry } = await registerWorkspaceAtPath(projectRoot, { data: options.workspaceDataDir });
 		if (entry.id) {
 			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
 			await setCurrentWorkspaceId(entry.id);
@@ -354,7 +355,7 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			await addAgentInstructions(projectRoot, core.gitOps, agentInstructions, config.autoCommit);
+			await addAgentInstructions(projectRoot, agentInstructions);
 			mcpResults.agentFiles = `Created: ${agentInstructions.join(", ")}`;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

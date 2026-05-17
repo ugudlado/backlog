@@ -237,7 +237,6 @@ export interface BacklogConfig {
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;
 	remoteOperations?: boolean;
-	autoCommit?: boolean;
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;

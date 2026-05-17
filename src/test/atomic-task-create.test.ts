@@ -86,10 +86,10 @@ describe("atomic task creation", () => {
 		patchSaveTask(first);
 		patchSaveTask(second);
 
-		const firstCreate = first.createTaskFromInput({ title: "Alpha" }, false);
+		const firstCreate = first.createTaskFromInput({ title: "Alpha" });
 		await firstEnteredSave.promise;
 
-		const secondCreate = second.createTaskFromInput({ title: "Beta" }, false);
+		const secondCreate = second.createTaskFromInput({ title: "Beta" });
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(saveEntries).toBe(1);
@@ -125,8 +125,8 @@ describe("atomic task creation", () => {
 		patchSaveTask(first);
 		patchSaveTask(second);
 
-		const firstCreate = first.createTaskFromInput({ title: "Alpha" }, false);
-		const secondCreate = second.createTaskFromInput({ title: "Beta" }, false);
+		const firstCreate = first.createTaskFromInput({ title: "Alpha" });
+		const secondCreate = second.createTaskFromInput({ title: "Beta" });
 
 		await expectResolvesWithin(bothEnteredSave.promise, 250, "both creates should reach saveTask without the lock");
 		expect(saveEntries).toBe(2);

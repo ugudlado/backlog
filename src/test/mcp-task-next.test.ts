@@ -28,7 +28,6 @@ labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false
 filesystem_only: true
-auto_commit: false
 `,
 	);
 }
@@ -148,7 +147,6 @@ labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false
 filesystem_only: true
-auto_commit: false
 `,
 		);
 		const legacyServer = new McpServer(legacyDir, "Test instructions");

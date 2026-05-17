@@ -58,7 +58,6 @@ describe("BacklogServer cleanup endpoints", () => {
 				createdDate: oldDateValue,
 				updatedDate: oldDateValue,
 			}),
-			false,
 		);
 		await core.createTask(
 			makeTask({
@@ -68,7 +67,6 @@ describe("BacklogServer cleanup endpoints", () => {
 				createdDate: oldDateValue,
 				updatedDate: oldDateValue,
 			}),
-			false,
 		);
 
 		server = new BacklogServer(TEST_DIR);

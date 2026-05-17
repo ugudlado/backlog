@@ -87,13 +87,13 @@ export function getExitCode(result: { status: number | null; error?: Error }): n
 
 /**
  * Shared test helper for project initialization.
- * Uses the same init path as CLI/web and optionally mirrors the legacy auto-commit behavior
- * needed by tests that assert against the post-init commit state.
+ * Uses the same init path as CLI/web and optionally creates an initial commit
+ * for tests that assert against the post-init committed state.
  */
 export async function initializeTestProject(
 	core: Core,
 	projectName: string,
-	autoCommit = false,
+	commitInitialState = false,
 	backlogDirectory?: string,
 ): Promise<void> {
 	const backlogDirectorySource = backlogDirectory
@@ -109,12 +109,9 @@ export async function initializeTestProject(
 		backlogDirectorySource,
 		configLocation,
 		integrationMode: "none",
-		advancedConfig: {
-			autoCommit: false,
-		},
 	});
 
-	if (autoCommit) {
+	if (commitInitialState) {
 		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDirName);
 		await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
 	}

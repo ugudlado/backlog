@@ -74,7 +74,7 @@ describe("Core.editTaskInTui", () => {
 			dependencies: [],
 			rawContent: "## Description\n\nOriginal body",
 		};
-		await core.createTask(task, false);
+		await core.createTask(task);
 		taskId = task.id;
 	});
 

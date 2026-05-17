@@ -83,19 +83,16 @@ Keep me exactly.
 	it("should preserve all sections when updating description", async () => {
 		// Create a task with all sections
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Full task test",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Original description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Full task test",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Original description",
+		});
 
 		// Add acceptance criteria
 		await $`bun ${cliPath} task edit 1 --ac "Criterion 1,Criterion 2"`.cwd(TEST_DIR).quiet();
@@ -135,19 +132,16 @@ Keep me exactly.
 	it("should preserve all sections when updating acceptance criteria", async () => {
 		// Create a task with all sections
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "AC update test",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "AC update test",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Test description",
+		});
 
 		// Add all sections
 		await $`bun ${cliPath} task edit 2 --ac "Original criterion"`.cwd(TEST_DIR).quiet();
@@ -171,19 +165,16 @@ Keep me exactly.
 	it("should preserve all sections when updating implementation plan", async () => {
 		// Create a task with all sections
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-3",
-				title: "Plan update test",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-3",
+			title: "Plan update test",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Test description",
+		});
 
 		// Add all sections
 		await $`bun ${cliPath} task edit 3 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
@@ -207,19 +198,16 @@ Keep me exactly.
 	it("should preserve all sections when updating implementation notes", async () => {
 		// Create a task with all sections
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-4",
-				title: "Notes update test",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-4",
+			title: "Notes update test",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Test description",
+		});
 
 		// Add all sections
 		await $`bun ${cliPath} task edit 4 --ac "Test criterion"`.cwd(TEST_DIR).quiet();
@@ -242,19 +230,16 @@ Keep me exactly.
 	it("should handle tasks with minimal content", async () => {
 		// Create a task with just description
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-5",
-				title: "Minimal task test",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Minimal description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-5",
+			title: "Minimal task test",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Minimal description",
+		});
 
 		// Update description
 		await $`bun ${cliPath} task edit 5 -d "Updated minimal description"`.cwd(TEST_DIR).quiet();

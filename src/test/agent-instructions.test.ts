@@ -68,7 +68,7 @@ describe("addAgentInstructions", () => {
 	});
 
 	it("creates only selected files", async () => {
-		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md", "README.md"]);
+		await addAgentInstructions(TEST_DIR, ["AGENTS.md", "README.md"]);
 
 		const agentsExists = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 		const claudeExists = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
@@ -108,11 +108,11 @@ describe("addAgentInstructions", () => {
 		await Bun.write(join(TEST_DIR, "CLAUDE.md"), existingContent);
 
 		// First run
-		await addAgentInstructions(TEST_DIR, undefined, ["CLAUDE.md"]);
+		await addAgentInstructions(TEST_DIR, ["CLAUDE.md"]);
 		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 
 		// Second run - should not duplicate Backlog.md content
-		await addAgentInstructions(TEST_DIR, undefined, ["CLAUDE.md"]);
+		await addAgentInstructions(TEST_DIR, ["CLAUDE.md"]);
 		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 
 		expect(firstRun).toBe(secondRun);
@@ -132,7 +132,7 @@ describe("addAgentInstructions", () => {
 
 		// Test AGENTS.md (markdown with HTML comments)
 		await Bun.write(join(TEST_DIR, "AGENTS.md"), existingContent);
-		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		await addAgentInstructions(TEST_DIR, ["AGENTS.md"]);
 		const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
@@ -211,7 +211,7 @@ describe("addAgentInstructions", () => {
 		].join("\n");
 		await Bun.write(agentsPath, mcpBlock);
 
-		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
+		await addAgentInstructions(TEST_DIR, ["AGENTS.md"]);
 		const updated = await Bun.file(agentsPath).text();
 
 		expect(updated).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
@@ -239,7 +239,7 @@ describe("agent-guidelines.md workspace registry section", () => {
 		const dir = createUniqueTestDir("test-agent-instructions-registry");
 		await mkdir(dir, { recursive: true });
 		try {
-			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
 				expect(text).toContain("## Workspace Registry");
@@ -276,7 +276,7 @@ describe("agent-guidelines.md server & service section (FR-1)", () => {
 		const dir = createUniqueTestDir("test-agent-instructions-server");
 		await mkdir(dir, { recursive: true });
 		try {
-			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
 				expect(text).toContain("## Server & Service");
@@ -312,7 +312,7 @@ describe("agent-guidelines.md agents-update mention (FR-3)", () => {
 		const dir = createUniqueTestDir("test-agent-instructions-update");
 		await mkdir(dir, { recursive: true });
 		try {
-			await addAgentInstructions(dir, undefined, ["CLAUDE.md", "AGENTS.md"]);
+			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
 				expect(text).toContain("backlog agents --update-instructions");

@@ -206,7 +206,6 @@ export async function runAdvancedConfigWizard({
 	let remoteOperations = config?.remoteOperations ?? true;
 	let activeBranchDays = config?.activeBranchDays ?? 30;
 	let bypassGitHooks = config?.bypassGitHooks ?? false;
-	let autoCommit = config?.autoCommit ?? false;
 	let zeroPaddedIds = config?.zeroPaddedIds;
 	let defaultEditor: string | undefined =
 		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
@@ -283,18 +282,6 @@ export async function runAdvancedConfigWizard({
 		{ onCancel },
 	);
 	bypassGitHooks = Boolean(gitHooksPrompt.bypassGitHooks ?? bypassGitHooks);
-
-	const autoCommitPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "autoCommit",
-			message: "Enable automatic commits for Backlog operations?",
-			hint: "Creates commits automatically after CLI changes",
-			initial: autoCommit,
-		},
-		{ onCancel },
-	);
-	autoCommit = Boolean(autoCommitPrompt.autoCommit ?? autoCommit);
 
 	while (true) {
 		const zeroPaddingPrompt = await promptImpl(
@@ -633,7 +620,6 @@ export async function runAdvancedConfigWizard({
 			remoteOperations,
 			activeBranchDays,
 			bypassGitHooks,
-			autoCommit,
 			zeroPaddedIds,
 			defaultEditor,
 			definitionOfDone,

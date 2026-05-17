@@ -34,7 +34,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 			dependencies: [],
 			description: "Seed task description",
 		};
-		await core.createTask(seedTask, false);
+		await core.createTask(seedTask);
 	});
 
 	afterEach(async () => {

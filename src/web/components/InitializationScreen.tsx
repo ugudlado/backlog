@@ -13,7 +13,6 @@ interface AdvancedConfig {
 	remoteOperations: boolean;
 	activeBranchDays: number;
 	bypassGitHooks: boolean;
-	autoCommit: boolean;
 	zeroPaddedIds: number | null;
 	taskPrefix: string;
 	defaultEditor: string;
@@ -47,7 +46,6 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		remoteOperations: DEFAULT_INIT_CONFIG.remoteOperations,
 		activeBranchDays: DEFAULT_INIT_CONFIG.activeBranchDays,
 		bypassGitHooks: DEFAULT_INIT_CONFIG.bypassGitHooks,
-		autoCommit: DEFAULT_INIT_CONFIG.autoCommit,
 		zeroPaddedIds: DEFAULT_INIT_CONFIG.zeroPaddedIds ?? null,
 		taskPrefix: "",
 		defaultEditor: DEFAULT_INIT_CONFIG.defaultEditor ?? "",
@@ -650,23 +648,6 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					<div>
 						<h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Git Settings</h3>
 						<div className="space-y-3">
-							<label className="flex items-center cursor-pointer">
-								<input
-									type="checkbox"
-									checked={advancedConfig.autoCommit}
-									onChange={(e) =>
-										setAdvancedConfig((prev) => ({ ...prev, autoCommit: e.target.checked }))
-									}
-									className="mr-3"
-								/>
-								<div>
-									<span className="text-gray-900 dark:text-gray-100">Auto-commit changes</span>
-									<p className="text-xs text-gray-500 dark:text-gray-400">
-										Creates commits automatically after CLI changes
-									</p>
-								</div>
-							</label>
-
 							<label className="flex items-center cursor-pointer">
 								<input
 									type="checkbox"

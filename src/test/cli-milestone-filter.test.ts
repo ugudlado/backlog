@@ -27,94 +27,76 @@ describe("CLI milestone filtering", () => {
 		await initializeTestProject(core, "Milestone Filter Test Project");
 		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
 
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Milestone task one",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task in release milestone",
-				milestone: "Release-1",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Milestone task one",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task in release milestone",
+			milestone: "Release-1",
+		});
 
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "Milestone task two",
-				status: "In Progress",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task in same milestone with different case",
-				milestone: "release-1",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "Milestone task two",
+			status: "In Progress",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task in same milestone with different case",
+			milestone: "release-1",
+		});
 
-		await core.createTask(
-			{
-				id: "task-3",
-				title: "Other milestone task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task in different milestone",
-				milestone: "Release-2",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-3",
+			title: "Other milestone task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task in different milestone",
+			milestone: "Release-2",
+		});
 
-		await core.createTask(
-			{
-				id: "task-4",
-				title: "No milestone task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task without milestone",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-4",
+			title: "No milestone task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task without milestone",
+		});
 
-		await core.createTask(
-			{
-				id: "task-5",
-				title: "Roadmap milestone task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task in roadmap milestone",
-				milestone: "Roadmap Alpha",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-5",
+			title: "Roadmap milestone task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task in roadmap milestone",
+			milestone: "Roadmap Alpha",
+		});
 
-		await core.createTask(
-			{
-				id: "task-6",
-				title: "ID milestone task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Task with milestone stored as ID",
-				milestone: newMilestone.id,
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-6",
+			title: "ID milestone task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Task with milestone stored as ID",
+			milestone: newMilestone.id,
+		});
 	});
 
 	afterEach(async () => {

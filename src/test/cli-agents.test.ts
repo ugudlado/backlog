@@ -47,12 +47,11 @@ describe("CLI agents command", () => {
 
 	it("should update selected agent instruction files", async () => {
 		// Test the underlying functionality directly instead of the interactive CLI
-		const core = new Core(TEST_DIR);
 		const { addAgentInstructions } = await import("../index.ts");
 
 		// Update AGENTS.md file
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
+			await addAgentInstructions(TEST_DIR, ["AGENTS.md"]);
 		}).not.toThrow();
 
 		// Verify the file was created
@@ -64,12 +63,11 @@ describe("CLI agents command", () => {
 
 	it("should handle user cancellation gracefully", async () => {
 		// Test that the function handles empty selection (cancellation) gracefully
-		const core = new Core(TEST_DIR);
 		const { addAgentInstructions } = await import("../index.ts");
 
 		// Test with empty array (simulates user cancellation)
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, []);
+			await addAgentInstructions(TEST_DIR, []);
 		}).not.toThrow();
 
 		// No files should be created when selection is empty
@@ -103,12 +101,11 @@ describe("CLI agents command", () => {
 
 	it("should update multiple selected files", async () => {
 		// Test updating multiple agent instruction files
-		const core = new Core(TEST_DIR);
 		const { addAgentInstructions } = await import("../index.ts");
 
 		// Test updating multiple files
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md", "CLAUDE.md"]);
+			await addAgentInstructions(TEST_DIR, ["AGENTS.md", "CLAUDE.md"]);
 		}).not.toThrow();
 
 		// Verify both files were created
@@ -127,17 +124,16 @@ describe("CLI agents command", () => {
 
 	it("should update existing files correctly", async () => {
 		// Test that existing files are updated correctly (idempotent)
-		const core = new Core(TEST_DIR);
 		const { addAgentInstructions } = await import("../index.ts");
 
 		// First, create a file
-		await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
+		await addAgentInstructions(TEST_DIR, ["AGENTS.md"]);
 
 		const agents3 = Bun.file(join(TEST_DIR, "AGENTS.md"));
 		expect(await agents3.exists()).toBe(true);
 		// Update it again - should be idempotent
 		await expect(async () => {
-			await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"]);
+			await addAgentInstructions(TEST_DIR, ["AGENTS.md"]);
 		}).not.toThrow();
 
 		// File should still exist and have consistent content

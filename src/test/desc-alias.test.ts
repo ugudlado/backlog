@@ -61,19 +61,16 @@ describe("--desc alias functionality", () => {
 	it("should edit task description with --desc alias", async () => {
 		// Create initial task
 		const core = new Core(TEST_DIR);
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Edit test task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-04",
-				labels: [],
-				dependencies: [],
-				description: "Original description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Edit test task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-07-04",
+			labels: [],
+			dependencies: [],
+			description: "Original description",
+		});
 
 		// Edit with --desc
 		await $`bun ${cliPath} task edit 1 --desc "Updated via --desc"`.cwd(TEST_DIR).quiet();

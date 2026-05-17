@@ -12,7 +12,6 @@ import {
 	MCP_AGENT_NUDGE,
 	README_GUIDELINES,
 } from "./constants/index.ts";
-import type { GitOperations } from "./git/operations.ts";
 
 export type AgentInstructionFile =
 	| "AGENTS.md"
@@ -124,9 +123,7 @@ function stripGuidelineSection(
 
 export async function addAgentInstructions(
 	projectRoot: string,
-	git?: GitOperations,
 	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
-	autoCommit = false,
 ): Promise<void> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": AGENT_GUIDELINES,
@@ -185,11 +182,6 @@ export async function addAgentInstructions(
 	if (files.includes("CLAUDE.md")) {
 		await installClaudeAgent(projectRoot);
 		await installClaudeSkill(projectRoot);
-	}
-
-	if (git && paths.length > 0 && autoCommit) {
-		await git.addFiles(paths);
-		await git.commitChanges("Add AI agent instructions");
 	}
 }
 

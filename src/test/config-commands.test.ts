@@ -41,7 +41,6 @@ describe("Config commands", () => {
 			{ remoteOperations: true },
 			{ activeBranchDays: 30 },
 			{ bypassGitHooks: false },
-			{ autoCommit: false },
 			{ enableZeroPadding: false },
 			{ editor: "" },
 			{ definitionOfDoneAction: "done" },
@@ -59,7 +58,6 @@ describe("Config commands", () => {
 		expect(mergedConfig.remoteOperations).toBe(true);
 		expect(mergedConfig.activeBranchDays).toBe(30);
 		expect(mergedConfig.bypassGitHooks).toBe(false);
-		expect(mergedConfig.autoCommit).toBe(false);
 		expect(mergedConfig.zeroPaddedIds).toBeUndefined();
 		expect(mergedConfig.defaultEditor).toBeUndefined();
 		expect(mergedConfig.definitionOfDone).toEqual([]);
@@ -79,7 +77,6 @@ describe("Config commands", () => {
 			{ remoteOperations: false },
 			{ activeBranchDays: 14 },
 			{ bypassGitHooks: true },
-			{ autoCommit: true },
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
 			{ editor: "echo" },
@@ -101,7 +98,6 @@ describe("Config commands", () => {
 		expect(mergedConfig.remoteOperations).toBe(false);
 		expect(mergedConfig.activeBranchDays).toBe(14);
 		expect(mergedConfig.bypassGitHooks).toBe(true);
-		expect(mergedConfig.autoCommit).toBe(true);
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
 		expect(mergedConfig.defaultEditor).toBe("echo");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
@@ -115,7 +111,6 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
 		expect(reloadedConfig?.bypassGitHooks).toBe(true);
-		expect(reloadedConfig?.autoCommit).toBe(true);
 	});
 
 	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
@@ -125,7 +120,6 @@ describe("Config commands", () => {
 			{ remoteOperations: true },
 			{ activeBranchDays: 30 },
 			{ bypassGitHooks: false },
-			{ autoCommit: false },
 			{ enableZeroPadding: false },
 			{ editor: "" },
 			{ definitionOfDoneAction: "add" },

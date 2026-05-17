@@ -6,6 +6,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { getActiveWorkspaceDataDir } from "../utils/active-workspace.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
@@ -63,6 +64,15 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+
+		// A `workspaces.yml` entry `data:` override (recorded by the active-
+		// workspace resolver) wins over the project-root-relative default.
+		const dataDirOverride = getActiveWorkspaceDataDir(projectRoot);
+		if (dataDirOverride) {
+			this.resolvedBacklogDir = dataDirOverride;
+			this.resolvedConfigPath = join(dataDirOverride, DEFAULT_FILES.CONFIG);
+			this.configSource = "folder";
+		}
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -1056,9 +1066,6 @@ ${description || `Milestone: ${title}`}`,
 				case "remote_operations":
 					config.remoteOperations = value.toLowerCase() === "true";
 					break;
-				case "auto_commit":
-					config.autoCommit = value.toLowerCase() === "true";
-					break;
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1109,7 +1116,6 @@ ${description || `Milestone: ${title}`}`,
 			autoOpenBrowser: config.autoOpenBrowser,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
-			autoCommit: config.autoCommit,
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1141,7 +1147,6 @@ ${description || `Milestone: ${title}`}`,
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
-			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),

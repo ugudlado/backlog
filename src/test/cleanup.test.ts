@@ -58,7 +58,7 @@ describe("Cleanup functionality", () => {
 
 		it("should move Done task to completed folder", async () => {
 			// Create a task
-			await core.createTask(sampleTask, false);
+			await core.createTask(sampleTask);
 
 			// Verify task exists in active tasks
 			const activeTasks = await core.filesystem.listTasks();
@@ -66,7 +66,7 @@ describe("Cleanup functionality", () => {
 			expect(activeTasks[0]?.id).toBe("TASK-1");
 
 			// Move to completed
-			const success = await core.completeTask("task-1", false);
+			const success = await core.completeTask("task-1");
 			expect(success).toBe(true);
 
 			// Verify task is no longer in active tasks
@@ -93,7 +93,7 @@ describe("Cleanup functionality", () => {
 				updatedDate: oldDate.toISOString().split("T")[0] as string,
 				rawContent: "Old task description",
 			};
-			await core.createTask(oldTask, false);
+			await core.createTask(oldTask);
 
 			// Create recent Done task (1 day ago)
 			const recentDate = new Date();
@@ -106,7 +106,7 @@ describe("Cleanup functionality", () => {
 				updatedDate: recentDate.toISOString().split("T")[0] as string,
 				rawContent: "Recent task description",
 			};
-			await core.createTask(recentTask, false);
+			await core.createTask(recentTask);
 
 			// Create In Progress task
 			const activeTask: Task = {
@@ -117,7 +117,7 @@ describe("Cleanup functionality", () => {
 				createdDate: oldDate.toISOString().split("T")[0] as string,
 				rawContent: "Active task description",
 			};
-			await core.createTask(activeTask, false);
+			await core.createTask(activeTask);
 
 			// Get tasks older than 3 days
 			const oldTasks = await core.getTerminalStatusTasksByAge(3);
@@ -147,50 +147,38 @@ describe("Cleanup functionality", () => {
 			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
 			const recentDateValue = recentDate.toISOString().split("T")[0] as string;
 
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-1",
-					title: "Old Closed Task",
-					status: "Closed",
-					createdDate: oldDateValue,
-					updatedDate: oldDateValue,
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-2",
-					title: "Recent Closed Task",
-					status: "Closed",
-					createdDate: recentDateValue,
-					updatedDate: recentDateValue,
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-3",
-					title: "Old Review Task",
-					status: "Review",
-					createdDate: oldDateValue,
-					updatedDate: oldDateValue,
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-4",
-					title: "Old Literal Done Task",
-					status: "Done",
-					createdDate: oldDateValue,
-					updatedDate: oldDateValue,
-				},
-				false,
-			);
+			await core.createTask({
+				...sampleTask,
+				id: "task-1",
+				title: "Old Closed Task",
+				status: "Closed",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-2",
+				title: "Recent Closed Task",
+				status: "Closed",
+				createdDate: recentDateValue,
+				updatedDate: recentDateValue,
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-3",
+				title: "Old Review Task",
+				status: "Review",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-4",
+				title: "Old Literal Done Task",
+				status: "Done",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			});
 
 			const oldTasks = await core.getTerminalStatusTasksByAge(3);
 			expect(oldTasks.map((task) => task.id)).toEqual(["TASK-1"]);
@@ -214,28 +202,22 @@ describe("Cleanup functionality", () => {
 			oldDate.setDate(oldDate.getDate() - 7);
 			const oldDateValue = oldDate.toISOString().split("T")[0] as string;
 
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-1",
-					title: "Old Terminal Task",
-					status: "InProgress",
-					createdDate: oldDateValue,
-					updatedDate: oldDateValue,
-				},
-				false,
-			);
-			await core.createTask(
-				{
-					...sampleTask,
-					id: "task-2",
-					title: "Old Non-Terminal Task",
-					status: "In Progress",
-					createdDate: oldDateValue,
-					updatedDate: oldDateValue,
-				},
-				false,
-			);
+			await core.createTask({
+				...sampleTask,
+				id: "task-1",
+				title: "Old Terminal Task",
+				status: "InProgress",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			});
+			await core.createTask({
+				...sampleTask,
+				id: "task-2",
+				title: "Old Non-Terminal Task",
+				status: "In Progress",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			});
 
 			const oldTasks = await core.getTerminalStatusTasksByAge(3);
 			expect(oldTasks.map((task) => task.id)).toEqual(["TASK-1"]);
@@ -248,7 +230,7 @@ describe("Cleanup functionality", () => {
 				createdDate: "",
 				rawContent: "Task description",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task);
 
 			const oldTasks = await core.getTerminalStatusTasksByAge(1);
 			expect(oldTasks).toHaveLength(0); // Should not include tasks without valid dates
@@ -271,7 +253,7 @@ describe("Cleanup functionality", () => {
 				dependencies: [],
 				rawContent: "Task description",
 			};
-			await core.createTask(task, false);
+			await core.createTask(task);
 
 			// Should use updatedDate (recent) not createdDate (old)
 			const oldTasks = await core.getTerminalStatusTasksByAge(5);
@@ -284,7 +266,7 @@ describe("Cleanup functionality", () => {
 
 	describe("Error handling", () => {
 		it("should handle non-existent task gracefully", async () => {
-			const success = await core.completeTask("non-existent", false);
+			const success = await core.completeTask("non-existent");
 			expect(success).toBe(false);
 		});
 

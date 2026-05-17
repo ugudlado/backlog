@@ -107,7 +107,7 @@ describe("resolveOrdinalConflicts", () => {
 describe("Core.reorderTask", () => {
 	const createTasks = async (tasks: Array<[string, string, number?]>) => {
 		for (const [id, status, ordinal] of tasks) {
-			await core.createTask(buildTask(id, status, ordinal), false);
+			await core.createTask(buildTask(id, status, ordinal));
 		}
 	};
 
