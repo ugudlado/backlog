@@ -202,6 +202,8 @@ export function parseMilestone(content: string): Milestone {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		description: extractSection(rawContent, "Description") || "",
+		startDate: frontmatter.start_date ? normalizeDate(frontmatter.start_date) : undefined,
+		endDate: frontmatter.end_date ? normalizeDate(frontmatter.end_date) : undefined,
 		rawContent,
 	};
 }

@@ -161,6 +161,10 @@ export interface Milestone {
 	id: string;
 	title: string;
 	description: string;
+	/** Optional cycle start date (ISO yyyy-mm-dd). A dated milestone acts as a time-boxed cycle. */
+	startDate?: string;
+	/** Optional cycle end date (ISO yyyy-mm-dd). */
+	endDate?: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
 }
 

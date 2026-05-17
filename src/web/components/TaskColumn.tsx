@@ -37,6 +37,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
+  const [contextMenu, setContextMenu] = React.useState<{ taskId: string; x: number; y: number } | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
   const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
@@ -52,6 +53,17 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
+
+  React.useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    document.addEventListener('click', close);
+    document.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('click', close);
+      document.removeEventListener('scroll', close, true);
+    };
+  }, [contextMenu]);
 
   const handleSortByPriority = () => {
     if (!onTaskReorder || !canSortByPriority) {
@@ -76,6 +88,30 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     }
 
     setShowMenu(false);
+  };
+
+  // Move a single task to the top or bottom of THIS column (current status + lane).
+  // Reuses the same reorder payload as drag-and-drop / Sort by Priority.
+  const handleMoveToEdge = (taskId: string, edge: 'top' | 'bottom') => {
+    setContextMenu(null);
+    if (!onTaskReorder) return;
+
+    const remaining = tasks.filter(t => t.id !== taskId);
+    if (remaining.length === tasks.length) return; // task not in this column
+
+    const orderedTaskIds =
+      edge === 'top' ? [taskId, ...remaining.map(t => t.id)] : [...remaining.map(t => t.id), taskId];
+
+    const currentIds = tasks.map(t => t.id);
+    const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
+    if (!hasChanged) return;
+
+    onTaskReorder({
+      taskId,
+      targetStatus: title,
+      orderedTaskIds,
+      ...(targetMilestone !== undefined ? { targetMilestone } : {}),
+    });
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -234,9 +270,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       
       <div className="space-y-3">
         {tasks.map((task, index) => (
-          <div 
-            key={task.id} 
+          <div
+            key={task.id}
             className="relative"
+            onContextMenu={(e) => {
+              if (!onTaskReorder || task.branch) return;
+              e.preventDefault();
+              setContextMenu({ taskId: task.id, x: e.clientX, y: e.clientY });
+            }}
             onDragOver={(e) => {
               if (!onTaskReorder || !draggedTaskId || draggedTaskId === task.id) return;
               
@@ -315,6 +356,29 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[160px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1 text-sm"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => handleMoveToEdge(contextMenu.taskId, 'top')}
+            className="w-full text-left px-4 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150"
+          >
+            Move to Top
+          </button>
+          <button
+            type="button"
+            onClick={() => handleMoveToEdge(contextMenu.taskId, 'bottom')}
+            className="w-full text-left px-4 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150"
+          >
+            Move to Bottom
+          </button>
+        </div>
+      )}
     </div>
   );
 };

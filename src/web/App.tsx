@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import BoardPage from './components/BoardPage';
-import TaskList from './components/TaskList';
+import WorkspaceView from './components/WorkspaceView';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
@@ -442,36 +441,22 @@ function App() {
             <Route
               index
               element={
-                <BoardPage
+                <WorkspaceView
+                  projectName={projectName}
                   onEditTask={handleEditTask}
                   onNewTask={handleNewTask}
-                tasks={tasks}
-                onRefreshData={refreshData}
-                statuses={statuses}
-                milestones={milestones}
-                availableLabels={availableLabels}
-                milestoneEntities={milestoneEntities}
-                archivedMilestones={archivedMilestones}
-                isLoading={isLoading}
-              />
-            }
-          />
-            <Route
-              path="tasks"
-              element={
-	                <TaskList
-	                  onEditTask={handleEditTask}
-	                  onNewTask={handleNewTask}
-	                  tasks={tasks}
-	                  availableStatuses={statuses}
-	                  availableLabels={availableLabels}
-	                  availableMilestones={milestones}
-	                  milestoneEntities={milestoneEntities}
-	                  archivedMilestones={archivedMilestones}
-	                  onRefreshData={refreshData}
-	                />
-	              }
-	            />
+                  tasks={tasks}
+                  onRefreshData={refreshData}
+                  statuses={statuses}
+                  milestones={milestones}
+                  availableLabels={availableLabels}
+                  milestoneEntities={milestoneEntities}
+                  archivedMilestones={archivedMilestones}
+                  isLoading={isLoading}
+                />
+              }
+            />
+            <Route path="tasks" element={<Navigate to="/?view=list" replace />} />
             <Route
               path="milestones"
               element={

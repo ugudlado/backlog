@@ -340,9 +340,10 @@ const SideNavigation = memo(function SideNavigation({
 				{/* Navigation items only show when expanded and not loading */}
 				{!isCollapsed && !isLoading && (
 					<div className="px-4 space-y-1">
-						{/* Board Navigation */}
+						{/* Tasks Navigation (unified List + Board) */}
 						<NavLink
 							to="/"
+							end
 							className={({ isActive }) =>
 								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
 									isActive
@@ -352,22 +353,7 @@ const SideNavigation = memo(function SideNavigation({
 							}
 						>
 							<Icons.Board />
-							<span className="ml-3 text-sm font-medium">Kanban Board</span>
-						</NavLink>
-
-						{/* Tasks Navigation */}
-						<NavLink
-							to="/tasks"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.List />
-							<span className="ml-3 text-sm font-medium">All Tasks</span>
+							<span className="ml-3 text-sm font-medium">Tasks</span>
 						</NavLink>
 
 						{/* Milestones Navigation */}
@@ -404,38 +390,23 @@ const SideNavigation = memo(function SideNavigation({
 
 				{isCollapsed && (
 					<div className="px-2 py-2 space-y-2">
-						<NavLink
-							to="/"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Kanban Board"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Board />
-							</div>
-						</NavLink>
-						<NavLink
-							to="/tasks"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="All Tasks"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.List />
-							</div>
-						</NavLink>
+							<NavLink
+								to="/"
+								end
+								data-tooltip-id="sidebar-tooltip"
+								data-tooltip-content="Tasks"
+								className={({ isActive }) =>
+									`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
+										isActive
+											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+											: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+									}`
+								}
+							>
+								<div className="w-6 h-6 flex items-center justify-center">
+									<Icons.Board />
+								</div>
+							</NavLink>
 						{/* Milestones Navigation */}
 						<NavLink
 							to="/milestones"
