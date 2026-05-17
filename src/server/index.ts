@@ -1659,6 +1659,22 @@ export class BacklogServer {
 					return Response.json({ error: `Workspace path no longer exists: ${targetPath}` }, { status: 410 });
 				}
 				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) !== targetPath) {
+					// Record the target's `data:` override BEFORE reinitializing the
+					// core, so resolveBacklogDirectory points config/tasks at the
+					// data location instead of the (often empty) repo root.
+					// Without this, switching to a data: workspace resolves an
+					// empty <repo>/backlog and the UI shows the empty-registry
+					// screen ("No Backlog.md projects yet").
+					const { setActiveWorkspaceDataDir } = await import("../utils/active-workspace.ts");
+					const { isAbsolute, resolve: resolvePath } = await import("node:path");
+					const targetData = (target as { data?: string }).data;
+					const resolvedData = targetData
+						? isAbsolute(targetData)
+							? targetData
+							: resolvePath(targetPath, targetData)
+						: undefined;
+					setActiveWorkspaceDataDir(targetPath, resolvedData);
+
 					// Clear subscription and cached services before reinitializing so
 					// ensureServicesReady() re-subscribes to the new project's content store.
 					this.unsubscribeContentStore?.();
