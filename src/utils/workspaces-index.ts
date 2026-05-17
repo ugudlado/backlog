@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -377,12 +378,26 @@ function backlogConfiguredAtProjectRoot(projectRoot: string): boolean {
 	return Boolean(r.configPath);
 }
 
+/**
+ * An entry is a usable backlog project if config resolves at its project
+ * root, OR — for a `data:` entry — at the data location (where config lives
+ * for a data-overridden workspace). Without this, cwd matching would reject
+ * every `data:` workspace because `<repo>/backlog` is intentionally absent.
+ */
+function entryHasBacklogConfig(e: WorkspaceEntry): boolean {
+	if (e.data) {
+		const dataDir = isAbsolute(e.data) ? e.data : resolve(toAbsoluteProjectRoot(e.path), e.data);
+		return existsSync(join(dataDir, "config.yml"));
+	}
+	return backlogConfiguredAtProjectRoot(toAbsoluteProjectRoot(e.path));
+}
+
 export function findWorkspacesMatchingCwd(cwd: string, entries: WorkspaceEntry[]): WorkspaceEntry[] {
 	const matches: WorkspaceEntry[] = [];
 	const absCwd = normalize(resolve(cwd));
 	for (const e of entries) {
 		const root = toAbsoluteProjectRoot(e.path);
-		if (pathIsUnderAncestor(root, absCwd) && backlogConfiguredAtProjectRoot(root)) {
+		if (pathIsUnderAncestor(root, absCwd) && entryHasBacklogConfig(e)) {
 			matches.push(e);
 		}
 	}
