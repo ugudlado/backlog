@@ -129,6 +129,24 @@ export async function initializeProject(
 
 	const isReInitialization = !!existingConfig;
 	const projectRoot = core.filesystem.rootDir;
+
+	// When `--workspace-data <path>` is given, that path IS the workspace:
+	// config + tasks are created there, not under <projectRoot>/backlog.
+	// Record the override and create the directory up front so every
+	// subsequent resolve (structure creation, saveConfig, registration)
+	// — all centralised through resolveBacklogDirectory — targets it.
+	let workspaceDataDir: string | undefined;
+	if (options.workspaceDataDir) {
+		const { setActiveWorkspaceDataDir } = await import("../utils/active-workspace.ts");
+		const { resolve: resolvePath } = await import("node:path");
+		const { mkdir } = await import("node:fs/promises");
+		// Normalise so the index entry and the resolver agree on the path.
+		workspaceDataDir = resolvePath(options.workspaceDataDir);
+		await mkdir(workspaceDataDir, { recursive: true });
+		setActiveWorkspaceDataDir(projectRoot, workspaceDataDir);
+		core.filesystem.invalidateConfigCache();
+	}
+
 	const effectiveFilesystemOnly = filesystemOnly || existingConfig?.filesystemOnly === true;
 	const normalizedAdvancedConfig = effectiveFilesystemOnly
 		? {
@@ -274,7 +292,7 @@ export async function initializeProject(
 	// read-only setups), init still succeeds.
 	try {
 		const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
-		const { entry } = await registerWorkspaceAtPath(projectRoot, { data: options.workspaceDataDir });
+		const { entry } = await registerWorkspaceAtPath(projectRoot, { data: workspaceDataDir });
 		if (entry.id) {
 			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
 			await setCurrentWorkspaceId(entry.id);

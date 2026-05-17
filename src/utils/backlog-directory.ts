@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, join, normalize } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
+import { getActiveWorkspaceDataDir } from "./active-workspace.ts";
 import { readMachineConfig } from "./machine-config.ts";
 
 export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
@@ -209,6 +210,26 @@ export function normalizeProjectBacklogDirectory(value: string | null | undefine
 export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryResolution {
 	const rootConfigPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
 	const rootConfigExists = fileExists(rootConfigPath);
+
+	// A `workspaces.yml` entry `data:` override (recorded by whichever path
+	// resolved the active workspace) wins over every project-root-relative
+	// rule below. Centralising the read here means every consumer of this
+	// resolver — FileSystem ctor, invalidateConfigCache, registration,
+	// server, init — honours the override without each having to remember.
+	// The data dir IS the backlog dir, with `config.yml` flat inside it.
+	const dataDirOverride = getActiveWorkspaceDataDir(projectRoot);
+	if (dataDirOverride) {
+		return {
+			projectRoot,
+			backlogDir: dataDirOverride,
+			backlogPath: dataDirOverride,
+			source: "custom",
+			configPath: join(dataDirOverride, DEFAULT_FILES.CONFIG),
+			configSource: "folder",
+			rootConfigPath,
+			rootConfigExists,
+		};
+	}
 
 	if (rootConfigExists) {
 		const metadata = readRootBacklogConfigMetadata(rootConfigPath);

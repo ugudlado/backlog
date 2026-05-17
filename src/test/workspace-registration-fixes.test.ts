@@ -89,9 +89,14 @@ describe("registerWorkspaceAtPath error codes", () => {
 	});
 
 	it("persists an explicit data: override into the workspace index", async () => {
+		// The `data:` location IS where config lives (flat config.yml inside
+		// it) — registration validates that, mirroring how FileSystem reads a
+		// data-overridden workspace. So the config must exist at dataDir.
 		const dir = join(base, "with-data");
-		await makeProject(dir, "Data Override Project");
+		await mkdir(dir, { recursive: true });
 		const dataDir = join(base, "external-data");
+		await mkdir(dataDir, { recursive: true });
+		await writeFile(join(dataDir, "config.yml"), `project_name: "Data Override Project"\n`);
 		const result = await registerWorkspaceAtPath(dir, { data: dataDir });
 		expect(result.entry.data).toBe(dataDir);
 		const index = await readWorkspacesIndex();

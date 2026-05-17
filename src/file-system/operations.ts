@@ -6,7 +6,6 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constan
 import { parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
-import { getActiveWorkspaceDataDir } from "../utils/active-workspace.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
@@ -64,15 +63,9 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
-
-		// A `workspaces.yml` entry `data:` override (recorded by the active-
-		// workspace resolver) wins over the project-root-relative default.
-		const dataDirOverride = getActiveWorkspaceDataDir(projectRoot);
-		if (dataDirOverride) {
-			this.resolvedBacklogDir = dataDirOverride;
-			this.resolvedConfigPath = join(dataDirOverride, DEFAULT_FILES.CONFIG);
-			this.configSource = "folder";
-		}
+		// The `data:` override is now applied inside resolveBacklogDirectory,
+		// so it is already reflected in `resolution` above (and in
+		// invalidateConfigCache, which calls the same resolver).
 	}
 
 	private async getBacklogDir(): Promise<string> {

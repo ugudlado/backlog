@@ -343,13 +343,26 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  */
 async function resolveServerProjectRoot(): Promise<string> {
 	const { readWorkspacesIndex, toAbsoluteProjectRoot } = await import("./utils/workspaces-index.ts");
+	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
+	const { isAbsolute, resolve: resolvePath } = await import("node:path");
 	const index = await readWorkspacesIndex();
+
+	// Resolve the chosen entry to its project root AND record its `data:`
+	// override so the server's FileSystem reads tasks/config from there
+	// (the CLI path does the same via requireProjectRoot).
+	const pick = (entry: { path: string; data?: string }): string => {
+		const root = toAbsoluteProjectRoot(entry.path);
+		const dataDir = entry.data ? (isAbsolute(entry.data) ? entry.data : resolvePath(root, entry.data)) : undefined;
+		setActiveWorkspaceDataDir(root, dataDir);
+		return root;
+	};
+
 	if (index.current) {
 		const entry = index.workspaces.find((e) => e.id === index.current);
-		if (entry) return toAbsoluteProjectRoot(entry.path);
+		if (entry) return pick(entry);
 	}
 	const first = index.workspaces[0];
-	if (first) return toAbsoluteProjectRoot(first.path);
+	if (first) return pick(first);
 	return await requireProjectRoot();
 }
 

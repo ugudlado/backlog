@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { FileSystem } from "../file-system/operations.ts";
+import { setActiveWorkspaceDataDir } from "./active-workspace.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import {
 	pathExistsAsDirectory,
@@ -61,15 +62,28 @@ export async function registerWorkspaceAtPath(
 	if (!(await pathExistsAsDirectory(abs))) {
 		throw new WorkspaceRegistrationError(`Not a directory: ${abs}`, "not_a_directory");
 	}
-	const resolution = resolveBacklogDirectory(abs);
-	if (!resolution.configPath) {
-		throw new WorkspaceRegistrationError(`No backlog project at ${abs} (missing config).`, "no_backlog_config");
+
+	// When a `data:` override is given, the workspace's config lives at
+	// `<data>/config.yml` (the same contract FileSystem applies for a
+	// data-overridden workspace), not under the repo root. Validate there.
+	const dataDir = options?.data ? toAbsoluteProjectRoot(options.data) : null;
+	if (dataDir) {
+		if (!(await pathExistsAsDirectory(dataDir))) {
+			throw new WorkspaceRegistrationError(`Not a directory: ${dataDir}`, "not_a_directory");
+		}
+		setActiveWorkspaceDataDir(abs, dataDir);
+	} else {
+		const resolution = resolveBacklogDirectory(abs);
+		if (!resolution.configPath) {
+			throw new WorkspaceRegistrationError(`No backlog project at ${abs} (missing config).`, "no_backlog_config");
+		}
 	}
 
 	const fs = new FileSystem(abs);
 	const config = await fs.loadConfig();
 	if (!config) {
-		throw new WorkspaceRegistrationError(`Could not load backlog config at ${abs}.`, "config_load_failed");
+		const where = dataDir ?? abs;
+		throw new WorkspaceRegistrationError(`Could not load backlog config at ${where}.`, "config_load_failed");
 	}
 
 	let minted = false;
