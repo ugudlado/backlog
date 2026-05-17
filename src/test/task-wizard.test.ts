@@ -280,7 +280,7 @@ describe("task wizard", () => {
 		expect(input?.priority).toBeUndefined();
 		expect(questions.status?.type).toBe("select");
 		expect(questions.status?.initial).toBe("To Do");
-		expect(questions.status?.optionValues).toEqual(["Draft", "Backlog", "To Do", "In Progress", "Done"]);
+		expect(questions.status?.optionValues).toEqual(["Backlog", "To Do", "In Progress", "Done"]);
 		expect((questions.status?.optionsCount ?? 0) > 0).toBe(true);
 		expect(questions.priority?.type).toBe("select");
 		expect(questions.priority?.initial).toBe("");
@@ -305,7 +305,7 @@ describe("task wizard", () => {
 		expect(input).not.toBeNull();
 		expect(input?.status).toBe("To Do");
 		expect(promptQuestions.status?.initial).toBe("To Do");
-		expect(promptQuestions.status?.optionValues).toEqual(["Draft", "To Do", "In Progress", "Done"]);
+		expect(promptQuestions.status?.optionValues).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
 	});
 
 	it("labels task DoD and single-line text limitations clearly", async () => {

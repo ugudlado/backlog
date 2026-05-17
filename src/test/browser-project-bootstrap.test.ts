@@ -60,7 +60,7 @@ describe("machine-config-dir override precedence", () => {
 			expect(getMachineConfigDir("/from/explicit")).toBe("/from/explicit");
 			expect(getMachineConfigDir()).toBe("/from/env");
 			delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
-			expect(getMachineConfigDir()).toMatch(/\.config\/backlog\.md$/);
+			expect(getMachineConfigDir()).toMatch(/\.config\/backlog$/);
 		} finally {
 			if (prev === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;

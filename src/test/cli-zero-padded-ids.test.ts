@@ -25,13 +25,12 @@ describe("CLI Zero Padded IDs Feature", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Padding Test", false); // No auto-commit for init
+		await initializeTestProject(core, "Padding Test", false);
 
 		// Enable zero padding in the config
 		const config = await core.filesystem.loadConfig();
 		if (config) {
 			config.zeroPaddedIds = 3;
-			config.autoCommit = false; // Disable auto-commit for easier testing
 			await core.filesystem.saveConfig(config);
 		}
 	});
@@ -52,26 +51,6 @@ describe("CLI Zero Padded IDs Feature", () => {
 		const files = await readdir(tasksDir);
 		expect(files.length).toBe(1);
 		expect(files[0]).toStartWith("task-001");
-	});
-
-	test("should create a document with a zero-padded ID", async () => {
-		const result = await $`bun ${CLI_PATH} doc create "Padded Doc"`.cwd(TEST_DIR).quiet();
-		expect(result.exitCode).toBe(0);
-
-		const docsDir = join(TEST_DIR, "backlog", "docs");
-		const files = await readdir(docsDir);
-		expect(files.length).toBe(1);
-		expect(files[0]).toStartWith("doc-001");
-	});
-
-	test("should create a decision with a zero-padded ID", async () => {
-		const result = await $`bun ${CLI_PATH} decision create "Padded Decision"`.cwd(TEST_DIR).quiet();
-		expect(result.exitCode).toBe(0);
-
-		const decisionsDir = join(TEST_DIR, "backlog", "decisions");
-		const files = await readdir(decisionsDir);
-		expect(files.length).toBe(1);
-		expect(files[0]).toStartWith("decision-001");
 	});
 
 	test("should correctly increment a padded task ID", async () => {

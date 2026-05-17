@@ -30,63 +30,41 @@ describe("CLI plain output for AI agents", () => {
 		await initializeTestProject(core, "Plain Output Test Project");
 
 		// Create a test task
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Test task for plain output",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-18",
-				labels: [],
-				dependencies: [],
-				description: "Test description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Test task for plain output",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-18",
+			labels: [],
+			dependencies: [],
+			description: "Test description",
+		});
 
-		const { task: subtask1 } = await core.createTaskFromInput(
-			{
-				title: "Child task A",
-				parentTaskId: "task-1",
-			},
-			false,
-		);
+		const { task: subtask1 } = await core.createTaskFromInput({
+			title: "Child task A",
+			parentTaskId: "task-1",
+		});
 
-		const { task: subtask2 } = await core.createTaskFromInput(
-			{
-				title: "Child task B",
-				parentTaskId: "task-1",
-			},
-			false,
-		);
+		const { task: subtask2 } = await core.createTaskFromInput({
+			title: "Child task B",
+			parentTaskId: "task-1",
+		});
 
 		// Preserve order for assertions
 		SUBTASKS = [subtask1, subtask2];
 
 		// Create a second task without subtasks
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "Standalone task for plain output",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-19",
-				labels: [],
-				dependencies: [],
-				description: "Standalone description",
-			},
-			false,
-		);
-
-		// Create a test draft through the canonical create path
-		await core.createTaskFromInput(
-			{
-				title: "Test draft for plain output",
-				status: "Draft",
-				description: "Test draft description",
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "Standalone task for plain output",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2025-06-19",
+			labels: [],
+			dependencies: [],
+			description: "Standalone description",
+		});
 	});
 
 	afterEach(async () => {

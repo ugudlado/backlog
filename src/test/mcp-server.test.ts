@@ -174,6 +174,7 @@ describe("McpServer bootstrap", () => {
 			"task_create",
 			"task_edit",
 			"task_list",
+			"task_next",
 			"task_search",
 			"task_view",
 		]);
@@ -216,6 +217,7 @@ describe("McpServer bootstrap", () => {
 			"task_view",
 			"task_archive",
 			"task_complete",
+			"task_next",
 			"milestone_list",
 			"milestone_add",
 			"milestone_rename",

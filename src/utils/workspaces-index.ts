@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, normalize, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import lockfile from "proper-lockfile";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import { findBacklogRoot } from "./find-backlog-root.ts";
@@ -137,6 +137,12 @@ export const WORKSPACES_FILE = "workspaces.yml";
 
 export interface WorkspaceEntry {
 	path: string;
+	/**
+	 * Optional override for where this workspace's `backlog/` data lives.
+	 * Absolute, or relative to `path`. When unset, data resolves to
+	 * `<path>/backlog/` as before.
+	 */
+	data?: string;
 	id?: string;
 }
 
@@ -215,6 +221,10 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 			if (idMatch?.[1]) {
 				current.id = stripYamlQuotes(idMatch[1].trim());
 			}
+			const dataMatch = /^data:\s*(.+)$/.exec(rest);
+			if (dataMatch?.[1]) {
+				current.data = stripYamlQuotes(dataMatch[1].trim());
+			}
 			continue;
 		}
 		if (line.startsWith("path:")) {
@@ -222,6 +232,13 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 				current = {};
 			}
 			current.path = stripYamlQuotes(line.slice("path:".length).trim());
+			continue;
+		}
+		if (line.startsWith("data:")) {
+			if (!current) {
+				current = {};
+			}
+			current.data = stripYamlQuotes(line.slice("data:".length).trim());
 			continue;
 		}
 		if (line.startsWith("id:")) {
@@ -244,6 +261,9 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 
 function toEntry(c: Partial<WorkspaceEntry>): WorkspaceEntry {
 	const e: WorkspaceEntry = { path: c.path as string };
+	if (c.data) {
+		e.data = c.data;
+	}
 	if (c.id) {
 		e.id = c.id;
 	}
@@ -262,8 +282,8 @@ function stripYamlQuotes(s: string): string {
  */
 export function serializeWorkspacesYaml(index: WorkspacesIndex): string {
 	const header = `# Backlog.md workspace index (machine-wide)
-# Each entry's path is the project root (directory that contains backlog/).
-# Edit via: backlog workspace add|remove|list
+# path: project root. data: optional override for where backlog/ data lives
+# (absolute or relative to path; defaults to <path>/backlog when unset).
 `;
 	const bodyLines: string[] = [];
 	if (index.current) {
@@ -272,6 +292,9 @@ export function serializeWorkspacesYaml(index: WorkspacesIndex): string {
 	bodyLines.push("workspaces:");
 	for (const w of index.workspaces) {
 		bodyLines.push(`  - path: ${quoteYamlPath(w.path)}`);
+		if (w.data) {
+			bodyLines.push(`    data: ${quoteYamlPath(w.data)}`);
+		}
 		if (w.id) {
 			bodyLines.push(`    id: ${quoteYamlPath(w.id)}`);
 		}
@@ -408,7 +431,13 @@ export async function upsertWorkspaceEntry(entry: WorkspaceEntry, override?: str
 				const index = await readWorkspacesIndex(override);
 				const absPath = toAbsoluteProjectRoot(entry.path);
 				const existing = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
+				// Preserve an existing `data:` override unless the caller explicitly
+				// sets one. Spread order alone would only do this by accident of the
+				// caller omitting `data` — make it intentional.
 				const merged: WorkspaceEntry = { ...existing, ...entry, path: absPath };
+				if (entry.data === undefined && existing?.data !== undefined) {
+					merged.data = existing.data;
+				}
 				const next = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
 				next.push(merged);
 				next.sort((a, b) => a.path.localeCompare(b.path));
@@ -485,9 +514,21 @@ export async function autoRegisterDiscoveredRepo(projectRoot: string): Promise<v
 }
 
 export type ResolveCliProjectRootResult =
-	| { ok: true; projectRoot: string }
+	| { ok: true; projectRoot: string; dataDir?: string }
 	| { ok: false; kind: "not_found" }
 	| { ok: false; kind: "ambiguous"; paths: string[] };
+
+/**
+ * Resolve an entry's `data:` override to an absolute data directory.
+ * Absolute → used as-is. Relative → resolved against the project root.
+ * Unset → undefined (consumer falls back to `<projectRoot>/backlog`).
+ */
+function resolveEntryDataDir(entry: WorkspaceEntry, projectRoot: string): string | undefined {
+	if (!entry.data) {
+		return undefined;
+	}
+	return normalize(isAbsolute(entry.data) ? entry.data : resolve(projectRoot, entry.data));
+}
 
 function resolveRegisteredWorkspacesOnly(cwd: string, index: WorkspacesIndex): ResolveCliProjectRootResult {
 	const cwdMatches = findWorkspacesMatchingCwd(cwd, index.workspaces);
@@ -504,7 +545,7 @@ function resolveRegisteredWorkspacesOnly(cwd: string, index: WorkspacesIndex): R
 			return { ok: false, kind: "not_found" };
 		}
 		const root = toAbsoluteProjectRoot(only.path);
-		return { ok: true, projectRoot: root };
+		return { ok: true, projectRoot: root, dataDir: resolveEntryDataDir(only, root) };
 	}
 
 	return { ok: false, kind: "not_found" };

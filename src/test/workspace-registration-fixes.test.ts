@@ -87,6 +87,27 @@ describe("registerWorkspaceAtPath error codes", () => {
 		const cfg = await readFile(join(dir, "backlog", "config.yml"), "utf8");
 		expect(cfg).toContain(`id: "${result.entry.id}"`);
 	});
+
+	it("persists an explicit data: override into the workspace index", async () => {
+		const dir = join(base, "with-data");
+		await makeProject(dir, "Data Override Project");
+		const dataDir = join(base, "external-data");
+		const result = await registerWorkspaceAtPath(dir, { data: dataDir });
+		expect(result.entry.data).toBe(dataDir);
+		const index = await readWorkspacesIndex();
+		const persisted = index.workspaces.find((w) => w.id === result.entry.id);
+		expect(persisted?.data).toBe(dataDir);
+	});
+
+	it("omits data: when no override is given", async () => {
+		const dir = join(base, "no-data");
+		await makeProject(dir, "No Data Project");
+		const result = await registerWorkspaceAtPath(dir);
+		expect(result.entry.data).toBeUndefined();
+		const index = await readWorkspacesIndex();
+		const persisted = index.workspaces.find((w) => w.id === result.entry.id);
+		expect(persisted?.data).toBeUndefined();
+	});
 });
 
 describe("readWorkspacesWithIds batched migration", () => {

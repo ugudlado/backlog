@@ -55,7 +55,7 @@ export interface RegisterResult {
  */
 export async function registerWorkspaceAtPath(
 	pathArg: string,
-	options?: { machineConfigDir?: string },
+	options?: { machineConfigDir?: string; data?: string },
 ): Promise<RegisterResult> {
 	const abs = toAbsoluteProjectRoot(pathArg);
 	if (!(await pathExistsAsDirectory(abs))) {
@@ -80,6 +80,9 @@ export async function registerWorkspaceAtPath(
 	}
 
 	const entry: WorkspaceEntry = { path: abs, id: config.id };
+	if (options?.data) {
+		entry.data = options.data;
+	}
 	await upsertWorkspaceEntry(entry, options?.machineConfigDir);
 	return { entry, minted };
 }

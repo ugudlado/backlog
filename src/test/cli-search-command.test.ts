@@ -21,38 +21,32 @@ describe("CLI search command", () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Search Command Project");
 
-		await core.createTask(
-			{
-				id: "task-1",
-				title: "Central search integration",
-				status: "To Do",
-				assignee: ["@codex"],
-				createdDate: "2025-09-18",
-				labels: ["search"],
-				dependencies: [],
-				rawContent: "Implements central search module",
-				description: "Implements central search module",
-				modifiedFiles: ["src/web/App.tsx"],
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-1",
+			title: "Central search integration",
+			status: "To Do",
+			assignee: ["@codex"],
+			createdDate: "2025-09-18",
+			labels: ["search"],
+			dependencies: [],
+			rawContent: "Implements central search module",
+			description: "Implements central search module",
+			modifiedFiles: ["src/web/App.tsx"],
+		});
 
-		await core.createTask(
-			{
-				id: "task-2",
-				title: "High priority follow-up",
-				status: "In Progress",
-				assignee: ["@codex"],
-				createdDate: "2025-09-18",
-				labels: ["search"],
-				dependencies: [],
-				rawContent: "Follow-up work",
-				description: "Follow-up work",
-				priority: "high",
-				modifiedFiles: ["src/core/search-service.ts"],
-			},
-			false,
-		);
+		await core.createTask({
+			id: "task-2",
+			title: "High priority follow-up",
+			status: "In Progress",
+			assignee: ["@codex"],
+			createdDate: "2025-09-18",
+			labels: ["search"],
+			dependencies: [],
+			rawContent: "Follow-up work",
+			description: "Follow-up work",
+			priority: "high",
+			modifiedFiles: ["src/core/search-service.ts"],
+		});
 	});
 
 	afterEach(async () => {
@@ -69,17 +63,13 @@ describe("CLI search command", () => {
 	});
 
 	it("honors status and priority filters for task results", async () => {
-		const statusResult = await $`bun ${cliPath} search follow-up --type task --status "In Progress" --plain`
-			.cwd(TEST_DIR)
-			.quiet();
+		const statusResult = await $`bun ${cliPath} search follow-up --status "In Progress" --plain`.cwd(TEST_DIR).quiet();
 		expect(statusResult.exitCode).toBe(0);
 		const statusStdout = statusResult.stdout.toString();
 		expect(statusStdout).toContain("TASK-2 - High priority follow-up");
 		expect(statusStdout).not.toContain("TASK-1 - Central search integration");
 
-		const priorityResult = await $`bun ${cliPath} search follow-up --type task --priority high --plain`
-			.cwd(TEST_DIR)
-			.quiet();
+		const priorityResult = await $`bun ${cliPath} search follow-up --priority high --plain`.cwd(TEST_DIR).quiet();
 		expect(priorityResult.exitCode).toBe(0);
 		const priorityStdout = priorityResult.stdout.toString();
 		expect(priorityStdout).toContain("TASK-2 - High priority follow-up");
@@ -94,7 +84,7 @@ describe("CLI search command", () => {
 	});
 
 	it("finds tasks by modified file path", async () => {
-		const queryResult = await $`bun ${cliPath} search "src/web/App.tsx" --type task --plain`.cwd(TEST_DIR).quiet();
+		const queryResult = await $`bun ${cliPath} search --modified-file "src/web/App.tsx" --plain`.cwd(TEST_DIR).quiet();
 		expect(queryResult.exitCode).toBe(0);
 		const queryStdout = queryResult.stdout.toString();
 		expect(queryStdout).toContain("TASK-1 - Central search integration");

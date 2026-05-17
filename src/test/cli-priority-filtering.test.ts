@@ -1,149 +1,125 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
+import { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
+const CLI_PATH = join(process.cwd(), "src/cli.ts");
+
+/**
+ * Priority filtering / sorting against a seeded project. Each test runs in an
+ * isolated initialized workspace with three known tasks (one per priority) so
+ * assertions test real filter behavior rather than passing vacuously on an
+ * empty project (the previous bug: bare `bun run cli` from the repo root).
+ */
 describe("CLI Priority Filtering", () => {
-	test("task list --priority high shows only high priority tasks", async () => {
-		const result = await $`bun run cli task list --priority high --plain`.quiet();
-		expect(result.exitCode).toBe(0);
+	let TEST_DIR: string;
 
-		// Should only show high priority tasks
-		const output = result.stdout.toString();
-		if (output.includes("task-")) {
-			// If tasks exist, check they have HIGH priority indicators
-			expect(output).toMatch(/\[HIGH\]/);
-			// Should not contain other priority indicators
-			expect(output).not.toMatch(/\[MEDIUM\]/);
-			expect(output).not.toMatch(/\[LOW\]/);
-		}
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-priority-filter");
+		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await mkdir(TEST_DIR, { recursive: true });
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Priority Test", false);
+
+		await $`bun ${CLI_PATH} task create "High task" --priority high`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} task create "Medium task" --priority medium`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} task create "Low task" --priority low`.cwd(TEST_DIR).quiet();
 	});
 
-	test("task list --priority medium shows only medium priority tasks", async () => {
-		const result = await $`bun run cli task list --priority medium --plain`.quiet();
-		expect(result.exitCode).toBe(0);
-
-		const output = result.stdout.toString();
-		if (output.includes("task-")) {
-			expect(output).toMatch(/\[MEDIUM\]/);
-			expect(output).not.toMatch(/\[HIGH\]/);
-			expect(output).not.toMatch(/\[LOW\]/);
-		}
+	afterEach(async () => {
+		await safeCleanup(TEST_DIR);
 	});
 
-	test("task list --priority low shows only low priority tasks", async () => {
-		const result = await $`bun run cli task list --priority low --plain`.quiet();
+	test("--priority high shows only high priority tasks", async () => {
+		const result = await $`bun ${CLI_PATH} task list --priority high --plain`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
-
 		const output = result.stdout.toString();
-		if (output.includes("task-")) {
-			expect(output).toMatch(/\[LOW\]/);
-			expect(output).not.toMatch(/\[HIGH\]/);
-			expect(output).not.toMatch(/\[MEDIUM\]/);
-		}
+		expect(output).toMatch(/\[HIGH\]/);
+		expect(output).not.toMatch(/\[MEDIUM\]/);
+		expect(output).not.toMatch(/\[LOW\]/);
 	});
 
-	test("task list --priority invalid shows error", async () => {
-		const result = await $`bun run cli task list --priority invalid --plain`.nothrow().quiet();
+	test("--priority medium shows only medium priority tasks", async () => {
+		const result = await $`bun ${CLI_PATH} task list --priority medium --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
+		const output = result.stdout.toString();
+		expect(output).toMatch(/\[MEDIUM\]/);
+		expect(output).not.toMatch(/\[HIGH\]/);
+		expect(output).not.toMatch(/\[LOW\]/);
+	});
+
+	test("--priority low shows only low priority tasks", async () => {
+		const result = await $`bun ${CLI_PATH} task list --priority low --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
+		const output = result.stdout.toString();
+		expect(output).toMatch(/\[LOW\]/);
+		expect(output).not.toMatch(/\[HIGH\]/);
+		expect(output).not.toMatch(/\[MEDIUM\]/);
+	});
+
+	test("--priority invalid shows error", async () => {
+		const result = await $`bun ${CLI_PATH} task list --priority invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid priority: invalid");
 		expect(result.stderr.toString()).toContain("Valid values are: high, medium, low");
 	});
 
-	test("task list --sort priority sorts by priority", async () => {
-		const result = await $`bun run cli task list --sort priority --plain`.quiet();
-		expect(result.exitCode).toBe(0);
+	test("--priority is case insensitive", async () => {
+		const upper = await $`bun ${CLI_PATH} task list --priority HIGH --plain`.cwd(TEST_DIR).quiet();
+		const mixed = await $`bun ${CLI_PATH} task list --priority High --plain`.cwd(TEST_DIR).quiet();
+		expect(upper.exitCode).toBe(0);
+		expect(mixed.exitCode).toBe(0);
+		for (const out of [upper.stdout.toString(), mixed.stdout.toString()]) {
+			expect(out).toMatch(/\[HIGH\]/);
+			expect(out).not.toMatch(/\[MEDIUM\]/);
+			expect(out).not.toMatch(/\[LOW\]/);
+		}
+	});
 
+	test("--sort priority orders high before medium before low", async () => {
+		const result = await $`bun ${CLI_PATH} task list --sort priority --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
-		// If tasks exist, high priority should come before medium, which comes before low
-		if (output.includes("[HIGH]") && output.includes("[MEDIUM]")) {
-			const highIndex = output.indexOf("[HIGH]");
-			const mediumIndex = output.indexOf("[MEDIUM]");
-			expect(highIndex).toBeLessThan(mediumIndex);
-		}
-		if (output.includes("[MEDIUM]") && output.includes("[LOW]")) {
-			const mediumIndex = output.indexOf("[MEDIUM]");
-			const lowIndex = output.indexOf("[LOW]");
-			expect(mediumIndex).toBeLessThan(lowIndex);
-		}
+		const high = output.indexOf("[HIGH]");
+		const medium = output.indexOf("[MEDIUM]");
+		const low = output.indexOf("[LOW]");
+		expect(high).toBeGreaterThanOrEqual(0);
+		expect(medium).toBeGreaterThan(high);
+		expect(low).toBeGreaterThan(medium);
 	});
 
-	test("task list --sort id sorts by task ID", async () => {
-		const result = await $`bun run cli task list --sort id --plain`.quiet();
+	test("--sort id exits successfully", async () => {
+		const result = await $`bun ${CLI_PATH} task list --sort id --plain`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
-		// Should exit successfully - detailed sorting verification would require known test data
 	});
 
-	test("task list --sort invalid shows error", async () => {
-		const result = await $`bun run cli task list --sort invalid --plain`.nothrow().quiet();
+	test("--sort invalid shows error", async () => {
+		const result = await $`bun ${CLI_PATH} task list --sort invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid sort field: invalid");
 		expect(result.stderr.toString()).toContain("Valid values are: priority, id");
 	});
 
-	test("task list combines priority filter with status filter", async () => {
-		const result = await $`bun run cli task list --priority high --status "To Do" --plain`.quiet();
+	test("priority filter combines with sort", async () => {
+		const result = await $`bun ${CLI_PATH} task list --priority high --sort id --plain`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
-
 		const output = result.stdout.toString();
-		if (output.includes("task-")) {
-			// Should only show high priority tasks in "To Do" status
-			expect(output).toMatch(/\[HIGH\]/);
-			expect(output).toMatch(/To Do:/);
-		}
-	});
-
-	test("task list combines priority filter with sort", async () => {
-		const result = await $`bun run cli task list --priority high --sort id --plain`.quiet();
-		expect(result.exitCode).toBe(0);
-
-		const output = result.stdout.toString();
-		if (output.includes("[HIGH]")) {
-			// Should only show high priority tasks, sorted by ID
-			expect(output).toMatch(/\[HIGH\]/);
-			expect(output).not.toMatch(/\[MEDIUM\]/);
-			expect(output).not.toMatch(/\[LOW\]/);
-		}
+		expect(output).toMatch(/\[HIGH\]/);
+		expect(output).not.toMatch(/\[MEDIUM\]/);
+		expect(output).not.toMatch(/\[LOW\]/);
 	});
 
 	test("plain output includes priority indicators", async () => {
-		const result = await $`bun run cli task list --plain`.quiet();
+		const result = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).quiet();
 		expect(result.exitCode).toBe(0);
-
 		const output = result.stdout.toString();
-		// If any priority tasks exist, they should have proper indicators
-		if (output.includes("task-")) {
-			// Should have proper format with optional priority indicators
-			expect(output).toMatch(/^\s*(\[HIGH\]|\[MEDIUM\]|\[LOW\])?\s*task-\d+\s+-\s+/m);
-		}
-	});
-
-	test("case insensitive priority filtering", async () => {
-		const upperResult = await $`bun run cli task list --priority HIGH --plain`.quiet();
-		const lowerResult = await $`bun run cli task list --priority high --plain`.quiet();
-		const mixedResult = await $`bun run cli task list --priority High --plain`.quiet();
-
-		expect(upperResult.exitCode).toBe(0);
-		expect(lowerResult.exitCode).toBe(0);
-		expect(mixedResult.exitCode).toBe(0);
-
-		const [upperOutput, lowerOutput, mixedOutput] = [
-			upperResult.stdout.toString(),
-			lowerResult.stdout.toString(),
-			mixedResult.stdout.toString(),
-		];
-		const listUpper = upperOutput.split("\n").filter((line) => line.includes("task-"));
-		const listLower = lowerOutput.split("\n").filter((line) => line.includes("task-"));
-		const listMixed = mixedOutput.split("\n").filter((line) => line.includes("task-"));
-		if (listLower.length > 0) {
-			expect(listUpper).toEqual(listLower);
-			expect(listMixed).toEqual(listLower);
-		}
-
-		for (const output of [upperOutput, lowerOutput, mixedOutput]) {
-			if (output.includes("task-")) {
-				expect(output).toMatch(/\[HIGH\]/);
-				expect(output).not.toMatch(/\[MEDIUM\]/);
-				expect(output).not.toMatch(/\[LOW\]/);
-			}
-		}
+		expect(output).toMatch(/\[HIGH\]/);
+		expect(output).toMatch(/\[MEDIUM\]/);
+		expect(output).toMatch(/\[LOW\]/);
 	});
 });

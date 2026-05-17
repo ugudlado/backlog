@@ -41,6 +41,33 @@ describe("parseWorkspacesYaml / serializeWorkspacesYaml", () => {
 		expect(yaml).not.toContain("current:");
 	});
 
+	it("round-trips the optional `data:` override (absolute + relative)", () => {
+		const original = {
+			workspaces: [
+				{ path: "/tmp/a", data: "/var/data/a" },
+				{ path: "/tmp/b", data: "subdir/backlog" },
+				{ path: "/tmp/c" },
+			],
+		};
+		const yaml = serializeWorkspacesYaml(original);
+		expect(yaml).toContain("data: /var/data/a");
+		expect(yaml).toContain("data: subdir/backlog");
+		const parsed = parseWorkspacesYaml(yaml);
+		expect(parsed.workspaces).toEqual(original.workspaces);
+	});
+
+	it("omits the entry `data:` line when unset", () => {
+		const yaml = serializeWorkspacesYaml({ workspaces: [{ path: "/tmp/a" }] });
+		// Header comment legitimately mentions `data:`; assert no indented entry line.
+		expect(yaml).not.toContain("    data:");
+	});
+
+	it("parses `data:` alongside `id:` on an entry", () => {
+		const yaml = ["workspaces:", "  - path: /tmp/a", "    data: /var/data/a", "    id: abcd1234", ""].join("\n");
+		const parsed = parseWorkspacesYaml(yaml);
+		expect(parsed.workspaces).toEqual([{ path: "/tmp/a", data: "/var/data/a", id: "abcd1234" }]);
+	});
+
 	it("accepts and discards legacy `type:` lines (back-compat)", () => {
 		const legacy = [
 			"workspaces:",
