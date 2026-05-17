@@ -20,7 +20,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function initFilesystemOnlyProject(projectName = "No Git Project"): Promise<Core> {
-	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --local --integration-mode none`
+	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --integration-mode none`
 		.cwd(TEST_DIR)
 		.quiet();
 	expect(result.exitCode).toBe(0);
@@ -42,10 +42,9 @@ describe("CLI init without Git", () => {
 	});
 
 	test("initializes a filesystem-only project without creating a Git repository", async () => {
-		const result =
-			await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --local --integration-mode none`
-				.cwd(TEST_DIR)
-				.quiet();
+		const result = await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --integration-mode none`
+			.cwd(TEST_DIR)
+			.quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
@@ -123,7 +122,9 @@ describe("CLI init without Git", () => {
 		expect(await pathExists(join(backlogDir, "milestones"))).toBe(true);
 		expect(await pathExists(join(backlogDir, "archive"))).toBe(true);
 		expect(await pathExists(join(backlogDir, "completed"))).toBe(true);
-		expect(await pathExists(join(backlogDir, "config.yml"))).toBe(true);
+		// Config lives in the per-repo workspace yml under the new model.
+		expect(await pathExists(core.filesystem.configFilePath)).toBe(true);
+		expect(await pathExists(join(backlogDir, "config.yml"))).toBe(false);
 		// Removed surfaces must not be scaffolded
 		expect(await pathExists(join(backlogDir, "drafts"))).toBe(false);
 		expect(await pathExists(join(backlogDir, "docs"))).toBe(false);

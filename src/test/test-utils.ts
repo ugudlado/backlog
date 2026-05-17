@@ -96,18 +96,11 @@ export async function initializeTestProject(
 	autoCommit = false,
 	backlogDirectory?: string,
 ): Promise<void> {
-	const backlogDirectorySource = backlogDirectory
-		? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
-			? (backlogDirectory as "backlog" | ".backlog")
-			: "custom"
-		: undefined;
-	const configLocation = backlogDirectorySource === "custom" ? "root" : "folder";
-
+	// Per the workspace-resolution-simplification model, `backlogDirectory`
+	// (formerly backlog/.backlog/custom) maps to the workspace `data:` dir.
 	await initializeProjectShared(core, {
 		projectName,
-		backlogDirectory,
-		backlogDirectorySource,
-		configLocation,
+		dataDir: backlogDirectory,
 		integrationMode: "none",
 		advancedConfig: {
 			autoCommit: false,
@@ -115,7 +108,51 @@ export async function initializeTestProject(
 	});
 
 	if (autoCommit) {
-		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDirName);
-		await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
+		// Under the per-repo workspace model the project config lives in the
+		// machine config dir, not the repo, so `<repo>/<data>/` may contain only
+		// empty dirs after init — git tracks no empty dirs, so a commit would be
+		// empty and fail. Drop a `.gitkeep` so there is always something to stage
+		// (mirrors the "post-init commit exists" state these tests assert).
+		const { writeFile } = await import("node:fs/promises");
+		await writeFile(join(core.filesystem.backlogDir, ".gitkeep"), "");
+		const repoRoot = await core.gitOps.stageBacklogDirectory(core.filesystem.backlogDir);
+		// Re-initialising the same repo produces no repo-tracked change under the
+		// new model (config lives outside the repo, .gitkeep is already tracked),
+		// so a commit would be empty and fail. Only commit if something is staged.
+		const cwd = repoRoot ?? core.filesystem.rootDir;
+		const staged = Bun.spawnSync(["git", "diff", "--cached", "--quiet"], { cwd });
+		if (staged.exitCode !== 0) {
+			await core.gitOps.commitChanges(`backlog: Initialize backlog project: ${projectName}`, repoRoot);
+		}
 	}
+}
+
+/**
+ * Low-level helper for tests that hand-roll a `backlog/` dir + `config.yml`
+ * instead of going through {@link initializeTestProject}. Writes the per-repo
+ * workspace yml so `resolveBacklogDirectory(repoPath)` resolves under the new
+ * single-source-of-truth model.
+ *
+ * Writes into the active `BACKLOG_MACHINE_CONFIG_DIR` (the global test preload
+ * isolates this away from the real `~/.config/backlog`).
+ */
+export async function seedTestWorkspace(
+	repoPath: string,
+	opts?: { data?: string; name?: string; projectName?: string; configBody?: string },
+): Promise<string> {
+	const { mkdir, writeFile } = await import("node:fs/promises");
+	const { resolve } = await import("node:path");
+	const { getWorkspaceFilePath, workspaceNameForRepo, getWorkspacesDir } = await import("../utils/workspace-store.ts");
+	const absRepo = resolve(repoPath);
+	const data = resolve(opts?.data ?? join(absRepo, "backlog"));
+	const name = (opts?.name ?? workspaceNameForRepo(absRepo)).replace(/\.ya?ml$/i, "");
+	await mkdir(getWorkspacesDir(), { recursive: true });
+	const filePath = getWorkspaceFilePath(name);
+	// `repo:`/`data:` are the resolver's source of truth; the rest of the file
+	// IS the project config (parsed by operations.ts parseConfig, which ignores
+	// the repo/data keys). Tests that hand-roll a config pass it via configBody.
+	const header = `repo: ${JSON.stringify(absRepo)}\ndata: ${JSON.stringify(data)}\n`;
+	const body = opts?.configBody ?? `project_name: "${opts?.projectName ?? name}"\n`;
+	await writeFile(filePath, header + (body.endsWith("\n") ? body : `${body}\n`), "utf8");
+	return filePath;
 }

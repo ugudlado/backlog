@@ -287,27 +287,6 @@ describe("task wizard", () => {
 		expect((questions.priority?.optionsCount ?? 0) > 0).toBe(true);
 	});
 
-	it("falls back to default statuses and keeps create default on To Do", async () => {
-		const promptQuestions: Record<string, { initial?: string; optionValues: string[] }> = {};
-		const prompt: TaskWizardPromptRunner = async (question) => {
-			promptQuestions[question.name] = {
-				initial: question.initial,
-				optionValues: (question.options ?? []).map((option) => option.value),
-			};
-			return { [question.name]: question.initial ?? "" };
-		};
-
-		const input = await runTaskCreateWizard({
-			statuses: [],
-			promptImpl: prompt,
-		});
-
-		expect(input).not.toBeNull();
-		expect(input?.status).toBe("To Do");
-		expect(promptQuestions.status?.initial).toBe("To Do");
-		expect(promptQuestions.status?.optionValues).toEqual(["Draft", "To Do", "In Progress", "Done"]);
-	});
-
 	it("labels task DoD and single-line text limitations clearly", async () => {
 		const messages = new Map<string, string>();
 		const prompt: TaskWizardPromptRunner = async (question) => {

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { atomicWriteFile } from "../file-system/operations.ts";
-import { createUniqueTestDir } from "./test-utils.ts";
+import { createUniqueTestDir, seedTestWorkspace } from "./test-utils.ts";
 
 // Write a minimal backlog config directly to avoid slow initializeProject.
 // Config must use the format that operations.ts parseConfig understands:
@@ -22,7 +22,7 @@ check_active_branches: false
 filesystem_only: true
 auto_commit: false
 `;
-	await writeFile(join(testDir, "backlog", "config.yml"), config);
+	await seedTestWorkspace(testDir, { configBody: config });
 }
 
 describe("atomicWriteFile", () => {

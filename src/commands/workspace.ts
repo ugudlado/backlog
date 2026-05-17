@@ -1,17 +1,10 @@
-import * as clack from "@clack/prompts";
 import type { Command } from "commander";
 import {
-	readWorkspacesIndex,
-	setCurrentWorkspaceId,
-	withRegistryLock,
-	writeWorkspacesIndex,
-} from "../utils/workspaces-index.ts";
-import { applyFixes, scanWorkspaces, type WorkspaceIssue } from "./workspace-doctor.ts";
-
-interface DoctorOptions {
-	fix?: boolean;
-	yes?: boolean;
-}
+	getWorkspaceFilePath,
+	readCurrentWorkspaceName,
+	scanWorkspaces,
+	setCurrentWorkspaceName,
+} from "../utils/workspace-store.ts";
 
 async function runAction(fn: () => Promise<void>): Promise<void> {
 	try {
@@ -22,115 +15,57 @@ async function runAction(fn: () => Promise<void>): Promise<void> {
 	}
 }
 
-function formatIssue(issue: WorkspaceIssue): string {
-	const id = issue.entryId ?? "(no id)";
-	const target = issue.kind === "stale-current-pointer" ? `current=${id}` : `${id} ${issue.path}`;
-	return `  [${issue.kind}] ${target}`;
-}
-
-function pluralEntries(n: number): string {
-	return `${n} ${n === 1 ? "entry" : "entries"}`;
-}
-
-function pluralIssues(n: number): string {
-	return `${n} ${n === 1 ? "issue" : "issues"}`;
-}
-
-function printReport(issues: WorkspaceIssue[], totalEntries: number): void {
-	if (issues.length === 0) {
-		console.log(`Registry healthy — ${pluralEntries(totalEntries)}, no issues.`);
-		return;
+async function useWorkspace(name: string): Promise<void> {
+	const records = await scanWorkspaces();
+	if (!records.some((r) => r.name === name)) {
+		const known = records.map((r) => r.name).join(", ") || "(none)";
+		throw new Error(`No workspace named "${name}". Known workspaces: ${known}`);
 	}
-	console.log(`Found ${pluralIssues(issues.length)} across ${pluralEntries(totalEntries)}:`);
-	for (const issue of issues) {
-		console.log(formatIssue(issue));
-	}
-}
-
-async function doDoctor(opts: DoctorOptions): Promise<void> {
-	const index = await readWorkspacesIndex();
-	const issues = await scanWorkspaces(index.workspaces, index.current);
-
-	printReport(issues, index.workspaces.length);
-
-	if (issues.length === 0) {
-		process.exit(0);
-	}
-
-	if (!opts.fix) {
-		console.log("\nRun with --fix to repair (use --yes to skip the prompt).");
-		process.exit(1);
-	}
-
-	if (!opts.yes) {
-		const result = await clack.confirm({
-			message: `Remove ${issues.length} broken entry/entries?`,
-			initialValue: false,
-		});
-		if (clack.isCancel(result) || result !== true) {
-			console.log("Aborted — registry left unchanged.");
-			process.exit(1);
-		}
-	}
-
-	await withRegistryLock(async () => {
-		const fresh = await readWorkspacesIndex();
-		const freshIssues = await scanWorkspaces(fresh.workspaces, fresh.current);
-		const fixed = applyFixes(fresh.workspaces, freshIssues, fresh.current);
-		const next = { ...fresh, workspaces: fixed.entries };
-		if (fixed.current === undefined) {
-			delete next.current;
-		} else {
-			next.current = fixed.current;
-		}
-		await writeWorkspacesIndex(next);
-	});
-
-	console.log(`Removed/repaired ${pluralIssues(issues.length)}.`);
-	process.exit(0);
+	await setCurrentWorkspaceName(name);
+	console.log(`Switched to workspace ${name}`);
 }
 
 export function registerWorkspaceCommand(program: Command): void {
 	const ws = program.command("workspace").description("manage the machine-wide workspace registry");
-
-	ws.command("doctor")
-		.description("scan the registry for drift; --fix to repair")
-		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
-		.option("--yes", "skip the confirmation prompt when --fix is supplied")
-		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
 
 	ws.command("list")
 		.description("list all registered workspaces")
 		.option("--plain", "emit JSON output")
 		.action((opts: { plain?: boolean }) =>
 			runAction(async () => {
-				const index = await readWorkspacesIndex();
+				const records = await scanWorkspaces();
+				const current = readCurrentWorkspaceName();
 				if (opts.plain) {
-					const payload = {
-						current: index.current ?? null,
-						workspaces: index.workspaces.map((w) => ({ id: w.id ?? null, path: w.path })),
-					};
-					console.log(JSON.stringify(payload));
+					console.log(
+						JSON.stringify({
+							current: current ?? null,
+							workspaces: records.map((r) => ({
+								name: r.name,
+								repo: r.repo,
+								data: r.data,
+								file: getWorkspaceFilePath(r.name),
+							})),
+						}),
+					);
 					return;
 				}
-				if (index.workspaces.length === 0) {
+				if (records.length === 0) {
 					console.log("No workspaces registered.");
 					return;
 				}
-				for (const w of index.workspaces) {
-					const marker = w.id && w.id === index.current ? "*" : " ";
-					const id = w.id ?? "(no id)";
-					console.log(`${marker} ${id}\t${w.path}`);
+				for (const r of records) {
+					const marker = r.name === current ? "*" : " ";
+					console.log(`${marker} ${r.name}\t${r.repo}`);
 				}
 			}),
 		);
 
-	ws.command("switch <id>")
-		.description("set the current workspace by id")
-		.action((id: string) =>
-			runAction(async () => {
-				await setCurrentWorkspaceId(id);
-				console.log(`Switched to workspace ${id}`);
-			}),
-		);
+	ws.command("use <name>")
+		.description("set the current workspace by name")
+		.action((name: string) => runAction(() => useWorkspace(name)));
+
+	// Backward-compatible alias for the pre-simplification `workspace switch`.
+	ws.command("switch <name>")
+		.description("alias of `workspace use`")
+		.action((name: string) => runAction(() => useWorkspace(name)));
 }

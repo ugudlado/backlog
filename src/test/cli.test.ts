@@ -42,8 +42,8 @@ describe("CLI Integration", () => {
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "CLI Test Project", true);
 
-			// Verify directory structure was created
-			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
+			// Verify the per-repo workspace config file was written
+			const configExists = await Bun.file(core.filesystem.configFilePath).exists();
 			expect(configExists).toBe(true);
 
 			// Verify config content
@@ -243,59 +243,58 @@ describe("CLI Integration", () => {
 			expect(claudeFile).toBe(false);
 		});
 
-		it("should support non-interactive .backlog selection via --backlog-dir", async () => {
+		// `--backlog-dir` (+ `.backlog`/root-`backlog.config.yml` config
+		// location) was replaced by `--data <dir>` under the
+		// workspace-resolution-simplification model. Config always lives in the
+		// per-repo workspace yml; the data dir is purely where task .md files
+		// go. Traversal validation was dropped (data may live anywhere).
+		it("should support a custom data dir via --data", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --backlog-dir .backlog`
+			const result = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --data .backlog`
 				.cwd(TEST_DIR)
-				.text();
+				.nothrow();
+			expect(result.exitCode).toBe(0);
 
-			expect(output).toContain("Backlog directory: .backlog");
-			expect(await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists()).toBe(true);
-			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
+			// Config is NOT inside the repo (no per-data config, no root config);
+			// it lives in the per-repo workspace yml resolved from the data dir.
+			expect(await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists()).toBe(false);
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(false);
+
+			const core = new Core(TEST_DIR);
+			const config = await core.filesystem.loadConfig();
+			expect(config?.projectName).toBe("HiddenProj");
+			expect(core.filesystem.backlogDir).toBe(join(TEST_DIR, ".backlog"));
 		});
 
-		it("should store custom non-interactive backlog dir in root backlog.config.yml", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const output =
-				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
-					.cwd(TEST_DIR)
-					.text();
-
-			expect(output).toContain("Backlog directory: planning/backlog-data");
-			expect(output).toContain("Config location: backlog.config.yml");
-			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
-			const rootConfig = await Bun.file(join(TEST_DIR, "backlog.config.yml")).text();
-			expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
-		});
-
-		it("should reject invalid --backlog-dir values", async () => {
+		it("should keep config in the workspace file for a nested custom data dir", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const result =
-				await $`bun ${CLI_PATH} init InvalidDirProj --defaults --integration-mode none --backlog-dir ../outside`
+				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --data planning/backlog-data`
 					.cwd(TEST_DIR)
 					.nothrow();
-			const output = result.stdout.toString() + result.stderr.toString();
-			expect(result.exitCode).toBe(1);
-			expect(output).toContain("Invalid --backlog-dir value");
+			expect(result.exitCode).toBe(0);
+
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(false);
+			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+			const core = new Core(TEST_DIR);
+			expect(core.filesystem.backlogDir).toBe(join(TEST_DIR, "planning", "backlog-data"));
+			expect((await core.filesystem.loadConfig())?.projectName).toBe("CustomProj");
 		});
 
-		it("should reject --backlog-dir during re-initialization", async () => {
+		it("should reject --data during re-initialization", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
 
-			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --backlog-dir .backlog`
+			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --data .backlog`
 				.cwd(TEST_DIR)
 				.nothrow();
 			const output = result.stdout.toString() + result.stderr.toString();
@@ -392,9 +391,10 @@ describe("CLI Integration", () => {
 
 			config.autoCommit = true;
 			await core.filesystem.saveConfig(config);
-			const git = await core.getGitOps();
-			await git.addFile(join(TEST_DIR, "backlog", "config.yml"));
-			await git.commitChanges("backlog: Enable autoCommit for CLI create tests");
+			// Config lives in the machine config dir (outside the repo) under the
+			// new model, so this toggle makes no repo-tracked change to commit;
+			// the repo is already clean after the auto-committed init.
+			core.filesystem.invalidateConfigCache();
 		});
 
 		it("should honor autoCommit config for task create", async () => {

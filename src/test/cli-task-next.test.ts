@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir } from "./test-utils.ts";
+import { createUniqueTestDir, seedTestWorkspace } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -28,7 +28,7 @@ check_active_branches: false
 filesystem_only: true
 auto_commit: false
 `;
-	await writeFile(join(testDir, "backlog", "config.yml"), config);
+	await seedTestWorkspace(testDir, { configBody: config });
 }
 
 describe("CLI task next", () => {

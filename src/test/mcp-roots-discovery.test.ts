@@ -11,6 +11,7 @@ import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/i
 import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
+import { setCurrentWorkspaceName } from "../utils/workspace-store.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -46,6 +47,12 @@ async function setupDirs(): Promise<{
 	await $`mkdir -p ${uninitializedDir}`.quiet();
 	await createProject(projectRoot, "Roots Test Project");
 	await createProject(secondProjectRoot, "Roots Test Project 2");
+
+	// initializeProject sets `current:` on first init. Clear it so a dir that
+	// matches no `repo:` truly resolves to null (the new model's resolution
+	// order is cwd-match → current → null; these tests exercise the no-match
+	// path explicitly and switch projects via roots/reinitialize, not current).
+	await setCurrentWorkspaceName(null);
 
 	return { uninitializedDir, projectRoot, secondProjectRoot };
 }

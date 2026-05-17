@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { readMachineConfig } from "../utils/machine-config.ts";
+import { stat } from "node:fs/promises";
 import { setupMachineConfig, withEnvVars } from "./isolation.ts";
 
 describe("withEnvVars", () => {
@@ -24,56 +24,31 @@ describe("withEnvVars", () => {
 });
 
 describe("setupMachineConfig", () => {
-	it("creates an isolated machine config dir with no globalStore", async () => {
+	it("creates an isolated machine config dir and points the env var at it", async () => {
 		const setup = await setupMachineConfig();
 		try {
-			const cfg = readMachineConfig();
-			expect(cfg.globalStore).toBeNull();
 			expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe(setup.machineConfigDir);
+			const s = await stat(setup.machineConfigDir);
+			expect(s.isDirectory()).toBe(true);
 		} finally {
 			await setup.cleanup();
 		}
 	});
 
-	it("creates a globalStore temp dir when globalStore: true", async () => {
-		const setup = await setupMachineConfig({ globalStore: true });
-		try {
-			expect(setup.globalStoreDir).not.toBeNull();
-			const cfg = readMachineConfig();
-			expect(cfg.globalStore).toBe(setup.globalStoreDir);
-		} finally {
-			await setup.cleanup();
-		}
-	});
-
-	it("uses a specific globalStore path when passed as string", async () => {
-		const setup = await setupMachineConfig({ globalStore: "/tmp/my-custom-store" });
-		try {
-			const cfg = readMachineConfig();
-			expect(cfg.globalStore).toBe("/tmp/my-custom-store");
-		} finally {
-			await setup.cleanup();
-		}
-	});
-
-	it("cleanup restores env and invalidates cache", async () => {
+	it("cleanup restores env and removes the temp dir", async () => {
 		const prevDir = process.env.BACKLOG_MACHINE_CONFIG_DIR;
-		const setup = await setupMachineConfig({ globalStore: true });
+		const setup = await setupMachineConfig();
 		expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe(setup.machineConfigDir);
 		await setup.cleanup();
 		expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe(prevDir);
-		// After cleanup the cache should be clear, so no stale globalStore
-		const cfg = readMachineConfig();
-		// Either null (no real config) or whatever the real config says — just
-		// ensure it's NOT pointing at the now-deleted temp dir
-		expect(cfg.globalStore).not.toBe(setup.globalStoreDir);
+		await expect(stat(setup.machineConfigDir)).rejects.toThrow();
 	});
 
 	describe("beforeEach / afterEach pattern", () => {
 		let setup: Awaited<ReturnType<typeof setupMachineConfig>>;
 
 		beforeEach(async () => {
-			setup = await setupMachineConfig({ globalStore: true });
+			setup = await setupMachineConfig();
 		});
 
 		afterEach(async () => {
@@ -82,13 +57,12 @@ describe("setupMachineConfig", () => {
 
 		it("each test gets an isolated machine config", () => {
 			expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe(setup.machineConfigDir);
-			expect(readMachineConfig().globalStore).toBe(setup.globalStoreDir);
+			expect(setup.machineConfigDir).toContain("backlog-test-");
 		});
 
 		it("second test also isolated", () => {
-			const cfg = readMachineConfig();
-			expect(cfg.globalStore).toBe(setup.globalStoreDir);
-			expect(cfg.globalStore).toContain("backlog-test-");
+			expect(process.env.BACKLOG_MACHINE_CONFIG_DIR).toBe(setup.machineConfigDir);
+			expect(setup.machineConfigDir).toContain("backlog-test-");
 		});
 	});
 });

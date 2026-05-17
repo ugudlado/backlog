@@ -3,7 +3,7 @@ import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, isWindows, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, isWindows, safeCleanup, seedTestWorkspace } from "./test-utils.ts";
 
 describe("Symlinked backlog root", () => {
 	const itIfSymlinks = isWindows() ? it.skip : it;
@@ -25,15 +25,18 @@ describe("Symlinked backlog root", () => {
 	itIfSymlinks("creates tasks when backlog root is a symlink and autoCommit is false", async () => {
 		await mkdir(join(backlogDir, "tasks"), { recursive: true });
 		await mkdir(join(backlogDir, "drafts"), { recursive: true });
-		await writeFile(
-			join(backlogDir, "config.yml"),
-			`project_name: "Symlink Root"
+
+		await symlink(backlogDir, join(repoDir, "backlog"));
+
+		// data points at the symlink (`<repo>/backlog` → backlogDir); config
+		// lives in the per-repo workspace yml under the new model.
+		await seedTestWorkspace(repoDir, {
+			data: join(repoDir, "backlog"),
+			configBody: `project_name: "Symlink Root"
 statuses: ["To Do", "In Progress", "Done"]
 auto_commit: false
 `,
-		);
-
-		await symlink(backlogDir, join(repoDir, "backlog"));
+		});
 
 		const core = new Core(repoDir);
 		const { task } = await core.createTaskFromInput({ title: "Symlink root task" });
@@ -57,15 +60,16 @@ auto_commit: false
 
 		await mkdir(join(backlogDir, "tasks"), { recursive: true });
 		await mkdir(join(backlogDir, "drafts"), { recursive: true });
-		await writeFile(
-			join(backlogDir, "config.yml"),
-			`project_name: "Symlink Root"
+
+		await symlink(backlogDir, join(repoDir, "backlog"));
+
+		await seedTestWorkspace(repoDir, {
+			data: join(repoDir, "backlog"),
+			configBody: `project_name: "Symlink Root"
 statuses: ["To Do", "In Progress", "Done"]
 auto_commit: true
 `,
-		);
-
-		await symlink(backlogDir, join(repoDir, "backlog"));
+		});
 
 		const core = new Core(repoDir);
 		await core.createTaskFromInput({ title: "Symlink root auto-commit" });

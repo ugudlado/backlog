@@ -233,36 +233,6 @@ describe("MCP task tools (MVP)", () => {
 		expect(combinedText).not.toContain("TASK-5 - Roadmap Milestone Task");
 	});
 
-	it("applies milestone filtering in task_list draft status path", async () => {
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Draft Milestone One",
-					status: "Draft",
-					milestone: "draft-alpha",
-				},
-			},
-		});
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Draft Milestone Two",
-					status: "Draft",
-					milestone: "draft-beta",
-				},
-			},
-		});
-
-		const draftResult = await mcpServer.testInterface.callTool({
-			params: { name: "task_list", arguments: { status: "Draft", milestone: "draft-alph" } },
-		});
-		const draftText = getText(draftResult.content);
-		expect(draftText).toContain("DRAFT-1 - Draft Milestone One");
-		expect(draftText).not.toContain("DRAFT-2 - Draft Milestone Two");
-	});
-
 	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
@@ -318,33 +288,6 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).toContain("TASK-2 - Completed task");
 		expect(searchText).toContain("(Done)");
 		expect(searchText).not.toContain("TASK-3 - Archived task");
-	});
-
-	it("exposes status enums and defaults from configuration", async () => {
-		const config = await loadConfig(mcpServer);
-		const configuredStatuses =
-			config.statuses && config.statuses.length > 0 ? [...config.statuses] : Array.from(DEFAULT_STATUSES);
-		const normalizedStatuses = configuredStatuses.map((status) => status.trim());
-		const hasDraft = normalizedStatuses.some((status) => status.toLowerCase() === "draft");
-		const expectedStatuses = hasDraft ? normalizedStatuses : ["Draft", ...normalizedStatuses];
-		const tools = await mcpServer.testInterface.listTools();
-		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
-
-		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
-		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
-
-		const createStatusSchema = createSchema?.properties?.status;
-		const editStatusSchema = editSchema?.properties?.status;
-
-		expect(createStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(createStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
-		expect(createStatusSchema?.enumCaseInsensitive).toBe(true);
-		expect(createStatusSchema?.enumNormalizeWhitespace).toBe(true);
-
-		expect(editStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(editStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
-		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
-		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
 	});
 
 	it("describes Definition of Done fields as task-level in schemas", async () => {

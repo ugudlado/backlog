@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
+import { seedTestWorkspace } from "./test-utils.ts";
 
 describe("Status Change Callbacks", () => {
 	describe("executeStatusCallback", () => {
@@ -121,10 +122,10 @@ dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > "${callbackOutputPath}"'
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			const wsFile = await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Verify config was written correctly
-			const writtenConfig = await Bun.file(join(testDir, "backlog", "config.yml")).text();
+			const writtenConfig = await Bun.file(wsFile).text();
 			expect(writtenConfig).toContain("onStatusChange");
 
 			// Create a task
@@ -160,7 +161,7 @@ dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 onStatusChange: 'echo "global" > "${callbackOutputPath}"'
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Create a task with per-task callback
 			const taskContent = `---
@@ -200,7 +201,7 @@ dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 onStatusChange: 'echo "callback-ran" > "${callbackOutputPath}"'
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Create a task
 			const { task } = await core.createTaskFromInput({
@@ -231,7 +232,7 @@ milestones: []
 dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Create a task
 			const { task } = await core.createTaskFromInput({
@@ -257,7 +258,7 @@ dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 onStatusChange: 'exit 1'
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Create a task
 			const { task } = await core.createTaskFromInput({
@@ -283,7 +284,7 @@ dateFormat: yyyy-mm-dd
 checkActiveBranches: false
 onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> "${callbackOutputPath}"'
 `;
-			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
+			await seedTestWorkspace(testDir, { configBody: configContent });
 
 			// Create a task in "To Do"
 			const { task } = await core.createTaskFromInput({

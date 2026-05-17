@@ -1,20 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup, seedTestWorkspace } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
+// The project config IS the per-repo workspace yml under the new model. Derive
+// its path from the same resolver the product uses so reads/writes hit the file
+// that `loadConfig` actually reads.
+const configPathFor = (root: string): string => new Core(root).filesystem.configFilePath;
+
 const readConfigFile = async (root: string): Promise<string> => {
-	const configPath = join(root, "backlog", "config.yml");
-	return await readFile(configPath, "utf8");
+	return await readFile(configPathFor(root), "utf8");
 };
 
+// Overwrites the workspace config body while preserving the `repo:`/`data:`
+// header the resolver needs (seedTestWorkspace re-derives and prepends it).
 const writeConfigFile = async (root: string, content: string): Promise<void> => {
-	const configPath = join(root, "backlog", "config.yml");
-	await writeFile(configPath, content);
+	await seedTestWorkspace(root, { configBody: content });
 };
 
 describe("Definition of Done", () => {

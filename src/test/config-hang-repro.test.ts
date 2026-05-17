@@ -1,14 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { seedTestWorkspace } from "./test-utils.ts";
 
+/**
+ * Under the per-repo workspace model the project config IS the per-repo
+ * workspace yml (resolved via the machine config dir, isolated per-test by the
+ * global preload). The legacy `.backlog`-vs-`backlog` directory precedence was
+ * removed by the workspace-resolution-simplification change, so those tests are
+ * gone; the surviving concern here is that `loadConfig` does not hang and that
+ * `ensureConfigMigrated` still migrates legacy in-config milestones.
+ */
 describe("Config Loading & Migration", () => {
 	const testRoot = "/tmp/test-config-migration";
 	const backlogDir = join(testRoot, "backlog");
-	const configPath = join(backlogDir, "config.yml");
 
 	beforeEach(async () => {
 		await rm(testRoot, { recursive: true, force: true });
@@ -19,17 +27,18 @@ describe("Config Loading & Migration", () => {
 		await rm(testRoot, { recursive: true, force: true });
 	});
 
-	it("should load config from standard backlog directory", async () => {
-		const config = `project_name: "Test Project"
+	it("loads config from the per-repo workspace file without hanging", async () => {
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Test Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: []
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 
 		const fs = new FileSystem(testRoot);
 
@@ -44,72 +53,40 @@ auto_commit: false`;
 		expect(loadedConfig?.projectName).toBe("Test Project");
 	});
 
-	it("should load config from .backlog directory without migrating it", async () => {
-		// Create a .backlog directory instead of backlog
-		const hiddenBacklogDir = join(testRoot, ".backlog");
-		const hiddenConfigPath = join(hiddenBacklogDir, "config.yml");
-
-		await rm(backlogDir, { recursive: true, force: true });
-		await mkdir(hiddenBacklogDir, { recursive: true });
-
-		const hiddenConfig = `project_name: "Legacy Project"
-statuses: ["To Do", "In Progress", "Done"]
-labels: []
-milestones: []
-default_status: "To Do"
-date_format: "yyyy-mm-dd"
-max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(hiddenConfigPath, hiddenConfig);
-
-		const fs = new FileSystem(testRoot);
-		const config = await fs.loadConfig();
-
-		// Check that config was loaded
-		expect(config).toBeTruthy();
-		expect(config?.projectName).toBe("Legacy Project");
-
-		// Check that the directory stayed in place
-		const newBacklogExists = await Bun.file(join(testRoot, "backlog", "config.yml")).exists();
-		const oldBacklogExists = await Bun.file(join(testRoot, ".backlog", "config.yml")).exists();
-
-		expect(newBacklogExists).toBe(false);
-		expect(oldBacklogExists).toBe(true);
-	});
-
 	it("migrates legacy config milestones into milestone files and removes config milestones key", async () => {
-		const config = `project_name: "Legacy Milestones Project"
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Legacy Milestones Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: ["Release 1", "Release 2"]
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 		const core = new Core(testRoot);
 		await core.ensureConfigMigrated();
 
 		const migratedMilestones = await core.filesystem.listMilestones();
 		expect(migratedMilestones.map((milestone) => milestone.title).sort()).toEqual(["Release 1", "Release 2"]);
 
-		const rewrittenConfig = await Bun.file(configPath).text();
+		const rewrittenConfig = await Bun.file(core.filesystem.configFilePath).text();
 		expect(rewrittenConfig).not.toContain("milestones:");
 	});
 
 	it("migrates quoted legacy milestone names containing commas", async () => {
-		const config = `project_name: "Legacy Milestones Project"
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Legacy Milestones Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: ["Release, Part 1", "Release 2"]
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 		const core = new Core(testRoot);
 		await core.ensureConfigMigrated();
 
@@ -118,7 +95,8 @@ auto_commit: false`;
 	});
 
 	it("migrates multiline legacy milestone list values with comments", async () => {
-		const config = `project_name: "Legacy Milestones Project"
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Legacy Milestones Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones:
@@ -128,9 +106,9 @@ milestones:
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 		const core = new Core(testRoot);
 		await core.ensureConfigMigrated();
 
@@ -141,12 +119,13 @@ auto_commit: false`;
 			"Release 2",
 		]);
 
-		const rewrittenConfig = await Bun.file(configPath).text();
+		const rewrittenConfig = await Bun.file(core.filesystem.configFilePath).text();
 		expect(rewrittenConfig).not.toContain("milestones:");
 	});
 
 	it("migrates multiline bracketed legacy milestone arrays", async () => {
-		const config = `project_name: "Legacy Milestones Project"
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Legacy Milestones Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones: [
@@ -156,9 +135,9 @@ milestones: [
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 		const core = new Core(testRoot);
 		await core.ensureConfigMigrated();
 
@@ -167,7 +146,8 @@ auto_commit: false`;
 	});
 
 	it("migrates single-quoted legacy milestones with escaped apostrophes", async () => {
-		const config = `project_name: "Legacy Milestones Project"
+		await seedTestWorkspace(testRoot, {
+			configBody: `project_name: "Legacy Milestones Project"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
 milestones:
@@ -175,9 +155,9 @@ milestones:
 default_status: "To Do"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
-auto_commit: false`;
-
-		await writeFile(configPath, config);
+auto_commit: false
+`,
+		});
 		const core = new Core(testRoot);
 		await core.ensureConfigMigrated();
 

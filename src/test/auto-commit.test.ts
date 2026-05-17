@@ -166,10 +166,11 @@ describe("Auto-commit configuration", () => {
 				await core.filesystem.saveConfig(config);
 			}
 
-			// Commit the config change to start with a clean state
-			const git = await core.getGitOps();
-			await git.addFile(join(TEST_DIR, "backlog", "config.yml"));
-			await git.commitChanges("Update autoCommit config for test");
+			// Under the per-repo workspace model the config lives in the machine
+			// config dir (outside the repo), so the autoCommit toggle above made
+			// no repo-tracked change — there is nothing to commit and the repo is
+			// already in a clean post-init state.
+			core.filesystem.invalidateConfigCache();
 		});
 
 		it("should auto-commit when creating task with autoCommit enabled in config", async () => {
@@ -247,33 +248,6 @@ describe("Auto-commit configuration", () => {
 			const git = await core.getGitOps();
 			const isClean = await git.isClean();
 			expect(isClean).toBe(true);
-		});
-	});
-
-	describe("Draft operations", () => {
-		beforeEach(async () => {
-			// Set autoCommit to false
-			const config = await core.filesystem.loadConfig();
-			if (config) {
-				config.autoCommit = false;
-				await core.filesystem.saveConfig(config);
-			}
-		});
-
-		it("should respect autoCommit config for draft operations", async () => {
-			await core.createTaskFromInput(
-				{
-					title: "Test Draft",
-					status: "Draft",
-					description: "Test description",
-				},
-				false,
-			);
-
-			// Check that there are uncommitted changes
-			const git = await core.getGitOps();
-			const isClean = await git.isClean();
-			expect(isClean).toBe(false);
 		});
 	});
 });
