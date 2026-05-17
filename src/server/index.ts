@@ -1579,7 +1579,12 @@ export class BacklogServer {
 		const memoryHit = withIds.find((e) => toAbsoluteProjectRoot(e.path) === currentPath);
 		return {
 			workspaces: withIds.map((e) => ({ id: e.id, path: toAbsoluteProjectRoot(e.path) })),
-			currentId: persistedHit?.id ?? memoryHit?.id ?? null,
+			// The workspace the server actually rendered wins over the persisted
+			// `current:` pointer. Persisted can drift from what's on screen (cwd
+			// resolution / external switches rewrite it without reloading the
+			// server), and trusting it made the dropdown highlight jump to a
+			// different workspace the moment it was opened.
+			currentId: memoryHit?.id ?? persistedHit?.id ?? null,
 		};
 	}
 
