@@ -7,6 +7,7 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../../types";
+import RowContextMenu from "./RowContextMenu";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
@@ -109,6 +110,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
 	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+	const [rowMenu, setRowMenu] = useState<{ task: Task; x: number; y: number } | null>(null);
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
@@ -600,12 +602,14 @@ const TaskList: React.FC<TaskListProps> = ({
 			<div className="flex flex-col gap-4 mb-6">
 				<div className="flex items-center justify-between gap-3">
 						<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
-						<button
-							className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-							onClick={onNewTask}
-						>
-							+ New Task
-					</button>
+						<div className="flex items-center gap-3">
+							<button
+								className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								onClick={onNewTask}
+							>
+								+ New Task
+							</button>
+						</div>
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
@@ -750,6 +754,10 @@ const TaskList: React.FC<TaskListProps> = ({
 										<tr
 											key={task.id}
 											onClick={() => onEditTask(task)}
+											onContextMenu={(e) => {
+												e.preventDefault();
+												setRowMenu({ task, x: e.clientX, y: e.clientY });
+											}}
 											className={`cursor-pointer transition-colors ${
 												isFromOtherBranch
 													? "bg-amber-50/50 hover:bg-amber-100/70 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
@@ -850,6 +858,23 @@ const TaskList: React.FC<TaskListProps> = ({
 						</table>
 					</div>
 				</div>
+			)}
+
+			{rowMenu && (
+				<RowContextMenu
+					x={rowMenu.x}
+					y={rowMenu.y}
+					onClose={() => setRowMenu(null)}
+					items={[
+						{ label: "Edit task", onSelect: () => onEditTask(rowMenu.task) },
+						{
+							label: "Copy ID",
+							onSelect: () => {
+								void navigator.clipboard?.writeText(rowMenu.task.id);
+							},
+						},
+					]}
+				/>
 			)}
 
 			{/* Cleanup Modal */}

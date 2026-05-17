@@ -389,13 +389,17 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(
+		title: string,
+		description?: string,
+		dates?: { startDate?: string | null; endDate?: string | null },
+	): Promise<Milestone> {
 		const response = await fetch(`${API_BASE}/milestones`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title, description }),
+			body: JSON.stringify({ title, description, ...(dates ?? {}) }),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
@@ -407,13 +411,14 @@ export class ApiClient {
 	async updateMilestone(
 		id: string,
 		title: string,
+		dates?: { startDate?: string | null; endDate?: string | null },
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
 		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title }),
+			body: JSON.stringify({ title, ...(dates ?? {}) }),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));

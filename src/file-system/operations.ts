@@ -531,10 +531,21 @@ export class FileSystem {
 		return `${id} - ${safeTitle}.md`;
 	}
 
-	private serializeMilestoneContent(id: string, title: string, rawContent: string): string {
+	private serializeMilestoneContent(
+		id: string,
+		title: string,
+		rawContent: string,
+		dates?: { startDate?: string; endDate?: string },
+	): string {
+		const dateLines = [
+			dates?.startDate ? `start_date: ${dates.startDate}` : null,
+			dates?.endDate ? `end_date: ${dates.endDate}` : null,
+		]
+			.filter(Boolean)
+			.join("\n");
 		return `---
 id: ${id}
-title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"${dateLines ? `\n${dateLines}` : ""}
 ---
 
 ${rawContent.trim()}
@@ -703,7 +714,11 @@ ${rawContent.trim()}
 		}
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(
+		title: string,
+		description?: string,
+		dates?: { startDate?: string; endDate?: string },
+	): Promise<Milestone> {
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -755,6 +770,7 @@ ${rawContent.trim()}
 				`## Description
 
 ${description || `Milestone: ${title}`}`,
+				dates,
 			);
 
 			const filepath = join(milestonesDir, filename);
@@ -764,6 +780,8 @@ ${description || `Milestone: ${title}`}`,
 				id,
 				title,
 				description: description || `Milestone: ${title}`,
+				...(dates?.startDate ? { startDate: dates.startDate } : {}),
+				...(dates?.endDate ? { endDate: dates.endDate } : {}),
 				rawContent: parseMilestone(content).rawContent,
 			};
 		});
@@ -806,7 +824,10 @@ ${description || `Milestone: ${title}`}`,
 				milestone.title,
 				normalizedTitle,
 			);
-			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
+			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent, {
+				startDate: milestone.startDate,
+				endDate: milestone.endDate,
+			});
 
 			if (sourcePath !== targetPath) {
 				if (await Bun.file(targetPath).exists()) {
@@ -840,6 +861,34 @@ ${description || `Milestone: ${title}`}`,
 			} catch {
 				// Ignore rollback failures and surface operation failure to caller.
 			}
+			return { success: false };
+		}
+	}
+
+	/**
+	 * Set or clear a milestone's cycle dates. Rewrites frontmatter in place via the
+	 * same serializer used by create/rename; title and body are preserved.
+	 * Pass `null` for a date to clear it; `undefined` leaves it unchanged.
+	 */
+	async updateMilestoneDates(
+		identifier: string,
+		dates: { startDate?: string | null; endDate?: string | null },
+	): Promise<{ success: boolean; milestone?: Milestone }> {
+		try {
+			const milestoneMatch = await this.findMilestoneFile(identifier, "active");
+			if (!milestoneMatch) {
+				return { success: false };
+			}
+			const { milestone, filepath } = milestoneMatch;
+			const nextStart = dates.startDate === undefined ? milestone.startDate : (dates.startDate ?? undefined);
+			const nextEnd = dates.endDate === undefined ? milestone.endDate : (dates.endDate ?? undefined);
+			const updatedContent = this.serializeMilestoneContent(milestone.id, milestone.title, milestone.rawContent, {
+				startDate: nextStart,
+				endDate: nextEnd,
+			});
+			await Bun.write(filepath, updatedContent);
+			return { success: true, milestone: parseMilestone(updatedContent) };
+		} catch {
 			return { success: false };
 		}
 	}

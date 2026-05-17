@@ -1,10 +1,12 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Fuse from "fuse.js";
-import { apiClient } from "../lib/api";
+import { apiClient, type ReorderTaskPayload } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
+import RowContextMenu from "./RowContextMenu";
+import TaskColumn from "./TaskColumn";
 import Modal from "./Modal";
 
 interface MilestoneSearchEntry {
@@ -59,6 +61,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	onRefreshData,
 }) => {
 	const [newMilestone, setNewMilestone] = useState("");
+	const [newStartDate, setNewStartDate] = useState("");
+	const [newEndDate, setNewEndDate] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
@@ -73,11 +77,19 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [removingMilestoneKey, setRemovingMilestoneKey] = useState<string | null>(null);
 	const [editingBucket, setEditingBucket] = useState<MilestoneBucket | null>(null);
 	const [editMilestoneName, setEditMilestoneName] = useState("");
+	const [editStartDate, setEditStartDate] = useState("");
+	const [editEndDate, setEditEndDate] = useState("");
 	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
 	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
 	const [modalError, setModalError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [rowMenu, setRowMenu] = useState<{ task: Task; x: number; y: number } | null>(null);
+
+	const handleRowContextMenu = useCallback((event: React.MouseEvent, task: Task) => {
+		event.preventDefault();
+		setRowMenu({ task, x: event.clientX, y: event.clientY });
+	}, []);
 
 	const archivedMilestoneIds = useMemo(
 		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
@@ -224,6 +236,33 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setDraggedTask(null);
 	}, [draggedTask, onRefreshData]);
 
+	// Per-bucket layout: "rows" (default list) or "columns" (status Kanban via TaskColumn).
+	const [layoutByBucket, setLayoutByBucket] = useState<Record<string, "rows" | "columns">>({});
+
+	const handleColumnTaskUpdate = useCallback(
+		async (taskId: string, updates: Partial<Task>) => {
+			try {
+				await apiClient.updateTask(taskId, updates);
+				if (onRefreshData) await onRefreshData();
+			} catch (err) {
+				console.error("Failed to update task:", err);
+			}
+		},
+		[onRefreshData],
+	);
+
+	const handleColumnReorder = useCallback(
+		async (payload: ReorderTaskPayload) => {
+			try {
+				await apiClient.reorderTask(payload);
+				if (onRefreshData) await onRefreshData();
+			} catch (err) {
+				console.error("Failed to reorder task:", err);
+			}
+		},
+		[onRefreshData],
+	);
+
 	const handleNewMilestoneChange = (value: string) => {
 		setNewMilestone(value);
 		if (error) setError(null);
@@ -233,6 +272,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeAddModal = () => {
 		setShowAddModal(false);
 		setNewMilestone("");
+		setNewStartDate("");
+		setNewEndDate("");
 		setError(null);
 	};
 
@@ -249,8 +290,13 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.createMilestone(value);
+			await apiClient.createMilestone(value, undefined, {
+				startDate: newStartDate.trim() || null,
+				endDate: newEndDate.trim() || null,
+			});
 			setNewMilestone("");
+			setNewStartDate("");
+			setNewEndDate("");
 			setSuccess(`Added milestone "${value}"`);
 			setShowAddModal(false);
 			if (onRefreshData) {
@@ -306,10 +352,19 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		});
 	};
 
+	const findMilestoneEntity = (bucket: MilestoneBucket): Milestone | undefined => {
+		if (!bucket.milestone) return undefined;
+		const key = milestoneKey(bucket.milestone);
+		return milestoneEntities.find((m) => milestoneKey(m.id) === key || milestoneKey(m.title) === key);
+	};
+
 	const openEditModal = (bucket: MilestoneBucket) => {
 		if (!bucket.milestone) return;
+		const entity = findMilestoneEntity(bucket);
 		setEditingBucket(bucket);
 		setEditMilestoneName(bucket.label || bucket.milestone);
+		setEditStartDate(entity?.startDate ?? "");
+		setEditEndDate(entity?.endDate ?? "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -318,6 +373,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeEditModal = () => {
 		setEditingBucket(null);
 		setEditMilestoneName("");
+		setEditStartDate("");
+		setEditEndDate("");
 		setModalError(null);
 	};
 
@@ -351,9 +408,16 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.updateMilestone(bucket.milestone, value);
+			await apiClient.updateMilestone(bucket.milestone, value, {
+				startDate: editStartDate.trim() || null,
+				endDate: editEndDate.trim() || null,
+			});
 			closeEditModal();
-			setSuccess(`Renamed milestone "${previousLabel}" to "${value}"`);
+			setSuccess(
+				value === previousLabel
+					? `Updated milestone "${value}"`
+					: `Renamed milestone "${previousLabel}" to "${value}"`,
+			);
 			if (onRefreshData) {
 				await onRefreshData();
 			}
@@ -484,11 +548,34 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const isExpanded = expandedBuckets[bucket.key] ?? defaultExpanded;
 		const listId = `milestone-${safeIdSegment(bucket.key)}`;
 		const sortedTasks = getSortedTasks(bucket.tasks);
+		// Default to status columns so right-click reorder is available; rows mode
+		// (sorted by created date, ignores ordinal) stays an opt-in compact read view.
+		const layout = layoutByBucket[bucket.key] ?? "columns";
 		const isDropTarget = dropTargetKey === bucket.key;
 		const isDragging = draggedTask !== null;
 		const isArchiving = archivingMilestoneKey === bucket.key;
 		const isSavingMilestone = savingMilestoneKey === bucket.key;
 		const isRemoving = removingMilestoneKey === bucket.key;
+
+		// Time-elapsed cycle progress (independent of task completion).
+		const entity = findMilestoneEntity(bucket);
+		const timeCycle = (() => {
+			if (!entity?.startDate || !entity?.endDate) return null;
+			const start = new Date(`${entity.startDate}T00:00:00`).getTime();
+			const end = new Date(`${entity.endDate}T23:59:59`).getTime();
+			if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return null;
+			const now = Date.now();
+			const pct = Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
+			const msLeft = end - now;
+			const daysLeft = Math.ceil(msLeft / 86_400_000);
+			const label =
+				now < start
+					? `Starts in ${Math.ceil((start - now) / 86_400_000)}d`
+					: msLeft <= 0
+					? "Overdue"
+					: `${daysLeft}d left`;
+			return { pct, label, overdue: msLeft <= 0 && now >= start };
+		})();
 
 		return (
 			<div
@@ -526,10 +613,36 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						)}
 					</div>
 
-					{/* Progress bar - only for non-empty */}
+					{/* Task completion bar - only for non-empty */}
 					{!isEmpty && (
-						<div className="mt-3 w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-							<div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+						<div className="mt-3">
+							<div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+								<span>{bucket.doneCount} done</span>
+								<span>
+									{bucket.total - bucket.doneCount} ticket{bucket.total - bucket.doneCount === 1 ? "" : "s"} remaining
+								</span>
+							</div>
+							<div className="w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+								<div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+							</div>
+						</div>
+					)}
+
+					{/* Time-elapsed cycle bar - only when start/end dates set */}
+					{timeCycle && (
+						<div className="mt-3">
+							<div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+								<span>{timeCycle.pct}% time elapsed</span>
+								<span className={timeCycle.overdue ? "text-red-600 dark:text-red-400 font-medium" : ""}>
+									{timeCycle.label}
+								</span>
+							</div>
+							<div className="w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+								<div
+									className={`h-full transition-all duration-300 ${timeCycle.overdue ? "bg-red-500" : "bg-blue-500"}`}
+									style={{ width: `${timeCycle.pct}%` }}
+								/>
+							</div>
 						</div>
 					)}
 
@@ -562,7 +675,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								Board
 							</Link>
 							<Link
-								to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+								to={`/?view=list&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
 								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
 							>
 								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -604,22 +717,43 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								{isArchiving ? "Archiving..." : "Archive"}
 							</button>
 						</div>
-						<button
-							type="button"
-							aria-expanded={isExpanded}
-							aria-controls={listId}
-							onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
-							className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-						>
-							{isExpanded ? "Hide" : "Show"} tasks
-							<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-							</svg>
-						</button>
+						<div className="flex items-center gap-3">
+							{isExpanded && !isEmpty && (
+								<div className="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden text-xs">
+									{(["rows", "columns"] as const).map((mode) => (
+										<button
+											key={mode}
+											type="button"
+											aria-pressed={layout === mode}
+											onClick={() => setLayoutByBucket((c) => ({ ...c, [bucket.key]: mode }))}
+											className={`px-2.5 py-1 capitalize transition-colors ${
+												layout === mode
+													? "bg-blue-600 text-white"
+													: "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+											}`}
+										>
+											{mode}
+										</button>
+									))}
+								</div>
+							)}
+							<button
+								type="button"
+								aria-expanded={isExpanded}
+								aria-controls={listId}
+								onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
+								className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+							>
+								{isExpanded ? "Hide" : "Show"} tasks
+								<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+								</svg>
+							</button>
+						</div>
 					</div>
 
 					{/* Task list */}
-					{isExpanded && !isEmpty && (
+					{isExpanded && !isEmpty && layout === "rows" && (
 						<div id={listId} className="mt-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedTasks.slice(0, 10).map((task) => {
@@ -633,17 +767,36 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 											onEditTask={onEditTask}
 											onDragStart={handleDragStart}
 											onDragEnd={handleDragEnd}
+											onContextMenu={handleRowContextMenu}
 										/>
 									);
 								})}
 							</div>
 							{sortedTasks.length > 10 && (
 								<div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
-									<Link to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+									<Link to={`/?view=list&milestone=${encodeURIComponent(bucket.milestone ?? "")}`} className="text-blue-600 dark:text-blue-400 hover:underline">
 										View all {sortedTasks.length} tasks →
 									</Link>
 								</div>
 							)}
+						</div>
+					)}
+
+					{/* Status columns (Kanban within this milestone) */}
+					{isExpanded && !isEmpty && layout === "columns" && (
+						<div id={listId} className="mt-4 flex flex-row flex-nowrap gap-4 overflow-x-auto pb-2">
+							{statuses.map((status) => (
+								<div key={status} className="flex-1 min-w-[16rem]">
+									<TaskColumn
+										title={status}
+										tasks={getSortedTasks(bucket.tasks.filter((t) => (t.status ?? "") === status))}
+										onTaskUpdate={handleColumnTaskUpdate}
+										onEditTask={onEditTask}
+										onTaskReorder={handleColumnReorder}
+										targetMilestone={bucket.milestone ?? null}
+									/>
+								</div>
+							))}
 						</div>
 					)}
 				</div>
@@ -716,6 +869,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 													onEditTask={onEditTask}
 													onDragStart={handleDragStart}
 													onDragEnd={handleDragEnd}
+													onContextMenu={handleRowContextMenu}
 												/>
 											))}
 										</div>
@@ -910,6 +1064,32 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						/>
 						{error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 					</div>
+					<div className="grid grid-cols-2 gap-3">
+						<div className="space-y-2">
+							<label htmlFor="add-milestone-start" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+								Start date
+							</label>
+							<input
+								id="add-milestone-start"
+								type="date"
+								value={newStartDate}
+								onChange={(e) => setNewStartDate(e.target.value)}
+								className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							/>
+						</div>
+						<div className="space-y-2">
+							<label htmlFor="add-milestone-end" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+								End date
+							</label>
+							<input
+								id="add-milestone-end"
+								type="date"
+								value={newEndDate}
+								onChange={(e) => setNewEndDate(e.target.value)}
+								className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							/>
+						</div>
+					</div>
 					<div className="flex justify-end gap-2">
 						<button
 							type="button"
@@ -948,6 +1128,32 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							Renaming updates local tasks that reference this milestone.
 						</p>
 						{modalError && <p className="text-xs text-red-600 dark:text-red-400">{modalError}</p>}
+					</div>
+					<div className="grid grid-cols-2 gap-3">
+						<div className="space-y-2">
+							<label htmlFor="edit-milestone-start" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+								Start date
+							</label>
+							<input
+								id="edit-milestone-start"
+								type="date"
+								value={editStartDate}
+								onChange={(event) => setEditStartDate(event.target.value)}
+								className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							/>
+						</div>
+						<div className="space-y-2">
+							<label htmlFor="edit-milestone-end" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+								End date
+							</label>
+							<input
+								id="edit-milestone-end"
+								type="date"
+								value={editEndDate}
+								onChange={(event) => setEditEndDate(event.target.value)}
+								className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							/>
+						</div>
 					</div>
 					<div className="flex justify-end gap-2">
 						<button
@@ -1050,6 +1256,23 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					</div>
 				</div>
 			</Modal>
+
+			{rowMenu && (
+				<RowContextMenu
+					x={rowMenu.x}
+					y={rowMenu.y}
+					onClose={() => setRowMenu(null)}
+					items={[
+						{ label: "Edit task", onSelect: () => onEditTask(rowMenu.task) },
+						{
+							label: "Copy ID",
+							onSelect: () => {
+								void navigator.clipboard?.writeText(rowMenu.task.id);
+							},
+						},
+					]}
+				/>
+			)}
 		</div>
 	);
 };

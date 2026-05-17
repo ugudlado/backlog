@@ -1122,7 +1122,12 @@ export class BacklogServer {
 
 	private async handleCreateMilestone(req: Request): Promise<Response> {
 		try {
-			const body = (await req.json()) as { title?: string; description?: string };
+			const body = (await req.json()) as {
+				title?: string;
+				description?: string;
+				startDate?: unknown;
+				endDate?: unknown;
+			};
 			const title = body.title?.trim();
 
 			if (!title) {
@@ -1166,7 +1171,18 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			// Optional cycle dates: a value sets, "" / null / omitted leaves unset.
+			const parseDateField = (value: unknown): string | undefined => {
+				if (value === undefined || value === null || value === "") return undefined;
+				return typeof value === "string" ? value.trim() || undefined : undefined;
+			};
+			const startDate = parseDateField(body.startDate);
+			const endDate = parseDateField(body.endDate);
+
+			const milestone = await this.core.filesystem.createMilestone(title, body.description, {
+				...(startDate ? { startDate } : {}),
+				...(endDate ? { endDate } : {}),
+			});
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1190,6 +1206,22 @@ export class BacklogServer {
 				to: title,
 				updateTasks,
 			});
+
+			// Optional cycle dates: "" clears, a value sets, omitted leaves unchanged.
+			const parseDateField = (value: unknown): string | null | undefined => {
+				if (value === undefined) return undefined;
+				if (value === null || value === "") return null;
+				return typeof value === "string" ? value.trim() : undefined;
+			};
+			const startDate = parseDateField(body.startDate);
+			const endDate = parseDateField(body.endDate);
+			if (startDate !== undefined || endDate !== undefined) {
+				await this.core.filesystem.updateMilestoneDates(sourceMilestone?.id ?? milestoneId, {
+					startDate,
+					endDate,
+				});
+			}
+
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
 				(await this.core.filesystem.loadMilestone(title));
