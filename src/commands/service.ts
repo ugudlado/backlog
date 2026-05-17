@@ -123,11 +123,34 @@ function doStatus(): void {
 		stdio: ["ignore", "pipe", "ignore"],
 	});
 	if (r.status !== 0) {
-		console.log(`${LABEL} is not loaded.`);
+		console.log(`${LABEL}: not loaded (run \`backlog service start\`)`);
 		return;
 	}
+
+	// launchd prints several contradictory `state = ...` lines (domain
+	// membership, scheduling) even when no process is alive. The only
+	// reliable liveness signal is a `pid = N` line: launchd emits it only
+	// while the job is actually executing. Derive one truthful status from
+	// the PID, then show the supporting detail lines.
+	const pidMatch = r.stdout.match(/^\s*pid\s*=\s*(\d+)/m);
+	const pid = pidMatch ? Number(pidMatch[1]) : null;
+	const alive = pid !== null && (() => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	})();
+
+	if (alive) {
+		console.log(`${LABEL}: running (pid ${pid})`);
+	} else {
+		console.log(`${LABEL}: loaded but not running (no live process — check \`backlog service logs\`)`);
+	}
+
 	for (const line of r.stdout.split("\n")) {
-		if (/^\s*(state|pid|program)\s/.test(line)) console.log(line.trim());
+		if (/^\s*(pid|program|last exit code)\s*=/.test(line)) console.log(`  ${line.trim()}`);
 	}
 }
 
