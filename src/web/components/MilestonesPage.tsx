@@ -52,6 +52,37 @@ interface MilestonesPageProps {
 	onRefreshData?: () => Promise<void>;
 }
 
+type UnassignedSortColumn = "id" | "title" | "status" | "priority";
+const UNASSIGNED_PRIORITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+/** Sort the Unassigned-tasks table the way the Tasks view sorts its columns. */
+function sortUnassignedTasks(tasks: Task[], column: UnassignedSortColumn, direction: "asc" | "desc"): Task[] {
+	const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+	const dir = direction === "asc" ? 1 : -1;
+	const idNum = (id: string) => {
+		const m = id.trim().match(/(\d+)$/);
+		return m?.[1] ? Number.parseInt(m[1], 10) : Number.NaN;
+	};
+	const byId = (a: Task, b: Task) => {
+		const na = idNum(a.id);
+		const nb = idNum(b.id);
+		if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+		return collator.compare(a.id, b.id);
+	};
+	return tasks.slice().sort((a, b) => {
+		let result = 0;
+		if (column === "id") result = byId(a, b);
+		else if (column === "title") result = collator.compare(a.title, b.title);
+		else if (column === "status") result = collator.compare(a.status, b.status);
+		else
+			result =
+				(UNASSIGNED_PRIORITY_RANK[(a.priority ?? "").toLowerCase()] ?? 0) -
+				(UNASSIGNED_PRIORITY_RANK[(b.priority ?? "").toLowerCase()] ?? 0);
+		if (result !== 0) return dir * result;
+		return byId(a, b); // stable tiebreak
+	});
+}
+
 const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	tasks,
 	statuses,
@@ -71,6 +102,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 	const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
 	const [showAllUnassigned, setShowAllUnassigned] = useState(false);
+	// Sort state for the Unassigned-tasks table (mirrors the Tasks view).
+	const [unassignedSortColumn, setUnassignedSortColumn] = useState<"id" | "title" | "status" | "priority">("id");
+	const [unassignedSortDirection, setUnassignedSortDirection] = useState<"asc" | "desc">("desc");
 	const [showCompleted, setShowCompleted] = useState(false);
 	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
 	const [savingMilestoneKey, setSavingMilestoneKey] = useState<string | null>(null);
@@ -808,7 +842,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const renderUnassignedSection = () => {
 		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
-		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)));
+		const sortedActiveTasks = sortUnassignedTasks(
+			unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)),
+			unassignedSortColumn,
+			unassignedSortDirection,
+		);
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
 		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
 		const hasMore = sortedActiveTasks.length > 12;
@@ -851,10 +889,35 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 										{/* Table header */}
 										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
 											<div className="w-6" /> {/* Drag handle column */}
-											<div className="w-24">ID</div>
-											<div>Title</div>
-											<div className="text-center w-24">Status</div>
-											<div className="text-center w-20">Priority</div>
+											{(
+												[
+													["id", "ID", "w-24 text-left"],
+													["title", "Title", "text-left"],
+													["status", "Status", "text-center w-24"],
+													["priority", "Priority", "text-center w-20"],
+												] as Array<[UnassignedSortColumn, string, string]>
+											).map(([col, label, cls]) => {
+												const active = unassignedSortColumn === col;
+												const arrow = active ? (unassignedSortDirection === "asc" ? " ↑" : " ↓") : " ↕";
+												return (
+													<button
+														key={col}
+														type="button"
+														onClick={() => {
+															if (unassignedSortColumn === col) {
+																setUnassignedSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+															} else {
+																setUnassignedSortColumn(col);
+																setUnassignedSortDirection("asc");
+															}
+														}}
+														className={`${cls} uppercase tracking-wider hover:text-gray-700 dark:hover:text-gray-200 ${active ? "text-gray-700 dark:text-gray-200" : ""}`}
+													>
+														{label}
+														<span aria-hidden>{arrow}</span>
+													</button>
+												);
+											})}
 										</div>
 
 										{/* Table rows */}
