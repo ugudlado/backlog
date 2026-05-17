@@ -757,6 +757,9 @@ program
 				let backlogDirectory: string | undefined;
 				let backlogDirectorySource: "backlog" | ".backlog" | "custom" | undefined;
 				let configLocation: "folder" | "root" | undefined;
+				// Set when the interactive wizard picks machine-level storage; threaded
+				// into initializeProject as workspaceDataDir (same path as --workspace-data).
+				let wizardWorkspaceDataDir: string | undefined;
 				if (!isReInitialization) {
 					const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
 					const defaultBacklogDirectory = backlogResolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
@@ -820,6 +823,11 @@ program
 									value: "custom",
 									hint: `Backlog.md will store project config in ${backlogResolution.rootConfigPath}`,
 								},
+								{
+									label: "Machine-level (outside the repo)",
+									value: "machine",
+									hint: "Store tasks + config in ~/.config/backlog/workspaces/<name> (kept out of git)",
+								},
 							],
 						});
 						if (clack.isCancel(locationPrompt)) {
@@ -827,8 +835,22 @@ program
 							return;
 						}
 
-						backlogDirectorySource = locationPrompt as "backlog" | ".backlog" | "custom";
-						if (backlogDirectorySource === "custom") {
+						if (locationPrompt === "machine") {
+							const { getMachineConfigDir } = await import("./utils/workspaces-index.ts");
+							const slug =
+								String(name ?? "")
+									.trim()
+									.replace(/[^a-zA-Z0-9._-]+/g, "-")
+									.replace(/^-+|-+$/g, "") || "workspace";
+							wizardWorkspaceDataDir = join(getMachineConfigDir(), "workspaces", slug);
+							// Machine-level data is flat (config.yml beside tasks/) and lives
+							// outside the repo — the repo-relative backlogDirectory/config
+							// sub-prompts do not apply.
+							backlogDirectory = undefined;
+							backlogDirectorySource = undefined;
+							configLocation = undefined;
+						} else if (locationPrompt === "custom") {
+							backlogDirectorySource = "custom";
 							const customDirectory = await clack.text({
 								message: "Project-relative backlog directory:",
 								defaultValue:
@@ -848,6 +870,7 @@ program
 							backlogDirectory = normalizeProjectBacklogDirectory(String(customDirectory ?? "")) ?? undefined;
 							configLocation = "root";
 						} else {
+							backlogDirectorySource = locationPrompt as "backlog" | ".backlog";
 							backlogDirectory = backlogDirectorySource;
 							const configPrompt = await clack.select({
 								message: "Where should Backlog.md store project configuration?",
@@ -1289,7 +1312,7 @@ program
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
-					workspaceDataDir: options.workspaceData || undefined,
+					workspaceDataDir: options.workspaceData || wizardWorkspaceDataDir || undefined,
 					backlogDirectory,
 					backlogDirectorySource,
 					configLocation,
