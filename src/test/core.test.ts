@@ -44,20 +44,16 @@ describe("Core", () => {
 			expect(config?.defaultStatus).toBe("To Do");
 		});
 
-		it("stores config in the per-repo workspace file for custom data directories", async () => {
+		it("should use root backlog.config.yml for custom backlog directories", async () => {
 			await initializeTestProject(core, "Custom Root Project", false, "planning/backlog-data");
 
-			// New model: config lives in the per-repo workspace yml (not a root
-			// backlog.config.yml, not inside the data dir). The data dir only
-			// holds task .md files.
-			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(false);
+			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
 			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
-			expect(await Bun.file(core.filesystem.configFilePath).exists()).toBe(true);
 
 			const freshCore = new Core(TEST_DIR);
 			const config = await freshCore.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Custom Root Project");
-			expect(freshCore.filesystem.backlogDir).toBe(join(TEST_DIR, "planning", "backlog-data"));
+			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
 		});
 	});
 

@@ -51,8 +51,8 @@ describe("Enhanced init command", () => {
 		expect(existingConfig?.defaultEditor).toBe("vim");
 		expect(existingConfig?.defaultPort).toBe(8080);
 
-		// Config lives in the per-repo workspace yml under the new model.
-		const configExists = await Bun.file(core.filesystem.configFilePath).exists();
+		// Verify backlog structure exists
+		const configExists = await Bun.file(join(tmpDir, "backlog", "config.yml")).exists();
 		expect(configExists).toBe(true);
 	});
 
@@ -465,58 +465,110 @@ describe("Enhanced init command", () => {
 		expect(loadedConfig?.prefixes?.task).toBe("PERSIST");
 	});
 
-	// The legacy `.backlog`/root-`backlog.config.yml`/`configLocation`/
-	// `backlogDirectorySource` model was removed by the
-	// workspace-resolution-simplification change. Config now always lives in
-	// the per-repo workspace yml; a custom data dir is set via `dataDir`
-	// (absolute or repo-relative). The tests below assert the new model.
-
-	test("initializeProject stores config in the workspace yml for a default data dir", async () => {
+	test("initializeProject should create .backlog when selected", async () => {
 		const core = new Core(tmpDir);
+
 		await initializeProject(core, {
-			projectName: "Default Data Init",
+			projectName: "Hidden Backlog Init",
+			backlogDirectory: ".backlog",
+			backlogDirectorySource: ".backlog",
 			integrationMode: "none",
 		});
 
-		expect(await Bun.file(core.filesystem.configFilePath).exists()).toBe(true);
-		expect(await Bun.file(join(tmpDir, "backlog.config.yml")).exists()).toBe(false);
-		expect(core.filesystem.backlogDir).toBe(join(tmpDir, "backlog"));
-
-		const freshConfig = await new Core(tmpDir).filesystem.loadConfig();
-		expect(freshConfig?.projectName).toBe("Default Data Init");
+		const configExists = await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists();
+		expect(configExists).toBe(true);
+		expect(core.filesystem.backlogDirName).toBe(".backlog");
 	});
 
-	test("initializeProject honors a relative --data dir and keeps config in the workspace yml", async () => {
+	test("initializeProject should honor .backlog source when backlogDirectory is omitted", async () => {
 		const core = new Core(tmpDir);
+
 		await initializeProject(core, {
-			projectName: "Custom Data Init",
-			dataDir: "planning/backlog-data",
+			projectName: "Hidden Backlog Source Only",
+			backlogDirectorySource: ".backlog",
 			integrationMode: "none",
 		});
 
-		// Config is NOT in the repo (no root config, none inside the data dir).
-		expect(await Bun.file(join(tmpDir, "backlog.config.yml")).exists()).toBe(false);
+		expect(await Bun.file(join(tmpDir, ".backlog", "config.yml")).exists()).toBe(true);
+		expect(await Bun.file(join(tmpDir, "backlog", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should create a root backlog.config.yml for custom backlog directories", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Init",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			configLocation: "root",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		const configExists = await Bun.file(rootConfigPath).exists();
+		const freshCore = new Core(tmpDir);
+		const freshConfig = await freshCore.filesystem.loadConfig();
+
+		expect(configExists).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(core.filesystem.backlogDirName).toBe("planning/backlog-data");
+		expect(freshConfig?.projectName).toBe("Custom Backlog Init");
+		expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
+	});
+
+	test("initializeProject should default custom backlog directories to root config when configLocation is omitted", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Custom Backlog Default Root",
+			backlogDirectory: "planning/backlog-data",
+			backlogDirectorySource: "custom",
+			integrationMode: "none",
+		});
+
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
 		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
-		expect(await Bun.file(core.filesystem.configFilePath).exists()).toBe(true);
-
-		expect(core.filesystem.backlogDir).toBe(join(tmpDir, "planning", "backlog-data"));
-		const freshCore = new Core(tmpDir);
-		expect((await freshCore.filesystem.loadConfig())?.projectName).toBe("Custom Data Init");
-		expect(freshCore.filesystem.backlogDir).toBe(join(tmpDir, "planning", "backlog-data"));
 	});
 
-	test("initializeProject honors an absolute --data dir", async () => {
+	test("initializeProject should infer custom source from backlogDirectory when source is omitted", async () => {
 		const core = new Core(tmpDir);
-		const absData = join(tmpDir, "external-data");
 		await initializeProject(core, {
-			projectName: "Absolute Data Init",
-			dataDir: absData,
+			projectName: "Custom Backlog Inferred Source",
+			backlogDirectory: "planning/backlog-data",
 			integrationMode: "none",
 		});
 
-		expect(core.filesystem.backlogDir).toBe(absData);
-		expect(await Bun.file(core.filesystem.configFilePath).exists()).toBe(true);
-		const freshCore = new Core(tmpDir);
-		expect(freshCore.filesystem.backlogDir).toBe(absData);
+		const rootConfigPath = join(tmpDir, "backlog.config.yml");
+		const rootConfig = await Bun.file(rootConfigPath).text();
+		expect(await Bun.file(rootConfigPath).exists()).toBe(true);
+		expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
+		expect(await Bun.file(join(tmpDir, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
+	});
+
+	test("initializeProject should reject custom backlog directories with folder config location", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Invalid Custom Folder Config",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: "custom",
+				configLocation: "folder",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Custom backlog directories require root config discovery.");
+	});
+
+	test("initializeProject should reject mismatched built-in source and custom backlog path", async () => {
+		const core = new Core(tmpDir);
+		await expect(
+			initializeProject(core, {
+				projectName: "Mismatched Backlog Source",
+				backlogDirectory: "planning/backlog-data",
+				backlogDirectorySource: ".backlog",
+				integrationMode: "none",
+			}),
+		).rejects.toThrow("Backlog directory source and backlog directory value must agree.");
 	});
 });

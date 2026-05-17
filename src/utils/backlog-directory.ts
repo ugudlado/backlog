@@ -1,6 +1,7 @@
+import { readFileSync, statSync } from "node:fs";
 import { basename, join, normalize } from "node:path";
-import { DEFAULT_FILES } from "../constants/index.ts";
-import { resolveWorkspace } from "./workspace-store.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
+import { readMachineConfig } from "./machine-config.ts";
 
 export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
 export type BacklogConfigSource = "folder" | "root";
@@ -16,10 +17,176 @@ export interface BacklogDirectoryResolution {
 	rootConfigExists: boolean;
 }
 
+interface BacklogConfigMetadata {
+	projectName: string | null;
+	backlogDirectory: string | null;
+}
+
+function directoryExists(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+function fileExists(path: string): boolean {
+	try {
+		return statSync(path).isFile();
+	} catch {
+		return false;
+	}
+}
+
+function parseBacklogConfigMetadata(content: string): BacklogConfigMetadata {
+	let projectName: string | null = null;
+	let backlogDirectory: string | null = null;
+
+	for (const rawLine of content.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) {
+			continue;
+		}
+		const colonIndex = line.indexOf(":");
+		if (colonIndex === -1) {
+			continue;
+		}
+		const key = line.slice(0, colonIndex).trim();
+		const value = line
+			.slice(colonIndex + 1)
+			.trim()
+			.replace(/^['"]|['"]$/g, "");
+		if ((key === "project_name" || key === "projectName") && value) {
+			projectName = value;
+			continue;
+		}
+		if (key === "backlog_directory" || key === "backlogDirectory") {
+			backlogDirectory = normalizeProjectBacklogDirectory(value);
+		}
+	}
+	return { projectName, backlogDirectory };
+}
+
+function readRootBacklogConfigMetadata(rootConfigPath: string): BacklogConfigMetadata | null {
+	if (!fileExists(rootConfigPath)) {
+		return null;
+	}
+	try {
+		const metadata = parseBacklogConfigMetadata(readFileSync(rootConfigPath, "utf8"));
+		return metadata.projectName ? metadata : null;
+	} catch {
+		return null;
+	}
+}
+
+function resolveFolderConfigPath(backlogPath: string): string | null {
+	const primary = join(backlogPath, DEFAULT_FILES.CONFIG);
+	if (fileExists(primary)) {
+		return primary;
+	}
+	const alternate = join(backlogPath, DEFAULT_FILES.CONFIG_YAML);
+	return fileExists(alternate) ? alternate : null;
+}
+
+function resolveBuiltInBacklogDirectory(projectRoot: string): {
+	backlogDir: string;
+	backlogPath: string;
+	source: "backlog" | ".backlog";
+} | null {
+	const defaultBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+	const hiddenBacklogPath = join(projectRoot, DEFAULT_DIRECTORIES.HIDDEN_BACKLOG);
+	const defaultBacklogExists = directoryExists(defaultBacklogPath);
+	const hiddenBacklogExists = directoryExists(hiddenBacklogPath);
+	const defaultConfigPath = defaultBacklogExists ? resolveFolderConfigPath(defaultBacklogPath) : null;
+	const hiddenConfigPath = hiddenBacklogExists ? resolveFolderConfigPath(hiddenBacklogPath) : null;
+
+	if (defaultConfigPath) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
+			backlogPath: defaultBacklogPath,
+			source: "backlog",
+		};
+	}
+
+	if (hiddenConfigPath) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
+			backlogPath: hiddenBacklogPath,
+			source: ".backlog",
+		};
+	}
+
+	if (defaultBacklogExists) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.BACKLOG,
+			backlogPath: defaultBacklogPath,
+			source: "backlog",
+		};
+	}
+
+	if (hiddenBacklogExists) {
+		return {
+			backlogDir: DEFAULT_DIRECTORIES.HIDDEN_BACKLOG,
+			backlogPath: hiddenBacklogPath,
+			source: ".backlog",
+		};
+	}
+
+	return null;
+}
+
+/** Synchronously resolves the git repository root for the given directory. Returns null if not in a git repo. */
+function resolveGitRootSync(cwd: string): string | null {
+	try {
+		const r = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
+			cwd,
+			stderr: "ignore",
+		});
+		if (r.exitCode !== 0) return null;
+		const out = new TextDecoder().decode(r.stdout).trim();
+		return out || null;
+	} catch {
+		return null;
+	}
+}
+
 /**
- * Project-relative backlog directory normalizer (still used by init's
- * `--data` validation path). Rejects absolute paths and parent traversal.
+ * Tries to resolve backlog directory via the globalStore machine config.
+ * Only resolves when `projectRoot` is the git repository root (not a subdirectory),
+ * so that `findBacklogRoot`'s walk-up correctly terminates at the git root.
+ * Returns null if globalStore is not set, not in a git repo, or projectRoot is not the git root.
  */
+function resolveGlobalStoreBacklogDirectory(
+	projectRoot: string,
+	rootConfigPath: string,
+	rootConfigExists: boolean,
+): BacklogDirectoryResolution | null {
+	const machine = readMachineConfig();
+	if (!machine.globalStore) return null;
+
+	const gitRoot = resolveGitRootSync(projectRoot);
+	if (!gitRoot) return null;
+
+	// Only resolve when the caller is asking about the git root itself,
+	// not a subdirectory inside it. This ensures findBacklogRoot's walk-up
+	// terminates at the correct level.
+	if (gitRoot !== projectRoot) return null;
+
+	const slot = basename(gitRoot);
+	const backlogPath = join(machine.globalStore, slot);
+	const configPath = join(backlogPath, DEFAULT_FILES.CONFIG);
+	return {
+		projectRoot,
+		backlogDir: slot,
+		backlogPath,
+		source: "custom",
+		configPath,
+		configSource: "folder",
+		rootConfigPath,
+		rootConfigExists,
+	};
+}
+
 export function normalizeProjectBacklogDirectory(value: string | null | undefined): string | null {
 	const trimmed = String(value ?? "").trim();
 	if (!trimmed) {
@@ -39,49 +206,88 @@ export function normalizeProjectBacklogDirectory(value: string | null | undefine
 	return normalized;
 }
 
-/**
- * Resolves the backlog data/config for a given cwd (or project root) using the
- * per-repo workspace files in the machine config dir.
- *
- * Resolution order (see `workspace-store.resolveWorkspace`):
- *   1. deepest `repo:` prefix match against cwd,
- *   2. else the `current:` workspace from machine config.yml,
- *   3. else an all-null resolution (callers surface the error).
- *
- * The shape stays compatible with the legacy folder/root model so existing
- * consumers keep working:
- *   - `backlogPath`  = workspace `data:` path (absolute),
- *   - `configPath`   = the per-repo yml file (it now holds settings inline),
- *   - `backlogDir`   = basename of `data` (cosmetic only),
- *   - `configSource` = "folder", `source` = "custom",
- *   - `projectRoot`  = the matched `repo:` path,
- *   - `rootConfigPath`/`rootConfigExists` retained for shape compat.
- */
 export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryResolution {
 	const rootConfigPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
-	const workspace = resolveWorkspace(projectRoot);
+	const rootConfigExists = fileExists(rootConfigPath);
 
-	if (!workspace) {
-		return {
-			projectRoot,
-			backlogDir: null,
-			backlogPath: null,
-			source: null,
-			configPath: null,
-			configSource: null,
-			rootConfigPath,
-			rootConfigExists: false,
-		};
+	if (rootConfigExists) {
+		const metadata = readRootBacklogConfigMetadata(rootConfigPath);
+		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
+		if (metadata && configuredBacklogDir) {
+			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
+			const configuredSource: BacklogDirectorySource =
+				configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
+					? "backlog"
+					: configuredBacklogDir === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
+						? ".backlog"
+						: "custom";
+			return {
+				projectRoot,
+				backlogDir: configuredBacklogDir,
+				backlogPath: configuredBacklogPath,
+				source: configuredSource,
+				configPath: rootConfigPath,
+				configSource: "root",
+				rootConfigPath,
+				rootConfigExists,
+			};
+		}
+
+		if (metadata) {
+			const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+			if (builtIn) {
+				return {
+					projectRoot,
+					backlogDir: builtIn.backlogDir,
+					backlogPath: builtIn.backlogPath,
+					source: builtIn.source,
+					configPath: rootConfigPath,
+					configSource: "root",
+					rootConfigPath,
+					rootConfigExists,
+				};
+			}
+
+			return (
+				resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
+					projectRoot,
+					backlogDir: null,
+					backlogPath: null,
+					source: null,
+					configPath: null,
+					configSource: null,
+					rootConfigPath,
+					rootConfigExists,
+				}
+			);
+		}
 	}
 
+	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+	if (!builtIn) {
+		return (
+			resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
+				projectRoot,
+				backlogDir: null,
+				backlogPath: null,
+				source: null,
+				configPath: null,
+				configSource: null,
+				rootConfigPath,
+				rootConfigExists,
+			}
+		);
+	}
+
+	const folderConfigPath = resolveFolderConfigPath(builtIn.backlogPath);
 	return {
-		projectRoot: workspace.repo,
-		backlogDir: basename(workspace.data),
-		backlogPath: workspace.data,
-		source: "custom",
-		configPath: workspace.filePath,
-		configSource: "folder",
+		projectRoot,
+		backlogDir: builtIn.backlogDir,
+		backlogPath: builtIn.backlogPath,
+		source: builtIn.source,
+		configPath: folderConfigPath,
+		configSource: folderConfigPath ? "folder" : null,
 		rootConfigPath,
-		rootConfigExists: false,
+		rootConfigExists,
 	};
 }

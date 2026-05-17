@@ -93,16 +93,7 @@ describe("CLI agents command", () => {
 		await $`git config user.name "Test User"`.cwd(nonBacklogDir).quiet();
 		await $`git config user.email test@example.com`.cwd(nonBacklogDir).quiet();
 
-		// Point the subprocess at an empty machine-config dir so no workspace
-		// resolves (no `repo:` match, no `current:`) — the per-repo model
-		// otherwise resolves the test's own project via `current:`.
-		const emptyMcDir = join(nonBacklogDir, ".mc");
-		await mkdir(emptyMcDir, { recursive: true });
-		const result = await $`bun ${cliPath} agents --update-instructions`
-			.cwd(nonBacklogDir)
-			.env({ ...process.env, BACKLOG_MACHINE_CONFIG_DIR: emptyMcDir })
-			.nothrow()
-			.quiet();
+		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(nonBacklogDir).nothrow().quiet();
 
 		expect(result.exitCode).toBe(1);
 

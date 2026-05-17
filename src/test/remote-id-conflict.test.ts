@@ -8,10 +8,6 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 let REMOTE_DIR: string;
 let LOCAL_DIR: string;
-// This suite uses beforeAll, but the global test preload rotates
-// BACKLOG_MACHINE_CONFIG_DIR before every test. Pin a stable per-suite machine
-// config dir so the workspace registered in beforeAll survives into the tests.
-let SUITE_MC_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 async function initRepo(dir: string) {
@@ -25,9 +21,6 @@ describe("next id across remote branches", () => {
 		TEST_DIR = createUniqueTestDir("test-remote-id");
 		REMOTE_DIR = join(TEST_DIR, "remote.git");
 		LOCAL_DIR = join(TEST_DIR, "local");
-		SUITE_MC_DIR = join(TEST_DIR, ".machine-config");
-		await mkdir(SUITE_MC_DIR, { recursive: true });
-		process.env.BACKLOG_MACHINE_CONFIG_DIR = SUITE_MC_DIR;
 		await mkdir(REMOTE_DIR, { recursive: true });
 		await $`git init --bare -b main`.cwd(REMOTE_DIR).quiet();
 		await mkdir(LOCAL_DIR, { recursive: true });
@@ -67,13 +60,7 @@ describe("next id across remote branches", () => {
 	});
 
 	it("uses id after highest remote task", async () => {
-		// The preload rotated the env var before this test; restore the suite's
-		// pinned machine config dir so the workspace from beforeAll resolves.
-		process.env.BACKLOG_MACHINE_CONFIG_DIR = SUITE_MC_DIR;
-		const result = await $`bun ${CLI_PATH} task create "Local Task"`
-			.cwd(LOCAL_DIR)
-			.env({ ...process.env, BACKLOG_MACHINE_CONFIG_DIR: SUITE_MC_DIR })
-			.quiet();
+		const result = await $`bun run ${CLI_PATH} task create "Local Task"`.cwd(LOCAL_DIR).quiet();
 		expect(result.stdout.toString()).toContain("Created task TASK-2");
 		const core = new Core(LOCAL_DIR);
 		const task = await core.filesystem.loadTask("task-2");

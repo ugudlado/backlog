@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { seedTestWorkspace } from "./test-utils.ts";
 
 describe("Offline Integration Tests", () => {
 	let tempDir: string;
@@ -40,15 +39,17 @@ describe("Offline Integration Tests", () => {
 			remoteOperations: false,
 		};
 
-		await seedTestWorkspace(tempDir, {
-			configBody: `project_name: "${config.projectName}"
+		await writeFile(
+			join(backlogDir, "config.yml"),
+			`project_name: "${config.projectName}"
 statuses: ["To Do", "In Progress", "Done"]
 labels: ["bug", "feature"]
 milestones: []
 date_format: YYYY-MM-DD
+backlog_directory: "backlog"
 remote_operations: false
 `,
-		});
+		);
 
 		core = new Core(tempDir);
 	});
@@ -175,14 +176,17 @@ remote_operations: false
 
 	it("should migrate existing configs to include remoteOperations", async () => {
 		// Create a config without remoteOperations field
-		await seedTestWorkspace(tempDir, {
-			configBody: `project_name: "Legacy Project"
+		const backlogDir = join(tempDir, "backlog");
+		await writeFile(
+			join(backlogDir, "config.yml"),
+			`project_name: "Legacy Project"
 statuses: ["To Do", "Done"]
 labels: []
 milestones: []
 date_format: YYYY-MM-DD
+backlog_directory: "backlog"
 `,
-		});
+		);
 
 		// Create new Core instance to trigger migration
 		const legacyCore = new Core(tempDir);

@@ -44,12 +44,15 @@ import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
+import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
+import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
+import { resolveStoreMode } from "./utils/store-mode.ts";
 import {
 	normalizeDependencies,
 	parseDelimitedStringList,
@@ -330,23 +333,20 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 /**
  * Project root resolver for `backlog server` (no --project flag).
  *
- * Order: `current:` workspace from ~/.config/backlog/config.yml → first
- * scanned per-repo workspace (~/.config/backlog/workspaces/*.yml) → walk-up
+ * Order: workspaces.yml `current` id → first registered workspace → walk-up
  * from CWD. The first two cover the launchd / background-service case where
  * CWD is `/`; the walk-up matches the interactive `cd ~/repo && backlog server`
  * usage.
  */
 async function resolveServerProjectRoot(): Promise<string> {
-	const { scanWorkspaces, readCurrentWorkspaceName } = await import("./utils/workspace-store.ts");
-	const { toAbsoluteProjectRoot } = await import("./utils/workspaces-index.ts");
-	const records = await scanWorkspaces();
-	const current = readCurrentWorkspaceName();
-	if (current) {
-		const hit = records.find((r) => r.name === current);
-		if (hit) return toAbsoluteProjectRoot(hit.repo);
+	const { readWorkspacesIndex, toAbsoluteProjectRoot } = await import("./utils/workspaces-index.ts");
+	const index = await readWorkspacesIndex();
+	if (index.current) {
+		const entry = index.workspaces.find((e) => e.id === index.current);
+		if (entry) return toAbsoluteProjectRoot(entry.path);
 	}
-	const first = records[0];
-	if (first) return toAbsoluteProjectRoot(first.repo);
+	const first = index.workspaces[0];
+	if (first) return toAbsoluteProjectRoot(first.path);
 	return await requireProjectRoot();
 }
 
@@ -527,11 +527,13 @@ program
 	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
-	.option("--data <dir>", "where task .md files live (absolute or repo-relative; default: <repo>/backlog)")
-	.option("--name <name>", "workspace file basename; required when the default basename clashes with another repo")
+	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
+	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
+	.option("--global", "use the configured globalStore for this project (skips prompt)")
+	.option("--local", "use a local backlog/ folder in this repo (skips prompt)")
 	.action(
 		async (
 			projectName: string | undefined,
@@ -547,11 +549,13 @@ program
 				autoOpenBrowser?: string;
 				installClaudeAgent?: string;
 				integrationMode?: string;
-				data?: string;
-				name?: string;
+				backlogDir?: string;
+				configLocation?: string;
 				taskPrefix?: string;
 				git?: boolean;
 				defaults?: boolean;
+				global?: boolean;
+				local?: boolean;
 			},
 		) => {
 			try {
@@ -595,16 +599,43 @@ program
 				const existingConfig = await core.filesystem.loadConfig();
 				const isReInitialization = !!existingConfig;
 
+				// Mutual exclusion check — always, regardless of re-init state.
+				if (options.global && options.local) {
+					console.error("Cannot use --global and --local together.");
+					process.exit(1);
+				}
+
 				if (isReInitialization) {
 					console.log(
 						"Existing backlog project detected. Current configuration will be preserved where not specified.",
 					);
-					if (options.data) {
+					if (options.backlogDir) {
 						console.error(
-							"The data directory is fixed after initialization. Re-run init without --data for this project.",
+							"The backlog directory is fixed after initialization. Re-run init without --backlog-dir for this project.",
 						);
 						process.exit(1);
 					}
+					if (options.configLocation) {
+						console.error(
+							"The config location is fixed after initialization. Re-run init without --config-location for this project.",
+						);
+						process.exit(1);
+					}
+					if (options.global || options.local) {
+						console.error(
+							"The store mode is fixed after initialization. Re-run init without --global/--local for this project.",
+						);
+						process.exit(1);
+					}
+				}
+
+				// Resolve store mode (global vs local) when globalStore is configured.
+				const machineConfig = readMachineConfig();
+				const globalStoreConfigured = !!machineConfig.globalStore;
+
+				if (options.global && !globalStoreConfigured) {
+					console.error("--global requires globalStore to be set in machine config (~/.config/backlog/config.yml).");
+					process.exit(1);
 				}
 
 				// Helper function to parse boolean strings
@@ -627,6 +658,19 @@ program
 					clack.cancel(message);
 				}
 
+				// Resolve store mode (global vs local). Flags and re-init guard already handled above.
+				const storeMode = await resolveStoreMode({
+					globalFlag: !!options.global,
+					localFlag: !!options.local,
+					globalStoreConfigured,
+					isReInitialization,
+					globalStoreHint: machineConfig.globalStore ?? undefined,
+				});
+				if (storeMode === null) {
+					abortInitialization();
+					return;
+				}
+
 				// Non-interactive mode when any flag is provided or --defaults is used
 				const isNonInteractive = !!(
 					options.agentInstructions ||
@@ -641,8 +685,8 @@ program
 					options.autoOpenBrowser ||
 					options.installClaudeAgent ||
 					options.integrationMode ||
-					options.data ||
-					options.name ||
+					options.backlogDir ||
+					options.configLocation ||
 					options.taskPrefix ||
 					options.git === false
 				);
@@ -679,15 +723,132 @@ program
 					}
 				}
 
-				// Workspace data dir + name. The per-repo workspace yml is the single
-				// source of truth (see workspace-resolution-simplification spec):
-				// default data = <repo>/backlog, --data overrides, --name disambiguates
-				// a basename clash with a different repo.
-				let dataDir: string | undefined;
-				let workspaceName: string | undefined;
+				let backlogDirectory: string | undefined;
+				let backlogDirectorySource: "backlog" | ".backlog" | "custom" | undefined;
+				let configLocation: "folder" | "root" | undefined;
 				if (!isReInitialization) {
-					dataDir = options.data?.trim() || undefined;
-					workspaceName = options.name?.trim() || undefined;
+					const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
+					const defaultBacklogDirectory = backlogResolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+					const defaultBacklogSource = backlogResolution.source ?? "backlog";
+					const defaultConfigLocation = backlogResolution.configSource ?? "folder";
+					const normalizedBacklogDirOption = options.backlogDir
+						? normalizeProjectBacklogDirectory(options.backlogDir)
+						: undefined;
+					const normalizedConfigLocation = options.configLocation?.trim().toLowerCase();
+					if (options.backlogDir && !normalizedBacklogDirOption) {
+						console.error(
+							"Invalid --backlog-dir value. Use 'backlog', '.backlog', or a project-relative path inside the project.",
+						);
+						process.exit(1);
+					}
+					if (
+						normalizedConfigLocation &&
+						normalizedConfigLocation !== "folder" &&
+						normalizedConfigLocation !== "root"
+					) {
+						console.error("Invalid --config-location value. Use 'folder' or 'root'.");
+						process.exit(1);
+					}
+
+					if (isNonInteractive) {
+						if (normalizedBacklogDirOption) {
+							backlogDirectory = normalizedBacklogDirOption;
+							backlogDirectorySource =
+								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.BACKLOG ||
+								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
+									? (normalizedBacklogDirOption as "backlog" | ".backlog")
+									: "custom";
+						} else {
+							backlogDirectory = defaultBacklogDirectory;
+							backlogDirectorySource = defaultBacklogSource;
+						}
+						configLocation =
+							(normalizedConfigLocation as "folder" | "root" | undefined) ??
+							(backlogDirectorySource === "custom" ? "root" : defaultConfigLocation);
+						if (backlogDirectorySource === "custom" && configLocation !== "root") {
+							console.error("Custom backlog directories require --config-location root.");
+							process.exit(1);
+						}
+					} else {
+						const locationPrompt = await clack.select({
+							message: "Where should Backlog.md store project files?",
+							initialValue: defaultBacklogSource,
+							options: [
+								{
+									label: "backlog/ (default)",
+									value: "backlog",
+									hint: "Store tasks and config in backlog/",
+								},
+								{
+									label: ".backlog/",
+									value: ".backlog",
+									hint: "Store tasks and config in .backlog/",
+								},
+								{
+									label: "Custom project-relative path",
+									value: "custom",
+									hint: `Backlog.md will store project config in ${backlogResolution.rootConfigPath}`,
+								},
+							],
+						});
+						if (clack.isCancel(locationPrompt)) {
+							abortInitialization();
+							return;
+						}
+
+						backlogDirectorySource = locationPrompt as "backlog" | ".backlog" | "custom";
+						if (backlogDirectorySource === "custom") {
+							const customDirectory = await clack.text({
+								message: "Project-relative backlog directory:",
+								defaultValue:
+									defaultBacklogSource === "custom" && defaultBacklogDirectory ? defaultBacklogDirectory : "",
+								validate: (value) => {
+									const normalized = normalizeProjectBacklogDirectory(String(value ?? ""));
+									if (!normalized) {
+										return "Enter a project-relative path inside the current project.";
+									}
+									return undefined;
+								},
+							});
+							if (clack.isCancel(customDirectory)) {
+								abortInitialization();
+								return;
+							}
+							backlogDirectory = normalizeProjectBacklogDirectory(String(customDirectory ?? "")) ?? undefined;
+							configLocation = "root";
+						} else {
+							backlogDirectory = backlogDirectorySource;
+							const configPrompt = await clack.select({
+								message: "Where should Backlog.md store project configuration?",
+								initialValue: defaultConfigLocation,
+								options: [
+									{
+										label: `${backlogDirectorySource}/config.yml`,
+										value: "folder",
+										hint: "Keep config inside the backlog folder",
+									},
+									{
+										label: "backlog.config.yml in project root",
+										value: "root",
+										hint: "Keep config at project root and point to the backlog folder there",
+									},
+								],
+							});
+							if (clack.isCancel(configPrompt)) {
+								abortInitialization();
+								return;
+							}
+							configLocation = configPrompt as "folder" | "root";
+						}
+					}
+
+					// If user chose local store mode, force backlogDirectory to "backlog"
+					// regardless of what the resolution above produced. This routes init
+					// through the local branch in initializeProject (same as --backlog-dir backlog).
+					if (storeMode === "local") {
+						backlogDirectory = "backlog";
+						backlogDirectorySource = "backlog";
+					}
 				}
 
 				// Get task prefix (first-time init only, preserved on re-init)
@@ -1087,11 +1248,20 @@ program
 						autoCommit: false,
 					};
 				}
+				// When local store mode is chosen with globalStore configured, ensure
+				// the filesystem is pointed at the local backlog/ dir before init runs.
+				// Without this, core.filesystem.backlogDir is the global slot, and
+				// initializeProject would take the globalStore branch.
+				if (storeMode === "local") {
+					core.filesystem.setBacklogDirectory("backlog");
+				}
+
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
-					dataDir,
-					workspaceName,
+					backlogDirectory,
+					backlogDirectorySource,
+					configLocation,
 					integrationMode: integrationMode || "none",
 					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
 					agentInstructions: agentFiles,
@@ -1146,10 +1316,11 @@ program
 							return line;
 						})
 						.join("\n");
-				const initResolution = core.filesystem.resolveBacklogDirectoryInfo();
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
-				summaryLines.push(`${label("Data directory:")} ${initResolution.backlogPath ?? core.filesystem.backlogDir}`);
-				summaryLines.push(`${label("Workspace file:")} ${initResolution.configPath ?? "(unresolved)"}`);
+				summaryLines.push(`${label("Backlog directory:")} ${backlogDirectory ?? core.filesystem.backlogDirName}`);
+				summaryLines.push(
+					`${label("Config location:")} ${configLocation === "root" ? DEFAULT_FILES.ROOT_CONFIG : "folder config.yml"}`,
+				);
 				summaryLines.push(
 					`${label("Git integration:")} ${gitIntegrationDisabled ? muted("disabled (filesystem-only)") : good("enabled")}`,
 				);
@@ -2825,7 +2996,7 @@ agentsCmd
 const configCmd = program
 	.command("config")
 	.description(
-		"manage backlog configuration\n\nProject config + settings live in the per-repo workspace file: ~/.config/backlog/workspaces/<name>.yml\nMachine config: ~/.config/backlog/config.yml — holds only 'current: <name>' (the active workspace)",
+		"manage backlog configuration\n\nProject config: stored in backlog/config.yml (or backlog.config.yml at root)\nMachine config: ~/.config/backlog/config.yml — controls machine-wide keys like 'globalStore' (redirect backlog storage to an external directory; see 'config list')",
 	)
 	.action(async () => {
 		try {
@@ -3216,6 +3387,10 @@ configCmd
 					);
 					process.exit(1);
 					break;
+				case "globalStore":
+					console.error("globalStore is a machine-level key. Edit ~/.config/backlog/config.yml directly.");
+					process.exit(1);
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
@@ -3267,9 +3442,10 @@ configCmd
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
-			// Machine-level config: the active workspace name (edit ~/.config/backlog/config.yml directly).
-			const { readCurrentWorkspaceName } = await import("./utils/workspace-store.ts");
-			console.log(`  currentWorkspace: ${readCurrentWorkspaceName() ?? "(not set)"}`);
+			// Machine-level config (read-only via CLI, edit ~/.config/backlog/config.yml directly)
+			const { readMachineConfig } = await import("./utils/machine-config.ts");
+			const machine = readMachineConfig();
+			console.log(`  globalStore: ${machine.globalStore ?? "(not set)"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
 			process.exitCode = 1;

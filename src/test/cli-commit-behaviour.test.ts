@@ -37,10 +37,14 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 		if (config) {
 			config.autoCommit = false;
 			await core.filesystem.saveConfig(config);
-			// Config now lives in the machine config dir (outside the repo), so
-			// toggling autoCommit makes no repo-tracked change — the repo is
-			// already clean after the auto-committed init.
-			core.filesystem.invalidateConfigCache();
+			// Commit the config change to have a clean state for tests
+			const configPath = join(TEST_DIR, "backlog", "config.yml");
+			await git.addFile(configPath);
+			// Only commit if there are actual changes staged, to avoid errors on empty commits.
+			const diffProc = await $`git diff --staged --quiet`.cwd(TEST_DIR).nothrow().quiet();
+			if (diffProc.exitCode === 1) {
+				await git.commitChanges("test: set autoCommit to false");
+			}
 		}
 	});
 
@@ -113,9 +117,13 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		if (config) {
 			config.autoCommit = true; // Enable auto-commit for this test suite
 			await core.filesystem.saveConfig(config);
-			// Config lives in the machine config dir (outside the repo), so this
-			// toggle makes no repo-tracked change; the repo is already clean.
-			core.filesystem.invalidateConfigCache();
+			const configPath = join(TEST_DIR, "backlog", "config.yml");
+			await git.addFile(configPath);
+			// Only commit if there are actual changes staged, to avoid errors on empty commits.
+			const diffProc = await $`git diff --staged --quiet`.cwd(TEST_DIR).nothrow().quiet();
+			if (diffProc.exitCode === 1) {
+				await git.commitChanges("test: set autoCommit to true");
+			}
 		}
 	});
 

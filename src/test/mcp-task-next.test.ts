@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import { createUniqueTestDir, seedTestWorkspace } from "./test-utils.ts";
+import { createUniqueTestDir } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -19,8 +19,9 @@ async function setupTestProject(testDir: string): Promise<void> {
 	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	await seedTestWorkspace(testDir, {
-		configBody: `project_name: "Test"
+	await writeFile(
+		join(testDir, "backlog", "config.yml"),
+		`project_name: "Test"
 default_status: "To Do"
 statuses: ["Backlog", "Ready", "To Do", "In Progress", "Done"]
 labels: []
@@ -29,7 +30,7 @@ check_active_branches: false
 filesystem_only: true
 auto_commit: false
 `,
-	});
+	);
 }
 
 describe("MCP task_next", () => {
@@ -138,8 +139,9 @@ describe("MCP task_next", () => {
 		await mkdir(join(legacyDir, "backlog", "archive", "tasks"), { recursive: true });
 		await mkdir(join(legacyDir, "backlog", "milestones"), { recursive: true });
 		await mkdir(join(legacyDir, "backlog", "completed"), { recursive: true });
-		await seedTestWorkspace(legacyDir, {
-			configBody: `project_name: "Legacy"
+		await writeFile(
+			join(legacyDir, "backlog", "config.yml"),
+			`project_name: "Legacy"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
@@ -148,7 +150,7 @@ check_active_branches: false
 filesystem_only: true
 auto_commit: false
 `,
-		});
+		);
 		const legacyServer = new McpServer(legacyDir, "Test instructions");
 		const legacyConfig = await legacyServer.filesystem.loadConfig();
 		if (!legacyConfig) throw new Error("Failed to load config");

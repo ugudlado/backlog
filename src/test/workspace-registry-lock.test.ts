@@ -1,25 +1,21 @@
 /**
- * Tests for `withRegistryLock` cross-process serialisation and timeout error.
+ * RED phase: tests for withRegistryLock cross-process serialisation and timeout error.
  *
- * Under the per-repo workspace model `withRegistryLock` guards the only
- * mutating machine-config write — `setCurrentWorkspaceName` (the atomic
- * write-temp + rename of `config.yml`).
+ * These tests FAIL until T-2 implements withRegistryLock in workspaces-index.ts.
  *
- * Test 1: Two child Bun processes each set `current:` repeatedly against a
- * shared BACKLOG_MACHINE_CONFIG_DIR. With the lock, every write is serialised
- * so `config.yml` is never torn — the final `current:` is exactly one of the
- * values written, and the file always parses.
+ * Test 1: Two child Bun processes each upsert multiple entries against a shared
+ * BACKLOG_MACHINE_CONFIG_DIR — without withRegistryLock, overlapping RMW cycles
+ * cause lost updates; with it, all entries land.
  *
- * Test 2: Hold the registry lock manually, then call withRegistryLock with a
- * short timeout — expect the EREGISTRYLOCK error code.
+ * Test 2: Hold the registry lock manually, then call withRegistryLock with a short
+ * timeout — expect EREGISTRYLOCK error code.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
-import { readCurrentWorkspaceName } from "../utils/workspace-store.ts";
-import { withRegistryLock } from "../utils/workspaces-index.ts";
+import { readWorkspacesIndex, withRegistryLock } from "../utils/workspaces-index.ts";
 
 const tmpRoot = (label: string) =>
 	join(process.cwd(), `tmp-registry-lock-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
@@ -33,7 +29,7 @@ describe("withRegistryLock cross-process serialisation", () => {
 
 	beforeEach(async () => {
 		base = tmpRoot("race");
-		machineConfigDir = join(base, ".config", "backlog");
+		machineConfigDir = join(base, ".config", "backlog.md");
 		await mkdir(machineConfigDir, { recursive: true });
 		prevEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
@@ -45,29 +41,30 @@ describe("withRegistryLock cross-process serialisation", () => {
 		await rm(base, { recursive: true, force: true });
 	});
 
-	it("serialises concurrent setCurrentWorkspaceName writes without corrupting config.yml", async () => {
-		const childANames = ["a0", "a1", "a2", "a3", "a4"];
-		const childBNames = ["b0", "b1", "b2", "b3", "b4"];
+	it("preserves all entries when two child processes upsert concurrently", async () => {
+		// Each child upserts 5 entries. Without cross-process locking, at least
+		// one child's entries will be lost (second rename overwrites the first's changes).
+		// With withRegistryLock, all 10 entries must land.
+		const childAIds = ["a0", "a1", "a2", "a3", "a4"];
+		const childBIds = ["b0", "b1", "b2", "b3", "b4"];
 
-		// Each child sets `current:` to each of its names in sequence. Without
-		// cross-process locking the temp-write + rename of two processes can
-		// interleave and leave a torn/empty config.yml; with withRegistryLock
-		// every write is atomic and serialised.
-		const childScript = (names: string[]) => `
-import { setCurrentWorkspaceName } from ${JSON.stringify(join(process.cwd(), "src/utils/workspace-store.ts"))};
-const names = ${JSON.stringify(names)};
-for (const name of names) {
-  await setCurrentWorkspaceName(name);
+		// Inline script: import workspaces-index, upsert N entries sequentially.
+		// Each child writes to the shared BACKLOG_MACHINE_CONFIG_DIR inherited from env.
+		const childScript = (ids: string[]) => `
+import { upsertWorkspaceEntry } from ${JSON.stringify(join(process.cwd(), "src/utils/workspaces-index.ts"))};
+const ids = ${JSON.stringify(ids)};
+for (const id of ids) {
+  await upsertWorkspaceEntry({ path: "/tmp/ws-" + id, id });
 }
 `;
 
-		const procA = Bun.spawn(["bun", "-e", childScript(childANames)], {
+		const procA = Bun.spawn(["bun", "-e", childScript(childAIds)], {
 			env: { ...process.env, BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir },
 			stdout: "pipe",
 			stderr: "pipe",
 		});
 
-		const procB = Bun.spawn(["bun", "-e", childScript(childBNames)], {
+		const procB = Bun.spawn(["bun", "-e", childScript(childBIds)], {
 			env: { ...process.env, BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir },
 			stdout: "pipe",
 			stderr: "pipe",
@@ -84,11 +81,11 @@ for (const name of names) {
 			throw new Error(`Child B exited with code ${exitB}: ${stderr}`);
 		}
 
-		// config.yml must parse and hold exactly one of the written names — no
-		// torn write, no empty/null result.
-		const current = readCurrentWorkspaceName(machineConfigDir);
-		expect(current).not.toBeNull();
-		expect([...childANames, ...childBNames]).toContain(current as string);
+		// All 10 entries must survive — no lost updates.
+		const idx = await readWorkspacesIndex(machineConfigDir);
+		const ids = idx.workspaces.map((e) => e.id).sort();
+		const expected = [...childAIds, ...childBIds].sort();
+		expect(ids).toEqual(expected);
 	}, 30_000); // Allow up to 30 s for child process startup overhead.
 });
 
@@ -104,7 +101,7 @@ describe("withRegistryLock timeout error", () => {
 
 	beforeEach(async () => {
 		base = tmpRoot("timeout");
-		machineConfigDir = join(base, ".config", "backlog");
+		machineConfigDir = join(base, ".config", "backlog.md");
 		locksDir = join(machineConfigDir, ".locks");
 		lockPath = join(locksDir, "workspaces");
 		await mkdir(locksDir, { recursive: true });

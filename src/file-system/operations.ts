@@ -1,13 +1,13 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
-import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { getWorkspaceFilePath, workspaceNameForRepo } from "../utils/workspace-store.ts";
+import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
+import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -52,8 +52,7 @@ export class FileSystem {
 	private resolvedBacklogDir: string;
 	private resolvedBacklogDirName: string;
 	private resolvedConfigPath: string;
-	/** Absolute repo path written into the per-repo workspace yml (preserved on save). */
-	private resolvedRepoPath: string;
+	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
 
@@ -62,25 +61,8 @@ export class FileSystem {
 		const resolution = resolveBacklogDirectory(projectRoot);
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-		this.resolvedConfigPath = resolution.configPath ?? this.defaultWorkspaceFilePath();
-		this.resolvedRepoPath = resolution.configPath ? resolution.projectRoot : projectRoot;
-	}
-
-	private defaultWorkspaceFilePath(): string {
-		return getWorkspaceFilePath(workspaceNameForRepo(this.projectRoot));
-	}
-
-	/**
-	 * Init-time hook: point this FileSystem at an explicit workspace before the
-	 * per-repo yml exists. `dataPath` is absolute; `configFilePath` is the yml
-	 * that `saveConfig` will (over)write with `repo:`/`data:` + settings.
-	 */
-	setWorkspacePaths(repoPath: string, dataPath: string, configFilePath: string): void {
-		this.resolvedRepoPath = repoPath;
-		this.resolvedBacklogDir = dataPath;
-		this.resolvedBacklogDirName = basename(dataPath);
-		this.resolvedConfigPath = configFilePath;
-		this.cachedConfig = null;
+		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		this.configSource = resolution.configSource ?? "folder";
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -125,8 +107,28 @@ export class FileSystem {
 		const resolution = resolveBacklogDirectory(this.projectRoot);
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
-		this.resolvedConfigPath = resolution.configPath ?? this.defaultWorkspaceFilePath();
-		this.resolvedRepoPath = resolution.configPath ? resolution.projectRoot : this.projectRoot;
+		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		this.configSource = resolution.configSource ?? "folder";
+	}
+
+	setBacklogDirectory(backlogDir: string): void {
+		const normalized = normalizeProjectBacklogDirectory(backlogDir);
+		if (!normalized) {
+			throw new Error("Backlog directory must be a project-relative path.");
+		}
+		this.resolvedBacklogDirName = normalized;
+		this.resolvedBacklogDir = join(this.projectRoot, normalized);
+		if (this.configSource === "folder") {
+			this.resolvedConfigPath = join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
+		}
+	}
+
+	setConfigLocation(configSource: BacklogConfigSource): void {
+		this.configSource = configSource;
+		this.resolvedConfigPath =
+			configSource === "root"
+				? join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG)
+				: join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 	}
 
 	resolveBacklogDirectoryInfo() {
@@ -956,12 +958,12 @@ ${description || `Milestone: ${title}`}`,
 	async saveConfig(config: BacklogConfig): Promise<void> {
 		const normalizedConfig: BacklogConfig = {
 			...config,
+			...(this.configSource === "root" ? { backlogDirectory: this.resolvedBacklogDirName } : {}),
 			definitionOfDone: this.normalizeDefinitionOfDone(config.definitionOfDone),
 		};
-		// The per-repo workspace yml IS the config file. `repo:`/`data:` are the
-		// resolver's source of truth — prepend them so a later save never drops
-		// them and silently breaks resolution.
-		delete normalizedConfig.backlogDirectory;
+		if (this.configSource === "folder") {
+			delete normalizedConfig.backlogDirectory;
+		}
 		const configPath = this.resolvedConfigPath;
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
@@ -1123,8 +1125,6 @@ ${description || `Milestone: ${title}`}`,
 	private serializeConfig(config: BacklogConfig): string {
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [
-			`repo: ${JSON.stringify(this.resolvedRepoPath)}`,
-			`data: ${JSON.stringify(this.resolvedBacklogDir)}`,
 			...(config.id ? [`id: "${config.id}"`] : []),
 			`project_name: "${config.projectName}"`,
 			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),

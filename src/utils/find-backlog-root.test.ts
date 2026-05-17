@@ -1,40 +1,48 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { clearProjectRootCache, findBacklogRoot, getProjectRoot } from "./find-backlog-root.ts";
-import { getWorkspaceFilePath, setCurrentWorkspaceName } from "./workspace-store.ts";
-
 /**
- * `findBacklogRoot` is still exported and still resolves the project root, but
- * the implementation changed: it no longer walks the filesystem looking for a
- * `backlog/` folder or `backlog.config.yml`. It now delegates to
- * `resolveBacklogDirectory` (deepest `repo:` prefix match, then the `current:`
- * workspace) and returns the matched `repo:` path, or null when nothing
- * resolves. These tests assert that new contract.
+ * Tests for the globalStore branch of findBacklogRoot.
+ * When globalStore is set and there is no in-repo backlog, findBacklogRoot
+ * should return the git repo root (so the Core can be constructed).
  */
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { $ } from "bun";
+import { clearProjectRootCache, findBacklogRoot } from "./find-backlog-root.ts";
+import { clearMachineConfigCache } from "./machine-config.ts";
 
-const TMP_BASE = join(import.meta.dir, "__tmp_find_backlog_root__");
+// Use OS tmpdir to avoid the walk-up reaching the worktree's own backlog/
+const TMP_BASE = join(tmpdir(), "backlog-find-root-test");
 
+let repoDir: string;
 let machineConfigDir: string;
-let reposBase: string;
-const origEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
+let globalStoreDir: string;
 
-async function writeWorkspace(name: string, repo: string, data: string): Promise<void> {
-	await mkdir(join(machineConfigDir, "workspaces"), { recursive: true });
-	await writeFile(getWorkspaceFilePath(name), `repo: ${repo}\ndata: ${data}\nproject_name: "${name}"\n`, "utf8");
-}
+const origEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 
 beforeEach(async () => {
 	const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	repoDir = join(TMP_BASE, `repo-${id}`);
 	machineConfigDir = join(TMP_BASE, `machine-config-${id}`);
-	reposBase = join(TMP_BASE, `repos-${id}`);
+	globalStoreDir = join(TMP_BASE, `global-store-${id}`);
+
+	await mkdir(repoDir, { recursive: true });
 	await mkdir(machineConfigDir, { recursive: true });
-	await mkdir(reposBase, { recursive: true });
+	await mkdir(globalStoreDir, { recursive: true });
+
+	await $`git init ${repoDir}`.quiet();
+	await $`git -C ${repoDir} config user.email "test@example.com"`.quiet();
+	await $`git -C ${repoDir} config user.name "Test"`.quiet();
+	// Resolve symlinks (e.g., /tmp → /private/tmp on macOS) so path comparisons work
+	repoDir = await realpath(repoDir);
+
 	process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
+	clearMachineConfigCache();
 	clearProjectRootCache();
 });
 
 afterEach(async () => {
+	clearMachineConfigCache();
 	clearProjectRootCache();
 	if (origEnv === undefined) {
 		delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
@@ -44,53 +52,48 @@ afterEach(async () => {
 	await rm(TMP_BASE, { recursive: true, force: true });
 });
 
-describe("findBacklogRoot (workspace resolution)", () => {
-	it("returns the repo root when cwd is the registered repo", async () => {
-		const repo = join(reposBase, "alpha");
-		await writeWorkspace("alpha", repo, join(repo, "backlog"));
-		expect(await findBacklogRoot(repo)).toBe(repo);
-	});
-
-	it("returns the repo root when called from a subdirectory of the repo", async () => {
-		const repo = join(reposBase, "alpha");
-		await writeWorkspace("alpha", repo, join(repo, "backlog"));
-		expect(await findBacklogRoot(join(repo, "src", "deep"))).toBe(repo);
-	});
-
-	it("deepest repo wins for nested workspaces", async () => {
-		const outer = join(reposBase, "mono");
-		const inner = join(outer, "pkg");
-		await writeWorkspace("outer", outer, join(outer, "backlog"));
-		await writeWorkspace("inner", inner, join(inner, "backlog"));
-		expect(await findBacklogRoot(join(inner, "src"))).toBe(inner);
-		expect(await findBacklogRoot(join(outer, "other"))).toBe(outer);
-	});
-
-	it("falls back to the current workspace when cwd matches nothing", async () => {
-		const repo = join(reposBase, "beta");
-		await writeWorkspace("beta", repo, join(repo, "backlog"));
-		await setCurrentWorkspaceName("beta");
-		expect(await findBacklogRoot(join(reposBase, "unrelated"))).toBe(repo);
-	});
-
-	it("returns null when neither cwd nor current resolve", async () => {
-		await writeWorkspace("beta", join(reposBase, "beta"), join(reposBase, "beta", "backlog"));
-		expect(await findBacklogRoot(join(reposBase, "unrelated"))).toBeNull();
-	});
-});
-
-describe("getProjectRoot / clearProjectRootCache", () => {
-	it("caches the resolved root until the cache is cleared", async () => {
-		const repo = join(reposBase, "alpha");
-		await writeWorkspace("alpha", repo, join(repo, "backlog"));
-
-		expect(await getProjectRoot(repo)).toBe(repo);
-
-		// Remove the workspace; cached value must persist until cleared.
-		await rm(join(machineConfigDir, "workspaces"), { recursive: true, force: true });
-		expect(await getProjectRoot(repo)).toBe(repo);
-
+describe("findBacklogRoot — globalStore branch", () => {
+	it("returns the git root when globalStore is set and no in-repo backlog exists", async () => {
+		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+		clearMachineConfigCache();
 		clearProjectRootCache();
-		expect(await getProjectRoot(repo)).toBeNull();
+
+		const result = await findBacklogRoot(repoDir);
+		expect(result).toBe(repoDir);
+	});
+
+	it("returns the git root when called from a subdirectory of the repo", async () => {
+		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+		clearMachineConfigCache();
+		clearProjectRootCache();
+
+		const subdir = join(repoDir, "src", "components");
+		await mkdir(subdir, { recursive: true });
+
+		const result = await findBacklogRoot(subdir);
+		expect(result).toBe(repoDir);
+	});
+
+	it("local backlog still wins over globalStore when both exist", async () => {
+		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+		clearMachineConfigCache();
+		clearProjectRootCache();
+
+		// Create local backlog with config
+		await mkdir(join(repoDir, "backlog"), { recursive: true });
+		await writeFile(join(repoDir, "backlog", "config.yml"), "project_name: local\n");
+
+		const result = await findBacklogRoot(repoDir);
+		// Should still find repoDir, but via the local backlog path (not globalStore)
+		expect(result).toBe(repoDir);
+	});
+
+	it("returns null when globalStore not set and no in-repo backlog (existing behavior)", async () => {
+		// No machine config written — globalStore not set
+		clearProjectRootCache();
+
+		// repoDir has no backlog/ and no globalStore
+		const result = await findBacklogRoot(repoDir);
+		expect(result).toBeNull();
 	});
 });

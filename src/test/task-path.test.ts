@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists, taskIdsEqual } from "../utils/task-path.ts";
-import { readCurrentWorkspaceName, setCurrentWorkspaceName } from "../utils/workspace-store.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
@@ -184,19 +183,9 @@ describe("Task path utilities", () => {
 		});
 
 		it("should handle errors gracefully", async () => {
-			// A core that resolves to no workspace must yield null without
-			// throwing. Under the per-repo workspace model a Core only fails to
-			// resolve when neither a `repo:` matches nor `current:` is set, so
-			// clear `current:` for this case (the beforeEach init set it).
-			const prevCurrent = readCurrentWorkspaceName();
-			await setCurrentWorkspaceName(null);
-			try {
-				const emptyCore = new Core(join(import.meta.dir, "__nonexistent_task_path_dir__"));
-				const path = await getTaskPath("123", emptyCore);
-				expect(path).toBeNull();
-			} finally {
-				if (prevCurrent) await setCurrentWorkspaceName(prevCurrent);
-			}
+			// Pass invalid core to trigger error
+			const path = await getTaskPath("123", null as unknown as Core);
+			expect(path).toBeNull();
 		});
 	});
 

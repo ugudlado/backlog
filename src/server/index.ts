@@ -15,7 +15,7 @@ import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerWorkspaceAtPath, WorkspaceRegistrationError } from "../utils/workspace-registration.ts";
-import { pathExistsAsDirectory, toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
+import { pathExistsAsDirectory, removeWorkspaceEntry, toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
@@ -1570,14 +1570,15 @@ export class BacklogServer {
 		currentId: string | null;
 	}> {
 		const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
-		const { readCurrentWorkspaceName } = await import("../utils/workspace-store.ts");
+		const { readWorkspacesIndex } = await import("../utils/workspaces-index.ts");
 		const entries = await readWorkspacesWithIds();
-		const persisted = readCurrentWorkspaceName();
-		const persistedHit = persisted ? entries.find((e) => e.id === persisted) : undefined;
+		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
+		const persisted = (await readWorkspacesIndex()).current;
+		const persistedHit = persisted ? withIds.find((e) => e.id === persisted) : undefined;
 		const currentPath = toAbsoluteProjectRoot(this.core.filesystem.rootDir);
-		const memoryHit = entries.find((e) => toAbsoluteProjectRoot(e.path) === currentPath);
+		const memoryHit = withIds.find((e) => toAbsoluteProjectRoot(e.path) === currentPath);
 		return {
-			workspaces: entries.map((e) => ({ id: e.id, path: toAbsoluteProjectRoot(e.path) })),
+			workspaces: withIds.map((e) => ({ id: e.id, path: toAbsoluteProjectRoot(e.path) })),
 			currentId: persistedHit?.id ?? memoryHit?.id ?? null,
 		};
 	}
@@ -1664,8 +1665,8 @@ export class BacklogServer {
 					await this.core.ensureConfigLoaded();
 					this.mcpServer?.reinitializeProjectRoot(targetPath);
 				}
-				const { setCurrentWorkspaceName } = await import("../utils/workspace-store.ts");
-				await setCurrentWorkspaceName(id);
+				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+				await setCurrentWorkspaceId(id);
 				return Response.json({ ok: true });
 			});
 		} catch (error) {
@@ -1690,15 +1691,9 @@ export class BacklogServer {
 						{ status: 409 },
 					);
 				}
-				const { removeWorkspaceFile, readCurrentWorkspaceName, setCurrentWorkspaceName } = await import(
-					"../utils/workspace-store.ts"
-				);
-				const removed = await removeWorkspaceFile(target.id);
+				const removed = await removeWorkspaceEntry(target.path);
 				if (!removed) {
 					return Response.json({ error: "Workspace entry not found in index" }, { status: 404 });
-				}
-				if (readCurrentWorkspaceName() === target.id) {
-					await setCurrentWorkspaceName(null);
 				}
 				return Response.json(await this.listWorkspacesPayload());
 			});

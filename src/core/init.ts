@@ -1,4 +1,5 @@
-import { isAbsolute, join } from "node:path";
+import { stat } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -8,14 +9,38 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import {
-	getWorkspaceFilePath,
-	scanWorkspacesSync,
-	setCurrentWorkspaceNameIfUnset,
-	workspaceNameForRepo,
-} from "../utils/workspace-store.ts";
-import { toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
+import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { readMachineConfig } from "../utils/machine-config.ts";
 import type { Core } from "./backlog.ts";
+
+async function dirExistsAndNonEmpty(path: string): Promise<boolean> {
+	try {
+		const { readdir } = await import("node:fs/promises");
+		const entries = await readdir(path);
+		return entries.length > 0;
+	} catch {
+		return false;
+	}
+}
+
+async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
+	try {
+		const s = await stat(globalStore);
+		if (!s.isDirectory()) {
+			throw new Error(`Global store directory does not exist: ${globalStore}`);
+		}
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			throw new Error(`Global store directory does not exist: ${globalStore}`);
+		}
+		throw err;
+	}
+}
+
+function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): boolean {
+	if (!isAbsolute(backlogPath)) return false;
+	return relative(projectRoot, backlogPath).startsWith("..");
+}
 
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
@@ -25,10 +50,9 @@ export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
-	/** Absolute or project-relative data dir override (`--data`). Defaults to `<repo>/backlog`. */
-	dataDir?: string;
-	/** Workspace file basename override (`--name`) for basename clashes. Defaults to repo basename. */
-	workspaceName?: string;
+	backlogDirectory?: string;
+	backlogDirectorySource?: "backlog" | ".backlog" | "custom";
+	configLocation?: "folder" | "root";
 	integrationMode: IntegrationMode;
 	mcpClients?: McpClient[];
 	agentInstructions?: AgentInstructionFile[];
@@ -186,58 +210,76 @@ export async function initializeProject(
 		delete config.definitionOfDone;
 	}
 
+	// Create structure and save config (id minted + workspace registered after save).
 	if (isReInitialization) {
-		// The FileSystem constructor already resolved to the existing per-repo
-		// workspace yml (preserving its `repo:`/`data:`). Just rewrite settings;
-		// `--data` is rejected for re-init upstream, and `current:` is left as-is.
 		await core.filesystem.saveConfig(config);
-	} else {
-		// Resolve the absolute data dir: `--data` override (absolute kept as-is,
-		// relative resolved against the repo) else `<repo>/backlog`.
-		const dataDir = options.dataDir?.trim();
-		const dataPath = dataDir
-			? isAbsolute(dataDir)
-				? dataDir
-				: join(projectRoot, dataDir)
-			: join(projectRoot, "backlog");
-
-		// Workspace file basename: `--name` override else repo basename.
-		const workspaceName = (options.workspaceName?.trim() || workspaceNameForRepo(projectRoot)).replace(
-			/\.ya?ml$/i,
-			"",
-		);
-		const workspaceFilePath = getWorkspaceFilePath(workspaceName);
-
-		// Basename clash: a workspace file with this name already exists for a
-		// DIFFERENT repo. Same repo → idempotent re-init (overwrite the file).
-		const existing = scanWorkspacesSync().find((w) => w.name === workspaceName);
-		if (existing && toAbsoluteProjectRoot(existing.repo) !== toAbsoluteProjectRoot(projectRoot)) {
-			throw new Error(
-				`Workspace name "${workspaceName}" already maps to a different repo (${existing.repo}). ` +
-					`Re-run with --name <unique> to disambiguate.`,
-			);
+	} else if (isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot)) {
+		// GlobalStore branch: backlog directory is outside the project root.
+		// FileSystem was already resolved to the external slot by resolveBacklogDirectory.
+		// We just need to validate preconditions and create the structure.
+		const machine = readMachineConfig();
+		if (machine.globalStore) {
+			await ensureGlobalStoreExists(machine.globalStore);
 		}
-
-		// The per-repo yml IS the config file. Point the FileSystem at the
-		// explicit workspace paths before saving so resolution + future saves
-		// are coherent.
-		core.filesystem.setWorkspacePaths(
-			toAbsoluteProjectRoot(projectRoot),
-			toAbsoluteProjectRoot(dataPath),
-			workspaceFilePath,
-		);
+		const slotPath = core.filesystem.backlogDir;
+		if (await dirExistsAndNonEmpty(slotPath)) {
+			throw new Error(`Global store slot already exists and is not empty: ${slotPath}. Refusing to overwrite.`);
+		}
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
-		core.filesystem.invalidateConfigCache();
 		await core.ensureConfigLoaded();
-
-		// Mark this workspace current if nothing is set yet. Best-effort: a
-		// read-only home (sandboxed envs) must not fail init.
-		try {
-			await setCurrentWorkspaceNameIfUnset(workspaceName);
-		} catch (err) {
-			console.warn(`Warning: could not set current workspace: ${(err as Error).message}`);
+	} else {
+		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
+		const inferredBacklogDirectorySource = normalizedBacklogDirectory
+			? normalizedBacklogDirectory === ".backlog"
+				? ".backlog"
+				: normalizedBacklogDirectory === "backlog"
+					? "backlog"
+					: "custom"
+			: undefined;
+		if (
+			options.backlogDirectorySource &&
+			inferredBacklogDirectorySource &&
+			options.backlogDirectorySource !== inferredBacklogDirectorySource
+		) {
+			throw new Error("Backlog directory source and backlog directory value must agree.");
 		}
+		const effectiveBacklogDirectorySource = options.backlogDirectorySource ?? inferredBacklogDirectorySource;
+		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
+			throw new Error("Backlog directory must be a valid project-relative path.");
+		}
+		const effectiveConfigLocation =
+			options.configLocation ?? (effectiveBacklogDirectorySource === "custom" ? "root" : "folder");
+		if (effectiveBacklogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
+			throw new Error("Custom backlog directories require root config discovery.");
+		}
+		const selectedBacklogDirectory =
+			normalizedBacklogDirectory ??
+			(effectiveBacklogDirectorySource === ".backlog"
+				? ".backlog"
+				: effectiveBacklogDirectorySource === "backlog"
+					? "backlog"
+					: "backlog");
+		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
+		core.filesystem.setConfigLocation(effectiveConfigLocation);
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig(config);
+		await core.ensureConfigLoaded();
+	}
+
+	// Register the workspace in the machine-wide index and mark it current.
+	// Mints + persists a stable id into the project config if missing.
+	// Best-effort: if the home directory isn't writable (sandboxed envs,
+	// read-only setups), init still succeeds.
+	try {
+		const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
+		const { entry } = await registerWorkspaceAtPath(projectRoot);
+		if (entry.id) {
+			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+			await setCurrentWorkspaceId(entry.id);
+		}
+	} catch (err) {
+		console.warn(`Warning: could not register workspace in machine index: ${(err as Error).message}`);
 	}
 
 	const mcpResults: Record<string, string> = {};

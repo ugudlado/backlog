@@ -6,7 +6,7 @@
  *   let cleanup: () => void;
  *
  *   beforeEach(async () => {
- *     cleanup = await setupMachineConfig();
+ *     cleanup = await setupMachineConfig({ globalStore: myDir });
  *   });
  *
  *   afterEach(() => cleanup());
@@ -15,7 +15,7 @@
  *
  *   await using env = withEnvVars({ BACKLOG_MACHINE_CONFIG_DIR: dir });
  */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clearMachineConfigCache } from "../utils/machine-config.ts";
@@ -55,33 +55,51 @@ export function withEnvVars(vars: Record<string, string | undefined>): () => voi
 export interface MachineConfigSetup {
 	/** Directory that BACKLOG_MACHINE_CONFIG_DIR points to. */
 	machineConfigDir: string;
+	/** globalStore directory (only set when globalStore was configured). */
+	globalStoreDir: string | null;
 	/** Remove temp dirs and restore env. */
 	cleanup: () => Promise<void>;
 }
 
 /**
- * Creates an isolated temp machine config dir, points
- * BACKLOG_MACHINE_CONFIG_DIR at it, and returns an async cleanup that deletes
- * the temp dir and restores env.
+ * Creates a temp machine config dir (and optional globalStore dir), writes
+ * config.yml, sets BACKLOG_MACHINE_CONFIG_DIR, and clears the cache.
  *
- * The per-repo workspace model has no machine-level settings to seed (only
- * `current:`, which tests write via `setCurrentWorkspaceName`), so this just
- * provides an empty isolated registry.
+ * Returns dirs and an async cleanup that deletes temp dirs and restores env.
  *
  * @example
  *   let setup: MachineConfigSetup;
- *   beforeEach(async () => { setup = await setupMachineConfig(); });
+ *   beforeEach(async () => { setup = await setupMachineConfig({ globalStore: true }); });
  *   afterEach(async () => { await setup.cleanup(); });
  */
-export async function setupMachineConfig(): Promise<MachineConfigSetup> {
+export async function setupMachineConfig(options?: {
+	/** Pass true to create a temp globalStore dir; pass a string to use a specific path. */
+	globalStore?: boolean | string;
+}): Promise<MachineConfigSetup> {
 	const base = await mkdtemp(join(tmpdir(), "backlog-test-"));
 	const machineConfigDir = join(base, "machine-config");
 	await mkdir(machineConfigDir, { recursive: true });
+
+	let globalStoreDir: string | null = null;
+	let configContent = "";
+
+	if (options?.globalStore) {
+		if (typeof options.globalStore === "string") {
+			globalStoreDir = options.globalStore;
+		} else {
+			globalStoreDir = join(base, "global-store");
+			await mkdir(globalStoreDir, { recursive: true });
+		}
+		configContent = `globalStore: ${globalStoreDir}\n`;
+	}
+
+	await writeFile(join(machineConfigDir, "config.yml"), configContent);
 
 	const restoreEnv = withEnvVars({ BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir });
 
 	return {
 		machineConfigDir,
+		globalStoreDir,
 		cleanup: async () => {
 			restoreEnv();
 			await rm(base, { recursive: true, force: true });

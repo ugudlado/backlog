@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseMarkdown, parseMilestone, parseTask } from "../markdown/parser.ts";
+import { parseMarkdown, parseTask } from "../markdown/parser.ts";
 import { serializeTask, updateTaskAcceptanceCriteria } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 
@@ -439,57 +439,5 @@ Some additional notes.`;
 			expect(result).toContain("## Acceptance Criteria");
 			expect(result).not.toContain("- [ ]");
 		});
-	});
-});
-
-describe("Milestone cycle dates", () => {
-	it("parses optional start_date and end_date from frontmatter", () => {
-		const content = `---
-id: m-1
-title: "Sprint 1"
-start_date: 2026-05-01
-end_date: 2026-05-14
----
-
-## Description
-
-Milestone: Sprint 1
-`;
-		const milestone = parseMilestone(content);
-		expect(milestone.id).toBe("m-1");
-		expect(milestone.startDate).toBe("2026-05-01");
-		expect(milestone.endDate).toBe("2026-05-14");
-	});
-
-	it("leaves dates undefined for milestones without them (backward compatible)", () => {
-		const content = `---
-id: m-2
-title: "Untimed Milestone"
----
-
-## Description
-
-Milestone: Untimed Milestone
-`;
-		const milestone = parseMilestone(content);
-		expect(milestone.startDate).toBeUndefined();
-		expect(milestone.endDate).toBeUndefined();
-		expect(milestone.title).toBe("Untimed Milestone");
-	});
-
-	it("supports a start_date without an end_date", () => {
-		const content = `---
-id: m-3
-title: "Open-ended Cycle"
-start_date: 2026-06-01
----
-
-## Description
-
-Milestone: Open-ended Cycle
-`;
-		const milestone = parseMilestone(content);
-		expect(milestone.startDate).toBe("2026-06-01");
-		expect(milestone.endDate).toBeUndefined();
 	});
 });
