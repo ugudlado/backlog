@@ -17,6 +17,9 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	// Full-screen overlay shown from the moment a switch is initiated until the
+	// page reloads onto the new workspace (covers the otherwise blank gap).
+	const [switching, setSwitching] = useState(false);
 	const [addPath, setAddPath] = useState("");
 	const [switchAfterAdd, setSwitchAfterAdd] = useState(false);
 	const rootRef = useRef<HTMLDivElement>(null);
@@ -78,6 +81,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 	const handlePick = async (id: string) => {
 		try {
 			setBusy(true);
+			setSwitching(true);
 			setActionError(null);
 			await apiClient.setCurrentWorkspace(id);
 			setOpen(false);
@@ -85,6 +89,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 			await onWorkspaceSwitched();
 			await load();
 		} catch (e) {
+			setSwitching(false);
 			setActionError(e instanceof Error ? e.message : "Could not switch workspace");
 		} finally {
 			setBusy(false);
@@ -119,6 +124,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 			setAddPath("");
 			setData(updated);
 			if (switchAfterAdd && updated.addedId) {
+				setSwitching(true);
 				await apiClient.setCurrentWorkspace(updated.addedId);
 				setOpen(false);
 				setQuery("");
@@ -126,6 +132,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 				await load();
 			}
 		} catch (e) {
+			setSwitching(false);
 			setActionError(e instanceof Error ? e.message : "Could not add workspace");
 		} finally {
 			setBusy(false);
@@ -133,8 +140,21 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 	};
 
 	return (
-		<div className="relative" ref={rootRef}>
-			<button
+		<>
+			{switching && (
+				<div
+					className="fixed inset-0 z-[100] flex items-center justify-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
+					role="status"
+					aria-live="polite"
+				>
+					<div className="flex flex-col items-center gap-3">
+						<div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400" />
+						<div className="text-lg text-gray-600 dark:text-gray-300">Switching workspace…</div>
+					</div>
+				</div>
+			)}
+			<div className="relative" ref={rootRef}>
+				<button
 				type="button"
 				disabled={busy}
 				onClick={() => setOpen((o) => !o)}
@@ -233,7 +253,8 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 					</div>
 				</div>
 			)}
-		</div>
+			</div>
+		</>
 	);
 };
 
