@@ -148,7 +148,7 @@ backlog service uninstall          # stop and remove plist
 
 The service serves whichever project is the current one in `~/.config/backlog.md/workspaces.yml`. Switch projects from the workspace switcher in the web UI; the selection survives restarts.
 
-Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
+Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog.md as a Service](SERVICE.md).
 
 **Features:**
 - Interactive Kanban board with drag-and-drop

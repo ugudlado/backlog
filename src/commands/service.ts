@@ -32,7 +32,7 @@ function paths(): Paths {
 
 function ensureMacOS(): void {
 	if (process.platform !== "darwin") {
-		console.error("backlog service: macOS only (uses launchd). For Linux/Windows see backlog/docs/doc-003.");
+		console.error("backlog service: macOS only (uses launchd). For Linux/Windows see SERVICE.md in the project repo.");
 		process.exit(1);
 	}
 }
@@ -134,14 +134,16 @@ function doStatus(): void {
 	// the PID, then show the supporting detail lines.
 	const pidMatch = r.stdout.match(/^\s*pid\s*=\s*(\d+)/m);
 	const pid = pidMatch ? Number(pidMatch[1]) : null;
-	const alive = pid !== null && (() => {
-		try {
-			process.kill(pid, 0);
-			return true;
-		} catch {
-			return false;
-		}
-	})();
+	const alive =
+		pid !== null &&
+		(() => {
+			try {
+				process.kill(pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		})();
 
 	if (alive) {
 		console.log(`${LABEL}: running (pid ${pid})`);
