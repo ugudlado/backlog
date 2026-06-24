@@ -20,8 +20,12 @@ as the task management system.
 - If they are missing, run `backlog agents --update-instructions` (or
   `backlog init` for a fresh repo) to install them.
 - For multi-project setups, use `backlog workspace list --plain`.
-- The web UI runs in the foreground via `backlog server`, or as a macOS
-  launchd daemon via `backlog service start`.
+- The web UI runs in the foreground via `backlog server`, or as a background
+  service: `backlog service start` on macOS (launchd), or the systemd recipe on
+  Linux. See SERVICE.md in the backlog.md repo for the full Linux/Windows setup
+  and the `scripts/service-{linux,macos}.sh` helpers.
+- A running server can init+register a repo without shell access:
+  `POST /api/workspaces {"path": "/abs/path"}` (auto-inits if no `backlog/`).
 
 ## When to invoke
 
