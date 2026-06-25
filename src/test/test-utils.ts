@@ -21,6 +21,29 @@ export function createUniqueTestDir(prefix: string): string {
 }
 
 /**
+ * Backlog stores tasks in a configured global store. Tests that run `backlog
+ * init` need one. This writes an isolated machine-config dir with `globalStore`
+ * set under `parentDir` and returns the dir plus an env object to pass to CLI
+ * subprocesses (`.env(globalStoreEnv(...))`). For in-process callers, set
+ * `process.env.BACKLOG_MACHINE_CONFIG_DIR` to the returned dir.
+ */
+export async function createTestGlobalStore(
+	parentDir: string,
+): Promise<{ machineConfigDir: string; globalStoreDir: string; env: Record<string, string> }> {
+	const { mkdir, writeFile } = await import("node:fs/promises");
+	const machineConfigDir = join(parentDir, ".bl-machine-config");
+	const globalStoreDir = join(parentDir, ".bl-global-store");
+	await mkdir(machineConfigDir, { recursive: true });
+	await mkdir(globalStoreDir, { recursive: true });
+	await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+	return {
+		machineConfigDir,
+		globalStoreDir,
+		env: { ...process.env, BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir } as Record<string, string>,
+	};
+}
+
+/**
  * Sleep utility for tests that need to wait
  */
 export function sleep(ms: number): Promise<void> {

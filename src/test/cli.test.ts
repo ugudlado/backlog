@@ -7,7 +7,7 @@ import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTestGlobalStore, createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -32,6 +32,15 @@ describe("CLI Integration", () => {
 	});
 
 	describe("backlog init command", () => {
+		// Backlog stores every project in the configured global store; init requires
+		// it. Each test gets an isolated globalStore under TEST_DIR. `initEnv` is
+		// passed to CLI subprocesses; the slot lives at <globalStore>/<name>.
+		let initEnv: Record<string, string>;
+		beforeEach(async () => {
+			const gs = await createTestGlobalStore(TEST_DIR);
+			initEnv = gs.env;
+		});
+
 		it("should initialize backlog project in existing git repo", async () => {
 			// Set up a git repository
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -49,7 +58,7 @@ describe("CLI Integration", () => {
 			// Verify config content
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("CLI Test Project");
-			expect(config?.statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
 
 			// Verify git commit was created
@@ -172,7 +181,10 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`.cwd(TEST_DIR).text();
+			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`
+				.cwd(TEST_DIR)
+				.env(initEnv)
+				.text();
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
@@ -189,14 +201,14 @@ describe("CLI Integration", () => {
 
 			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --agent-instructions none`
 				.cwd(TEST_DIR)
+				.env(initEnv)
 				.text();
 
 			expect(output).toContain("Initialization Summary");
 			expect(output).toContain("Project Name: SummaryProj");
 			expect(output).toContain("AI Integration: CLI commands (legacy)");
-			expect(output).toContain("Advanced settings: unchanged");
-			expect(output).not.toContain("Remote operations:");
-			expect(output).not.toContain("Zero-padded IDs:");
+			// Global-store projects are filesystem-only, so git integration is off.
+			expect(output).toContain("Git integration: disabled (filesystem-only)");
 		});
 
 		it("should support MCP integration mode via flag", async () => {
@@ -204,7 +216,10 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`.cwd(TEST_DIR).text();
+			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`
+				.cwd(TEST_DIR)
+				.env(initEnv)
+				.text();
 
 			expect(output).toContain("AI Integration: MCP connector");
 			expect(output).toContain("Agent instruction files: guidance is provided through the MCP connector.");
@@ -221,7 +236,7 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).text();
+			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).env(initEnv).text();
 
 			expect(output).toContain("AI Integration: MCP connector");
 			expect(output).toContain("MCP server name: backlog");
@@ -233,7 +248,10 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`.cwd(TEST_DIR).text();
+			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`
+				.cwd(TEST_DIR)
+				.env(initEnv)
+				.text();
 
 			expect(output).not.toContain("AI Integration:");
 			expect(output).toContain("AI integration: skipped");
@@ -241,66 +259,6 @@ describe("CLI Integration", () => {
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
-		});
-
-		it("should support non-interactive .backlog selection via --backlog-dir", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const output = await $`bun ${CLI_PATH} init HiddenProj --defaults --integration-mode none --backlog-dir .backlog`
-				.cwd(TEST_DIR)
-				.text();
-
-			expect(output).toContain("Backlog directory: .backlog");
-			expect(await Bun.file(join(TEST_DIR, ".backlog", "config.yml")).exists()).toBe(true);
-			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
-		});
-
-		it("should store custom non-interactive backlog dir in root backlog.config.yml", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const output =
-				await $`bun ${CLI_PATH} init CustomProj --defaults --integration-mode none --backlog-dir planning/backlog-data`
-					.cwd(TEST_DIR)
-					.text();
-
-			expect(output).toContain("Backlog directory: planning/backlog-data");
-			expect(output).toContain("Config location: backlog.config.yml");
-			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
-			const rootConfig = await Bun.file(join(TEST_DIR, "backlog.config.yml")).text();
-			expect(rootConfig).toContain('backlog_directory: "planning/backlog-data"');
-		});
-
-		it("should reject invalid --backlog-dir values", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const result =
-				await $`bun ${CLI_PATH} init InvalidDirProj --defaults --integration-mode none --backlog-dir ../outside`
-					.cwd(TEST_DIR)
-					.nothrow();
-			const output = result.stdout.toString() + result.stderr.toString();
-			expect(result.exitCode).toBe(1);
-			expect(output).toContain("Invalid --backlog-dir value");
-		});
-
-		it("should reject --backlog-dir during re-initialization", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
-
-			const result = await $`bun ${CLI_PATH} init ReinitProj --defaults --integration-mode none --backlog-dir .backlog`
-				.cwd(TEST_DIR)
-				.nothrow();
-			const output = result.stdout.toString() + result.stderr.toString();
-			expect(result.exitCode).toBe(1);
-			expect(output).toContain("fixed after initialization");
 		});
 
 		it("should reject MCP integration when agent instruction flags are provided", async () => {
@@ -313,6 +271,7 @@ describe("CLI Integration", () => {
 			try {
 				await $`bun ${CLI_PATH} init ConflictProj --defaults --integration-mode mcp --agent-instructions claude`
 					.cwd(TEST_DIR)
+					.env(initEnv)
 					.text();
 			} catch (err) {
 				failed = true;
@@ -329,7 +288,10 @@ describe("CLI Integration", () => {
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`
+				.cwd(TEST_DIR)
+				.env(initEnv)
+				.quiet();
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			expect(agentsFile).toBe(true);
@@ -342,7 +304,10 @@ describe("CLI Integration", () => {
 
 			let failed = false;
 			try {
-				await $`bun ${CLI_PATH} init InvalidProj --defaults --agent-instructions notreal`.cwd(TEST_DIR).quiet();
+				await $`bun ${CLI_PATH} init InvalidProj --defaults --agent-instructions notreal`
+					.cwd(TEST_DIR)
+					.env(initEnv)
+					.quiet();
 			} catch (e) {
 				failed = true;
 				const err = e as { stdout?: unknown; stderr?: unknown };
@@ -495,7 +460,7 @@ describe("CLI Integration", () => {
 
 			// Load and verify default config status order
 			const config = await core.filesystem.loadConfig();
-			expect(config?.statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]);
 		});
 
 		it("should filter tasks by status", async () => {
@@ -1042,7 +1007,7 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
-			expect(statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
+			expect(statuses).toEqual(["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]);
 
 			// Test the kanban board generation
 			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
@@ -1083,7 +1048,7 @@ describe("CLI Integration", () => {
 
 			// Should return board with metadata, configured status columns, and empty-state message
 			expect(board).toContain("# Kanban Board Export");
-			expect(board).toContain("| To Do | In Progress | Done |");
+			expect(board).toContain("| To Do | Ready | In Progress | Code Review | QA review | Done |");
 			expect(board).toContain("No tasks found");
 		});
 

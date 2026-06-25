@@ -13,7 +13,7 @@ import { registerMcpCommand } from "./commands/mcp.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { registerWorkspaceCommand } from "./commands/workspace.ts";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import { DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { computeSequences } from "./core/sequences.ts";
@@ -25,9 +25,7 @@ import {
 	type EnsureMcpGuidelinesResult,
 	ensureMcpGuidelines,
 	exportKanbanBoardToFile,
-	initializeGitRepository,
 	installClaudeAgent,
-	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
 import {
@@ -44,7 +42,6 @@ import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
-import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
@@ -60,7 +57,6 @@ import {
 } from "./utils/remote-backend.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
-import { resolveStoreMode } from "./utils/store-mode.ts";
 import {
 	normalizeDependencies,
 	parseDelimitedStringList,
@@ -363,6 +359,19 @@ async function resolveServerProjectRoot(): Promise<string> {
 	}
 	const first = index.workspaces[0];
 	if (first) return pick(first);
+
+	// No registry entry. Global-store projects carry no registry path — they are
+	// discovered by scanning <globalStore>/*. Bootstrap onto the current (or
+	// first) scanned slot so the daemon serves a global project even when CWD is
+	// `/` (systemd WorkingDirectory) and the registry is empty. The slot is both
+	// project root and data dir.
+	const { scanGlobalStoreProjects } = await import("./utils/global-store-scan.ts");
+	const scanned = await scanGlobalStoreProjects();
+	const slot = scanned.find((p) => p.id === index.current) ?? scanned[0];
+	if (slot) {
+		setActiveWorkspaceDataDir(slot.slotPath, slot.slotPath);
+		return slot.slotPath;
+	}
 	return await requireProjectRoot();
 }
 
@@ -543,129 +552,48 @@ program
 		"--agent-instructions <instructions>",
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
 	)
-	.option("--check-branches <boolean>", "check task states across active branches (default: true)")
-	.option("--include-remote <boolean>", "include remote branches when checking (default: true)")
-	.option("--branch-days <number>", "days to consider branch active (default: 30)")
-	.option("--bypass-git-hooks <boolean>", "bypass git hooks when committing (default: false)")
-	.option("--zero-padded-ids <number>", "number of digits for zero-padding IDs (0 to disable)")
-	.option("--default-editor <editor>", "default editor command")
-	.option("--web-port <number>", "default web UI port (default: 6420)")
-	.option("--auto-open-browser <boolean>", "auto-open browser for web UI (default: true)")
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
 	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
-	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
-	.option(
-		"--workspace-data <path>",
-		"record an absolute data: location in the machine workspace index (task data lives outside <project>/backlog)",
-	)
-	.option("--config-location <location>", "config location for init: folder or root")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
-	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
-	.option("--global", "use the configured globalStore for this project (skips prompt)")
-	.option("--local", "use a local backlog/ folder in this repo (skips prompt)")
 	.action(
 		async (
 			projectName: string | undefined,
 			options: {
 				agentInstructions?: string;
-				checkBranches?: string;
-				includeRemote?: string;
-				branchDays?: string;
-				bypassGitHooks?: string;
-				zeroPaddedIds?: string;
-				defaultEditor?: string;
-				webPort?: string;
-				autoOpenBrowser?: string;
 				installClaudeAgent?: string;
 				integrationMode?: string;
-				backlogDir?: string;
-				workspaceData?: string;
-				configLocation?: string;
 				taskPrefix?: string;
-				git?: boolean;
 				defaults?: boolean;
-				global?: boolean;
-				local?: boolean;
 			},
 		) => {
 			try {
 				// init command uses process.cwd() directly - it initializes in the current directory
 				const cwd = process.cwd();
-				const isRepo = await isGitRepository(cwd);
-				let filesystemOnly = options.git === false;
-
-				if (!isRepo && !filesystemOnly) {
-					const repositoryMode = await clack.select({
-						message: "No git repository found. How should Backlog.md initialize this project?",
-						initialValue: "git",
-						options: [
-							{
-								label: "Initialize a Git repository",
-								value: "git",
-								hint: "Use the standard Git-backed workflow",
-							},
-							{
-								label: "Continue without Git",
-								value: "filesystem",
-								hint: "Use local Markdown files only",
-							},
-						],
-					});
-					if (clack.isCancel(repositoryMode)) {
-						abortInitialization();
-						return;
-					}
-
-					if (repositoryMode === "git") {
-						await initializeGitRepository(cwd);
-					} else {
-						filesystemOnly = true;
-					}
-				}
-
+				// Tasks live in the global store (~/.config/...), not the repo, so the
+				// cwd's git status is irrelevant to where data goes. We don't init or
+				// require git here.
 				const core = new Core(cwd);
 
 				// Check if project is already initialized and load existing config
 				const existingConfig = await core.filesystem.loadConfig();
 				const isReInitialization = !!existingConfig;
 
-				// Mutual exclusion check — always, regardless of re-init state.
-				if (options.global && options.local) {
-					console.error("Cannot use --global and --local together.");
-					process.exit(1);
-				}
-
 				if (isReInitialization) {
 					console.log(
 						"Existing backlog project detected. Current configuration will be preserved where not specified.",
 					);
-					if (options.backlogDir) {
-						console.error(
-							"The backlog directory is fixed after initialization. Re-run init without --backlog-dir for this project.",
-						);
-						process.exit(1);
-					}
-					if (options.configLocation) {
-						console.error(
-							"The config location is fixed after initialization. Re-run init without --config-location for this project.",
-						);
-						process.exit(1);
-					}
-					if (options.global || options.local) {
-						console.error(
-							"The store mode is fixed after initialization. Re-run init without --global/--local for this project.",
-						);
-						process.exit(1);
-					}
 				}
 
-				// Resolve store mode (global vs local) when globalStore is configured.
+				// Backlog stores every project's tasks in the configured global store
+				// (`globalStore` in ~/.config/backlog/config.yml). It is required.
 				const machineConfig = readMachineConfig();
-				const globalStoreConfigured = !!machineConfig.globalStore;
-
-				if (options.global && !globalStoreConfigured) {
-					console.error("--global requires globalStore to be set in machine config (~/.config/backlog/config.yml).");
+				if (!machineConfig.globalStore) {
+					console.error(
+						"globalStore is not configured. Set it once in ~/.config/backlog/config.yml, e.g.:\n" +
+							"  globalStore: ~/.config/backlog/workspaces\n" +
+							"Then re-run `backlog init`.",
+					);
 					process.exit(1);
 				}
 
@@ -675,12 +603,6 @@ program
 					return value.toLowerCase() === "true" || value === "1";
 				};
 
-				// Helper function to parse number strings
-				const parseNumber = (value: string | undefined, defaultValue: number): number => {
-					if (value === undefined) return defaultValue;
-					const parsed = Number.parseInt(value, 10);
-					return Number.isNaN(parsed) ? defaultValue : parsed;
-				};
 				function abortInitialization(message = "Aborting initialization.") {
 					clack.cancel(message);
 					process.exitCode = 1;
@@ -689,37 +611,13 @@ program
 					clack.cancel(message);
 				}
 
-				// Resolve store mode (global vs local). Flags and re-init guard already handled above.
-				const storeMode = await resolveStoreMode({
-					globalFlag: !!options.global,
-					localFlag: !!options.local,
-					globalStoreConfigured,
-					isReInitialization,
-					globalStoreHint: machineConfig.globalStore ?? undefined,
-				});
-				if (storeMode === null) {
-					abortInitialization();
-					return;
-				}
-
 				// Non-interactive mode when any flag is provided or --defaults is used
 				const isNonInteractive = !!(
 					options.agentInstructions ||
 					options.defaults ||
-					options.checkBranches ||
-					options.includeRemote ||
-					options.branchDays ||
-					options.bypassGitHooks ||
-					options.zeroPaddedIds ||
-					options.defaultEditor ||
-					options.webPort ||
-					options.autoOpenBrowser ||
 					options.installClaudeAgent ||
 					options.integrationMode ||
-					options.backlogDir ||
-					options.configLocation ||
-					options.taskPrefix ||
-					options.git === false
+					options.taskPrefix
 				);
 
 				// Get project name
@@ -754,157 +652,6 @@ program
 					}
 				}
 
-				let backlogDirectory: string | undefined;
-				let backlogDirectorySource: "backlog" | ".backlog" | "custom" | undefined;
-				let configLocation: "folder" | "root" | undefined;
-				// Set when the interactive wizard picks machine-level storage; threaded
-				// into initializeProject as workspaceDataDir (same path as --workspace-data).
-				let wizardWorkspaceDataDir: string | undefined;
-				if (!isReInitialization) {
-					const backlogResolution = core.filesystem.resolveBacklogDirectoryInfo();
-					const defaultBacklogDirectory = backlogResolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
-					const defaultBacklogSource = backlogResolution.source ?? "backlog";
-					const defaultConfigLocation = backlogResolution.configSource ?? "folder";
-					const normalizedBacklogDirOption = options.backlogDir
-						? normalizeProjectBacklogDirectory(options.backlogDir)
-						: undefined;
-					const normalizedConfigLocation = options.configLocation?.trim().toLowerCase();
-					if (options.backlogDir && !normalizedBacklogDirOption) {
-						console.error(
-							"Invalid --backlog-dir value. Use 'backlog', '.backlog', or a project-relative path inside the project.",
-						);
-						process.exit(1);
-					}
-					if (
-						normalizedConfigLocation &&
-						normalizedConfigLocation !== "folder" &&
-						normalizedConfigLocation !== "root"
-					) {
-						console.error("Invalid --config-location value. Use 'folder' or 'root'.");
-						process.exit(1);
-					}
-
-					if (isNonInteractive) {
-						if (normalizedBacklogDirOption) {
-							backlogDirectory = normalizedBacklogDirOption;
-							backlogDirectorySource =
-								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.BACKLOG ||
-								normalizedBacklogDirOption === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
-									? (normalizedBacklogDirOption as "backlog" | ".backlog")
-									: "custom";
-						} else {
-							backlogDirectory = defaultBacklogDirectory;
-							backlogDirectorySource = defaultBacklogSource;
-						}
-						configLocation =
-							(normalizedConfigLocation as "folder" | "root" | undefined) ??
-							(backlogDirectorySource === "custom" ? "root" : defaultConfigLocation);
-						if (backlogDirectorySource === "custom" && configLocation !== "root") {
-							console.error("Custom backlog directories require --config-location root.");
-							process.exit(1);
-						}
-					} else {
-						const locationPrompt = await clack.select({
-							message: "Where should Backlog.md store project files?",
-							initialValue: defaultBacklogSource,
-							options: [
-								{
-									label: "backlog/ (default)",
-									value: "backlog",
-									hint: "Store tasks and config in backlog/",
-								},
-								{
-									label: ".backlog/",
-									value: ".backlog",
-									hint: "Store tasks and config in .backlog/",
-								},
-								{
-									label: "Custom project-relative path",
-									value: "custom",
-									hint: `Backlog.md will store project config in ${backlogResolution.rootConfigPath}`,
-								},
-								{
-									label: "Machine-level (outside the repo)",
-									value: "machine",
-									hint: "Store tasks + config in ~/.config/backlog/workspaces/<name> (kept out of git)",
-								},
-							],
-						});
-						if (clack.isCancel(locationPrompt)) {
-							abortInitialization();
-							return;
-						}
-
-						if (locationPrompt === "machine") {
-							const { getMachineConfigDir } = await import("./utils/workspaces-index.ts");
-							const slug =
-								String(name ?? "")
-									.trim()
-									.replace(/[^a-zA-Z0-9._-]+/g, "-")
-									.replace(/^-+|-+$/g, "") || "workspace";
-							wizardWorkspaceDataDir = join(getMachineConfigDir(), "workspaces", slug);
-							// Machine-level data is flat (config.yml beside tasks/) and lives
-							// outside the repo — the repo-relative backlogDirectory/config
-							// sub-prompts do not apply.
-							backlogDirectory = undefined;
-							backlogDirectorySource = undefined;
-							configLocation = undefined;
-						} else if (locationPrompt === "custom") {
-							backlogDirectorySource = "custom";
-							const customDirectory = await clack.text({
-								message: "Project-relative backlog directory:",
-								defaultValue:
-									defaultBacklogSource === "custom" && defaultBacklogDirectory ? defaultBacklogDirectory : "",
-								validate: (value) => {
-									const normalized = normalizeProjectBacklogDirectory(String(value ?? ""));
-									if (!normalized) {
-										return "Enter a project-relative path inside the current project.";
-									}
-									return undefined;
-								},
-							});
-							if (clack.isCancel(customDirectory)) {
-								abortInitialization();
-								return;
-							}
-							backlogDirectory = normalizeProjectBacklogDirectory(String(customDirectory ?? "")) ?? undefined;
-							configLocation = "root";
-						} else {
-							backlogDirectorySource = locationPrompt as "backlog" | ".backlog";
-							backlogDirectory = backlogDirectorySource;
-							const configPrompt = await clack.select({
-								message: "Where should Backlog.md store project configuration?",
-								initialValue: defaultConfigLocation,
-								options: [
-									{
-										label: `${backlogDirectorySource}/config.yml`,
-										value: "folder",
-										hint: "Keep config inside the backlog folder",
-									},
-									{
-										label: "backlog.config.yml in project root",
-										value: "root",
-										hint: "Keep config at project root and point to the backlog folder there",
-									},
-								],
-							});
-							if (clack.isCancel(configPrompt)) {
-								abortInitialization();
-								return;
-							}
-							configLocation = configPrompt as "folder" | "root";
-						}
-					}
-
-					// If user chose local store mode, force backlogDirectory to "backlog"
-					// regardless of what the resolution above produced. This routes init
-					// through the local branch in initializeProject (same as --backlog-dir backlog).
-					if (storeMode === "local") {
-						backlogDirectory = "backlog";
-						backlogDirectorySource = "backlog";
-					}
-				}
-
 				// Get task prefix (first-time init only, preserved on re-init)
 				let taskPrefix = options.taskPrefix;
 				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
@@ -934,28 +681,14 @@ program
 				}
 
 				const defaultAdvancedConfig = getDefaultAdvancedConfig(existingConfig);
-				const applyAdvancedOptionOverrides = () => {
-					const result: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
-					result.checkActiveBranches = parseBoolean(options.checkBranches, result.checkActiveBranches ?? true);
-					if (result.checkActiveBranches) {
-						result.remoteOperations = parseBoolean(options.includeRemote, result.remoteOperations ?? true);
-						result.activeBranchDays = parseNumber(options.branchDays, result.activeBranchDays ?? 30);
-					} else {
-						result.remoteOperations = false;
-					}
-					result.bypassGitHooks = parseBoolean(options.bypassGitHooks, result.bypassGitHooks ?? false);
-					const paddingValue = parseNumber(options.zeroPaddedIds, result.zeroPaddedIds ?? 0);
-					result.zeroPaddedIds = paddingValue > 0 ? paddingValue : undefined;
-					result.defaultEditor =
-						options.defaultEditor ||
+				const applyAdvancedOptionOverrides = (): Partial<BacklogConfig> => ({
+					...defaultAdvancedConfig,
+					defaultEditor:
 						existingConfig?.defaultEditor ||
 						process.env.EDITOR ||
 						process.env.VISUAL ||
-						undefined;
-					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
-					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
-					return result;
-				};
+						defaultAdvancedConfig.defaultEditor,
+				});
 
 				const integrationOption = options.integrationMode
 					? normalizeIntegrationOption(options.integrationMode)
@@ -1293,29 +1026,33 @@ program
 						advancedConfigured = true;
 					}
 				}
-				if (filesystemOnly) {
-					advancedConfig = {
-						...advancedConfig,
-						checkActiveBranches: false,
-						remoteOperations: false,
-						bypassGitHooks: false,
-					};
-				}
-				// When local store mode is chosen with globalStore configured, ensure
-				// the filesystem is pointed at the local backlog/ dir before init runs.
-				// Without this, core.filesystem.backlogDir is the global slot, and
-				// initializeProject would take the globalStore branch.
-				if (storeMode === "local") {
-					core.filesystem.setBacklogDirectory("backlog");
+				// Global-store projects live outside any git repo, so git integration
+				// (branch checks, remote ops, hooks) does not apply.
+				advancedConfig = {
+					...advancedConfig,
+					checkActiveBranches: false,
+					remoteOperations: false,
+					bypassGitHooks: false,
+				};
+				// Point the filesystem at the global-store slot, keyed by project name
+				// (so a repo can be named independently of its directory). Validate the
+				// name is a safe single path component — without this, `init "../x"`
+				// would escape the global store (path traversal at a trust boundary).
+				{
+					const { isSafeSlotName } = await import("./utils/global-store-scan.ts");
+					if (!isSafeSlotName(name)) {
+						console.error(
+							`Invalid project name: "${name}". ` +
+								"It must not contain path separators or '..' (it names a directory in the global store).",
+						);
+						process.exit(1);
+					}
+					core.filesystem.setGlobalStoreSlot(join(machineConfig.globalStore, name), name);
 				}
 
 				// Call shared core init function
 				const initResult = await initializeProject(core, {
 					projectName: name,
-					workspaceDataDir: options.workspaceData || wizardWorkspaceDataDir || undefined,
-					backlogDirectory,
-					backlogDirectorySource,
-					configLocation,
 					integrationMode: integrationMode || "none",
 					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
 					agentInstructions: agentFiles,
@@ -1333,11 +1070,10 @@ program
 						taskPrefix: taskPrefix || undefined,
 					},
 					existingConfig,
-					filesystemOnly,
+					filesystemOnly: true,
 				});
 
 				const config = initResult.config;
-				const gitIntegrationDisabled = Boolean(config.filesystemOnly);
 
 				// Show configuration summary
 				const supportsColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
@@ -1370,13 +1106,9 @@ program
 						})
 						.join("\n");
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
-				summaryLines.push(`${label("Backlog directory:")} ${backlogDirectory ?? core.filesystem.backlogDirName}`);
-				summaryLines.push(
-					`${label("Config location:")} ${configLocation === "root" ? DEFAULT_FILES.ROOT_CONFIG : "folder config.yml"}`,
-				);
-				summaryLines.push(
-					`${label("Git integration:")} ${gitIntegrationDisabled ? muted("disabled (filesystem-only)") : good("enabled")}`,
-				);
+				summaryLines.push(`${label("Store:")} ${muted(core.filesystem.backlogDir)}`);
+				// Global-store projects live outside git, so integration is always off.
+				summaryLines.push(`${label("Git integration:")} ${muted("disabled (filesystem-only)")}`);
 				if (integrationMode === "cli") {
 					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
 					if (agentFiles.length > 0) {
@@ -1407,30 +1139,26 @@ program
 					completionSummary = muted("not configured");
 				}
 				summaryLines.push(`${label("Shell completions:")} ${completionSummary}`);
-				if (advancedConfigured || gitIntegrationDisabled) {
-					summaryLines.push(label("Advanced settings:"));
-					summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
-					summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
-					summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
-					summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
-					summaryLines.push(
-						`  ${label("Zero-padded IDs:")} ${
-							config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
-						}`,
-					);
-					summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
-					summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
-					if (config.defaultEditor) {
-						summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
-					}
-					summaryLines.push(
-						`  ${label("Definition of Done defaults:")} ${
-							(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
-						}`,
-					);
-				} else {
-					summaryLines.push(`${label("Advanced settings:")} ${muted("unchanged (run `backlog config` to customize)")}`);
+				summaryLines.push(label("Advanced settings:"));
+				summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
+				summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
+				summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
+				summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
+				summaryLines.push(
+					`  ${label("Zero-padded IDs:")} ${
+						config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
+					}`,
+				);
+				summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
+				summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
+				if (config.defaultEditor) {
+					summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
 				}
+				summaryLines.push(
+					`  ${label("Definition of Done defaults:")} ${
+						(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
+					}`,
+				);
 				clack.note(summaryLines.join("\n"), "Initialization Summary");
 
 				if (completionInstallResult) {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, join as joinPath } from "node:path";
+import { join } from "node:path";
 import { $ } from "bun";
 import { loadRemoteTasks } from "../core/task-loader.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -66,18 +66,5 @@ describe("Missing git remote preflight", () => {
 		const remoteTasks = await loadRemoteTasks(gitOps as unknown as typeof gitOps, config, (m) => progress.push(m));
 		expect(Array.isArray(remoteTasks)).toBe(true);
 		expect(remoteTasks.length).toBe(0);
-	});
-
-	it("CLI init with includeRemote=true in no-remote repo shows a final warning", async () => {
-		const CLI_PATH = joinPath(process.cwd(), "src", "cli.ts");
-		const result =
-			await $`bun ${[CLI_PATH, "init", "NoRemoteProj", "--defaults", "--check-branches", "true", "--include-remote", "true", "--auto-open-browser", "false"]}`
-				.cwd(tempDir)
-				.nothrow()
-				.quiet();
-		expect(result.exitCode).toBe(0);
-		const out = result.stdout.toString() + result.stderr.toString();
-		expect(out.toLowerCase()).toContain("remoteoperations is enabled");
-		expect(out.toLowerCase()).toContain("no git remotes are configured");
 	});
 });

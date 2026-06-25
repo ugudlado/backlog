@@ -4,11 +4,14 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestGlobalStore, createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 let TEST_DIR: string;
+// Backlog stores every project in the configured global store; init requires it.
+let initEnv: Record<string, string>;
+const origMachineConfig = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 
 async function pathExists(path: string): Promise<boolean> {
 	try {
@@ -20,8 +23,9 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function initFilesystemOnlyProject(projectName = "No Git Project"): Promise<Core> {
-	const result = await $`bun ${CLI_PATH} init ${projectName} --no-git --defaults --local --integration-mode none`
+	const result = await $`bun ${CLI_PATH} init ${projectName} --defaults --integration-mode none`
 		.cwd(TEST_DIR)
+		.env(initEnv)
 		.quiet();
 	expect(result.exitCode).toBe(0);
 	return new Core(TEST_DIR);
@@ -31,9 +35,22 @@ describe("CLI init without Git", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-init-no-git");
 		await mkdir(TEST_DIR, { recursive: true });
+		const gs = await createTestGlobalStore(TEST_DIR);
+		initEnv = gs.env;
+		// In-process Core resolution (the `new Core(TEST_DIR)` calls below) reads
+		// the machine config from this env var, so point it at the test's store.
+		process.env.BACKLOG_MACHINE_CONFIG_DIR = gs.machineConfigDir;
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
 	});
 
 	afterEach(async () => {
+		if (origMachineConfig === undefined) delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
+		else process.env.BACKLOG_MACHINE_CONFIG_DIR = origMachineConfig;
+		// The machine config is cached; clear it so the globalStore set above does
+		// not leak into later test files (e.g. in-process inits resolving a slot).
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
 		try {
 			await safeCleanup(TEST_DIR);
 		} catch {
@@ -42,10 +59,10 @@ describe("CLI init without Git", () => {
 	});
 
 	test("initializes a filesystem-only project without creating a Git repository", async () => {
-		const result =
-			await $`bun ${CLI_PATH} init "Filesystem Project" --no-git --defaults --local --integration-mode none`
-				.cwd(TEST_DIR)
-				.quiet();
+		const result = await $`bun ${CLI_PATH} init "Filesystem Project" --defaults --integration-mode none`
+			.cwd(TEST_DIR)
+			.env(initEnv)
+			.quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
