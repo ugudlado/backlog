@@ -68,9 +68,8 @@ describe("MCP task tools (MVP)", () => {
 		});
 
 		const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
-		// Default create status is the first configured status (BACK-475 made
-		// that "Backlog", not "To Do").
-		expect(listText).toContain("Backlog:");
+		// Default create status is the first configured status ("To Do").
+		expect(listText).toContain("To Do:");
 		expect(listText).toContain("[HIGH] TASK-1 - Agent onboarding checklist");
 		expect(listText).not.toContain("Implementation Plan:");
 		expect(listText).not.toContain("Acceptance Criteria:");
@@ -82,7 +81,7 @@ describe("MCP task tools (MVP)", () => {
 		const searchText = getText(searchResult.content);
 		expect(searchText).toContain("Tasks:");
 		expect(searchText).toContain("TASK-1 - Agent onboarding checklist");
-		expect(searchText).toContain("(Backlog)");
+		expect(searchText).toContain("(To Do)");
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 

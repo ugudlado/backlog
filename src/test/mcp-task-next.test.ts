@@ -23,7 +23,7 @@ async function setupTestProject(testDir: string): Promise<void> {
 		join(testDir, "backlog", "config.yml"),
 		`project_name: "Test"
 default_status: "To Do"
-statuses: ["Backlog", "Ready", "To Do", "In Progress", "Done"]
+statuses: ["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]
 labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false

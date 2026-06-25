@@ -16,7 +16,7 @@ async function setupProject(testDir: string, statuses?: string[], defaultStatus?
 	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	const effectiveStatuses = statuses ?? ["Backlog", "Ready", "To Do", "In Progress", "Done"];
+	const effectiveStatuses = statuses ?? ["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"];
 	const effectiveDefault = defaultStatus ?? "To Do";
 	const statusList = effectiveStatuses.map((s) => `"${s}"`).join(", ");
 	const config = `project_name: "Test"
@@ -110,7 +110,7 @@ describe("CLI task next", () => {
 
 	it("empty queue exits non-zero with correct message", async () => {
 		// No Ready tasks
-		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" });
+		await core.createTaskFromInput({ title: "Not-ready task", status: "To Do" });
 
 		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
 		expect(result.exitCode).not.toBe(0);

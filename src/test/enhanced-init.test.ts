@@ -67,7 +67,7 @@ describe("Enhanced init command", () => {
 		const config = await core.filesystem.loadConfig();
 		expect(config).toBeTruthy();
 		expect(config?.projectName).toBe("New Project");
-		expect(config?.statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
+		expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
 	});
 

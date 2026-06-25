@@ -15,7 +15,7 @@ async function setupTestProject(testDir: string): Promise<void> {
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
 	const config = `project_name: "Test"
 default_status: "To Do"
-statuses: ["Backlog", "Ready", "To Do", "In Progress", "Done"]
+statuses: ["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]
 labels: []
 date_format: yyyy-mm-dd
 check_active_branches: false
@@ -97,7 +97,7 @@ describe("Core.claimTask", () => {
 
 	it("returns null when no tasks have the given status", async () => {
 		// Create task with a different status
-		await core.createTaskFromInput({ title: "Backlog task", status: "Backlog" });
+		await core.createTaskFromInput({ title: "Not-ready task", status: "To Do" });
 
 		const result = await core.claimTask({ status: "Ready" });
 		expect(result).toBeNull();

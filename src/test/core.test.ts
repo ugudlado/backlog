@@ -40,7 +40,7 @@ describe("Core", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
-			expect(config?.statuses).toEqual(["Backlog", "Ready", "To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
 		});
 
