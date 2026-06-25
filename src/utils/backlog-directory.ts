@@ -1,8 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
-import { basename, join, normalize } from "node:path";
+import { join, normalize } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES } from "../constants/index.ts";
 import { getActiveWorkspaceDataDir } from "./active-workspace.ts";
-import { readMachineConfig } from "./machine-config.ts";
 
 export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
 export type BacklogConfigSource = "folder" | "root";
@@ -35,8 +34,6 @@ export interface BacklogConfigMetadata {
 	projectName: string | null;
 	backlogDirectory: string | null;
 	id: string | null;
-	/** Marker that this project's tasks live in the global store. */
-	store: "global" | null;
 }
 
 function directoryExists(path: string): boolean {
@@ -64,7 +61,6 @@ export function parseBacklogConfigMetadata(content: string): BacklogConfigMetada
 	let projectName: string | null = null;
 	let backlogDirectory: string | null = null;
 	let id: string | null = null;
-	let store: "global" | null = null;
 
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -86,11 +82,9 @@ export function parseBacklogConfigMetadata(content: string): BacklogConfigMetada
 			backlogDirectory = normalizeProjectBacklogDirectory(value);
 		} else if (key === "id" && value) {
 			id = value;
-		} else if (key === "store" && value === "global") {
-			store = "global";
 		}
 	}
-	return { projectName, backlogDirectory, id, store };
+	return { projectName, backlogDirectory, id };
 }
 
 function readRootBacklogConfigMetadata(rootConfigPath: string): BacklogConfigMetadata | null {
@@ -161,69 +155,6 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 	return null;
 }
 
-/** Synchronously resolves the git repository root for the given directory. Returns null if not in a git repo. */
-function resolveGitRootSync(cwd: string): string | null {
-	try {
-		const r = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
-			cwd,
-			stderr: "ignore",
-		});
-		if (r.exitCode !== 0) return null;
-		const out = new TextDecoder().decode(r.stdout).trim();
-		return out || null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Tries to resolve backlog directory via the globalStore machine config.
- * Only resolves when `projectRoot` is the git repository root (not a subdirectory),
- * so that `findBacklogRoot`'s walk-up correctly terminates at the git root.
- * Returns null if globalStore is not set, not in a git repo, or projectRoot is not the git root.
- */
-function resolveGlobalStoreBacklogDirectory(
-	projectRoot: string,
-	rootConfigPath: string,
-	rootConfigExists: boolean,
-	explicitSlot?: string,
-): BacklogDirectoryResolution | null {
-	const machine = readMachineConfig();
-	if (!machine.globalStore) return null;
-
-	// An explicit slot comes from a repo-root marker (`store: global` +
-	// `project_name`). The marker is an on-disk file that may be hand-edited or
-	// crafted, so validate it as a safe single path component before joining it
-	// into the store path — never trust it to be traversal-free.
-	let slot: string;
-	if (explicitSlot) {
-		if (!isSafeSlotName(explicitSlot)) return null;
-		slot = explicitSlot;
-	} else {
-		const gitRoot = resolveGitRootSync(projectRoot);
-		if (!gitRoot) return null;
-
-		// Only resolve when the caller is asking about the git root itself,
-		// not a subdirectory inside it. This ensures findBacklogRoot's walk-up
-		// terminates at the correct level.
-		if (gitRoot !== projectRoot) return null;
-
-		slot = basename(gitRoot);
-	}
-	const backlogPath = join(machine.globalStore, slot);
-	const configPath = join(backlogPath, DEFAULT_FILES.CONFIG);
-	return {
-		projectRoot,
-		backlogDir: slot,
-		backlogPath,
-		source: "custom",
-		configPath,
-		configSource: "folder",
-		rootConfigPath,
-		rootConfigExists,
-	};
-}
-
 export function normalizeProjectBacklogDirectory(value: string | null | undefined): string | null {
 	const trimmed = String(value ?? "").trim();
 	if (!trimmed) {
@@ -269,19 +200,6 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 
 	if (rootConfigExists) {
 		const metadata = readRootBacklogConfigMetadata(rootConfigPath);
-		// A repo-root marker that declares `store: global` is self-describing:
-		// its task data lives in the global-store slot named after the project,
-		// independent of any registry path. The marker's project_name IS the
-		// slot, so a repo can be named independently of its directory.
-		if (metadata?.store === "global" && metadata.projectName) {
-			const resolved = resolveGlobalStoreBacklogDirectory(
-				projectRoot,
-				rootConfigPath,
-				rootConfigExists,
-				metadata.projectName,
-			);
-			if (resolved) return resolved;
-		}
 		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
 		if (metadata && configuredBacklogDir) {
 			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
@@ -318,25 +236,7 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 				};
 			}
 
-			return (
-				resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
-					projectRoot,
-					backlogDir: null,
-					backlogPath: null,
-					source: null,
-					configPath: null,
-					configSource: null,
-					rootConfigPath,
-					rootConfigExists,
-				}
-			);
-		}
-	}
-
-	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
-	if (!builtIn) {
-		return (
-			resolveGlobalStoreBacklogDirectory(projectRoot, rootConfigPath, rootConfigExists) ?? {
+			return {
 				projectRoot,
 				backlogDir: null,
 				backlogPath: null,
@@ -345,8 +245,22 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 				configSource: null,
 				rootConfigPath,
 				rootConfigExists,
-			}
-		);
+			};
+		}
+	}
+
+	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+	if (!builtIn) {
+		return {
+			projectRoot,
+			backlogDir: null,
+			backlogPath: null,
+			source: null,
+			configPath: null,
+			configSource: null,
+			rootConfigPath,
+			rootConfigExists,
+		};
 	}
 
 	const folderConfigPath = resolveFolderConfigPath(builtIn.backlogPath);

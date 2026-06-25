@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { $ } from "bun";
 import { clearProjectRootCache } from "../utils/find-backlog-root.ts";
 import { clearMachineConfigCache } from "../utils/machine-config.ts";
@@ -35,6 +35,14 @@ async function dirExists(path: string): Promise<boolean> {
 	try {
 		const s = await stat(path);
 		return s.isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		return (await stat(path)).isFile();
 	} catch {
 		return false;
 	}
@@ -79,72 +87,38 @@ afterEach(async () => {
 	await rm(TMP_BASE, { recursive: true, force: true });
 });
 
-describe("initializeProject — globalStore branch", () => {
-	it("(a) creates backlog structure in <globalStore>/<basename(gitRoot)>/", async () => {
+describe("initializeProject — global-store (repoless) creation", () => {
+	// Projects are global-store entities keyed by name (no repo tagging). The
+	// slot is set explicitly via setGlobalStoreSlot and init runs repoless: the
+	// slot is both project root and data dir, with a flat config.yml + tasks/.
+	function makeGlobalCore(name: string): { core: Core; slotPath: string } {
+		const slotPath = join(globalStoreDir, name);
+		const core = new Core(slotPath);
+		core.filesystem.setGlobalStoreSlot(slotPath, name);
+		return { core, slotPath };
+	}
+
+	it("(a) creates a flat slot at <globalStore>/<projectName>/", async () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
-		clearProjectRootCache();
+		const { core, slotPath } = makeGlobalCore("Alpha");
+		await initializeProject(core, makeInitOptions({ projectName: "Alpha", repoless: true, filesystemOnly: true }));
 
-		const core = new Core(repoDir);
-		await initializeProject(core, makeInitOptions());
-
-		const slotName = basename(repoDir);
-		const expectedSlot = join(globalStoreDir, slotName);
-		const tasksDir = join(expectedSlot, "tasks");
-
-		expect(await dirExists(expectedSlot)).toBe(true);
-		expect(await dirExists(tasksDir)).toBe(true);
+		expect(await dirExists(slotPath)).toBe(true);
+		expect(await dirExists(join(slotPath, "tasks"))).toBe(true);
+		// Flat layout: config.yml at the slot root, no nested backlog/ dir.
+		expect(await fileExists(join(slotPath, "config.yml"))).toBe(true);
+		expect(await dirExists(join(slotPath, "backlog"))).toBe(false);
 	});
 
-	it("(b) does NOT create backlog/ directory in the code repo", async () => {
+	it("(b) writes no repo-root marker (projects are not tagged to repos)", async () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
-		clearProjectRootCache();
+		const { core } = makeGlobalCore("Beta");
+		await initializeProject(core, makeInitOptions({ projectName: "Beta", repoless: true, filesystemOnly: true }));
 
-		const core = new Core(repoDir);
-		await initializeProject(core, makeInitOptions());
-
-		const localBacklog = join(repoDir, "backlog");
-		expect(await dirExists(localBacklog)).toBe(false);
-	});
-
-	it("(c) global init writes only the repo-root marker, no in-repo backlog/ dir", async () => {
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		const core = new Core(repoDir);
-		await initializeProject(core, makeInitOptions());
-
-		// The repo is self-describing via a backlog.config.yml marker, but task
-		// data lives in the global store — so no in-repo backlog/ dir is created.
+		// The code repo is left completely untouched.
 		const status = await $`git -C ${repoDir} status --porcelain`.text();
-		expect(status.includes("backlog/")).toBe(false);
-		expect(status.includes("backlog.config.yml")).toBe(true);
-	});
-
-	it("(d) throws when slot already exists and is non-empty", async () => {
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		// Pre-populate the slot
-		const slotName = basename(repoDir);
-		const existingSlot = join(globalStoreDir, slotName);
-		await mkdir(join(existingSlot, "tasks"), { recursive: true });
-		await writeFile(join(existingSlot, "tasks", "task-1.md"), "# Task 1\n");
-
-		const core = new Core(repoDir);
-		await expect(initializeProject(core, makeInitOptions())).rejects.toThrow(/Global store slot already exists/);
-	});
-
-	it("(e) throws when globalStore directory does not exist", async () => {
-		const missingStoreDir = join(TMP_BASE, "does-not-exist");
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${missingStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		const core = new Core(repoDir);
-		await expect(initializeProject(core, makeInitOptions())).rejects.toThrow(/Global store directory does not exist/);
+		expect(status.trim()).toBe("");
 	});
 });

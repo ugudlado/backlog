@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, relative } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -7,9 +7,9 @@ import {
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
-import { DEFAULT_FILES, DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { isSafeSlotName, normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import { readMachineConfig } from "../utils/machine-config.ts";
 import type { Core } from "./backlog.ts";
 
@@ -42,22 +42,6 @@ function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): 
 	return relative(projectRoot, backlogPath).startsWith("..");
 }
 
-/**
- * Write the repo-root marker for a global-store project. The repo's own
- * `backlog/` directory does not exist in global mode (data lives in the
- * slot), so this marker is the only thing at the repo root that identifies
- * it as a Backlog project and names its global-store slot.
- */
-async function writeGlobalStoreMarker(projectRoot: string, projectName: string): Promise<void> {
-	// The name is interpolated into a quoted YAML value AND used as the slot dir
-	// name, so reject anything that could break out of the quotes or traverse.
-	if (!isSafeSlotName(projectName)) {
-		throw new Error(`Invalid project name for global-store slot: ${projectName}`);
-	}
-	const markerPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
-	await Bun.write(markerPath, `project_name: "${projectName}"\nstore: "global"\n`);
-}
-
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
@@ -79,6 +63,12 @@ export interface InitializeProjectOptions {
 	agentInstructions?: AgentInstructionFile[];
 	installClaudeAgent?: boolean;
 	filesystemOnly?: boolean;
+	/**
+	 * Create a repo-less global-store project: the FileSystem is already pointed
+	 * at the flat slot via setGlobalStoreSlot, and there is no repo to mark.
+	 * Forces the global-store layout and skips the repo-root marker.
+	 */
+	repoless?: boolean;
 	advancedConfig?: {
 		checkActiveBranches?: boolean;
 		remoteOperations?: boolean;
@@ -141,6 +131,7 @@ export async function initializeProject(
 		advancedConfig = {},
 		existingConfig,
 		filesystemOnly = false,
+		repoless = false,
 	} = options;
 
 	const isReInitialization = !!existingConfig;
@@ -248,7 +239,7 @@ export async function initializeProject(
 	// Create structure and save config (id minted + workspace registered after save).
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
-	} else if (isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot)) {
+	} else if (repoless || isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot)) {
 		// GlobalStore branch: backlog directory is outside the project root.
 		// FileSystem was already resolved to the external slot by resolveBacklogDirectory.
 		// We just need to validate preconditions and create the structure.
@@ -263,12 +254,9 @@ export async function initializeProject(
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();
-		// Write a repo-root marker so the repo is self-describing: it names the
-		// project and records store=global. Resolution and the server can then
-		// learn "this repo's tasks live in the global store slot <project_name>"
-		// from the repo itself, without a registry path. Minimal by design — the
-		// full config lives in the slot's config.yml.
-		await writeGlobalStoreMarker(projectRoot, config.projectName);
+		// No repo-root marker: projects are global-store entities addressed by
+		// name (current pointer / --project), not tagged to repos. The scan finds
+		// the slot via <globalStore>/<name>/config.yml.
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
 		const inferredBacklogDirectorySource = normalizedBacklogDirectory
@@ -318,7 +306,7 @@ export async function initializeProject(
 	// whole point of the repo-root marker. We still set the current pointer to
 	// the new project's id so it becomes active. Local-mode projects keep their
 	// registry path, which is their only address.
-	const isGlobalStore = isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot);
+	const isGlobalStore = repoless || isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot);
 	try {
 		if (isGlobalStore) {
 			// Mark the new project current using the SAME id the global-store scan

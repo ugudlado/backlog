@@ -52,47 +52,24 @@ afterEach(async () => {
 	await rm(TMP_BASE, { recursive: true, force: true });
 });
 
-describe("findBacklogRoot — globalStore branch", () => {
-	it("returns the git root when globalStore is set and no in-repo backlog exists", async () => {
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		const result = await findBacklogRoot(repoDir);
-		expect(result).toBe(repoDir);
-	});
-
-	it("returns the git root when called from a subdirectory of the repo", async () => {
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		const subdir = join(repoDir, "src", "components");
-		await mkdir(subdir, { recursive: true });
-
-		const result = await findBacklogRoot(subdir);
-		expect(result).toBe(repoDir);
-	});
-
-	it("local backlog still wins over globalStore when both exist", async () => {
-		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
-		clearMachineConfigCache();
-		clearProjectRootCache();
-
-		// Create local backlog with config
+describe("findBacklogRoot — in-repo (local) resolution", () => {
+	// Model B: repos are not tagged to global projects. A repo with no in-repo
+	// backlog/ resolves to nothing, even when globalStore is set — global
+	// projects are selected by name/current, not discovered from a repo.
+	it("finds the repo via its local backlog/ dir", async () => {
 		await mkdir(join(repoDir, "backlog"), { recursive: true });
 		await writeFile(join(repoDir, "backlog", "config.yml"), "project_name: local\n");
+		clearProjectRootCache();
 
 		const result = await findBacklogRoot(repoDir);
-		// Should still find repoDir, but via the local backlog path (not globalStore)
 		expect(result).toBe(repoDir);
 	});
 
-	it("returns null when globalStore not set and no in-repo backlog (existing behavior)", async () => {
-		// No machine config written — globalStore not set
+	it("returns null for a repo with no in-repo backlog, even when globalStore is set", async () => {
+		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+		clearMachineConfigCache();
 		clearProjectRootCache();
 
-		// repoDir has no backlog/ and no globalStore
 		const result = await findBacklogRoot(repoDir);
 		expect(result).toBeNull();
 	});

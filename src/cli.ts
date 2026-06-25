@@ -387,7 +387,13 @@ async function requireProjectRoot(): Promise<string> {
 
 	const { resolveCliProjectRoot } = await import("./utils/workspaces-index.ts");
 	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
-	const resolved = await resolveCliProjectRoot(runtimeCwd.cwd);
+	const { isSafeSlotName } = await import("./utils/backlog-directory.ts");
+	const projectName = program.opts().project as string | undefined;
+	if (projectName && !isSafeSlotName(projectName)) {
+		console.error(`Invalid --project name: "${projectName}". It must not contain path separators or '..'.`);
+		process.exit(1);
+	}
+	const resolved = await resolveCliProjectRoot(runtimeCwd.cwd, projectName);
 	if (!resolved.ok) {
 		if (resolved.kind === "ambiguous") {
 			console.error(
@@ -543,7 +549,8 @@ const program = new Command();
 program
 	.name("backlog")
 	.description("Backlog.md - Project management CLI")
-	.version(version, "-v, --version", "display version number");
+	.version(version, "-v, --version", "display version number")
+	.option("--project <name>", "operate on the named global-store project (overrides the current selection)");
 
 program
 	.command("init [projectName]")

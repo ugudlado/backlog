@@ -1,10 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import lockfile from "proper-lockfile";
-import { DEFAULT_FILES } from "../constants/index.ts";
-import { parseBacklogConfigMetadata, resolveBacklogDirectory } from "./backlog-directory.ts";
+import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import { findBacklogRoot } from "./find-backlog-root.ts";
 
 /**
@@ -380,21 +379,6 @@ function backlogConfiguredAtProjectRoot(projectRoot: string): boolean {
 }
 
 /**
- * True when the repo-root marker declares `store: global` — i.e. this repo's
- * tasks live in the global store and it is discovered by scanning, not by a
- * registry path.
- */
-function isGlobalStoreProjectRoot(projectRoot: string): boolean {
-	try {
-		const markerPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
-		if (!existsSync(markerPath)) return false;
-		return parseBacklogConfigMetadata(readFileSync(markerPath, "utf8")).store === "global";
-	} catch {
-		return false;
-	}
-}
-
-/**
  * An entry is a usable backlog project if config resolves at its project
  * root, OR — for a `data:` entry — at the data location (where config lives
  * for a data-overridden workspace). Without this, cwd matching would reject
@@ -541,13 +525,6 @@ export async function autoRegisterDiscoveredRepo(projectRoot: string): Promise<v
 	if (!backlogConfiguredAtProjectRoot(projectRoot)) {
 		return;
 	}
-	// Global-store projects are discovered by scanning <globalStore>/* and must
-	// NOT get a registry path — the repo-root marker + scan are their source of
-	// truth. Registering a path here would make them appear twice and reintroduce
-	// the path coupling the marker exists to remove.
-	if (isGlobalStoreProjectRoot(projectRoot)) {
-		return;
-	}
 	// Dynamic import to avoid a static cycle (workspace-registration imports from this file).
 	const { registerWorkspaceAtPath } = await import("./workspace-registration.ts");
 	try {
@@ -612,8 +589,31 @@ export async function resolveBrowserProjectRoot(cwd: string): Promise<ResolveCli
  * Order: cwd-registered match(es) → legacy walk-up discovery (with auto-register).
  * (BACK-466 removed the `type: global` fallback along with the `--global` flag.)
  */
-export async function resolveCliProjectRoot(cwd: string): Promise<ResolveCliProjectRootResult> {
+export async function resolveCliProjectRoot(cwd: string, projectName?: string): Promise<ResolveCliProjectRootResult> {
 	const index = await readWorkspacesIndex();
+
+	// Global-store resolution (the primary model): an explicit `--project <name>`
+	// wins, else the `current` pointer. The slot is both project root and data
+	// dir. Repos are not tagged to projects — selection is by name/current.
+	const { scanGlobalStoreProjects } = await import("./global-store-scan.ts");
+	const scanned = await scanGlobalStoreProjects();
+	if (projectName) {
+		const slot = scanned.find((p) => p.name === projectName || p.id === projectName);
+		if (!slot) {
+			return { ok: false, kind: "not_found" };
+		}
+		return { ok: true, projectRoot: slot.slotPath, dataDir: slot.slotPath };
+	}
+	if (scanned.length > 0) {
+		const slot = scanned.find((p) => p.id === index.current) ?? scanned[0];
+		if (slot) {
+			return { ok: true, projectRoot: slot.slotPath, dataDir: slot.slotPath };
+		}
+	}
+
+	// Fallback: in-repo (local-mode) resolution via cwd match or walk-up. Kept so
+	// local projects and the existing test suite keep working when no global
+	// store is configured.
 	const registered = resolveRegisteredWorkspacesOnly(cwd, index);
 	if (registered.ok || registered.kind === "ambiguous") {
 		return registered;

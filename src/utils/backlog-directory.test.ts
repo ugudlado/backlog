@@ -53,27 +53,26 @@ afterEach(async () => {
 	await rm(TMP_BASE, { recursive: true, force: true });
 });
 
-describe("resolveBacklogDirectory — globalStore branch", () => {
-	it("(a) no machine config → existing behavior unchanged (regression)", () => {
-		// No config.yml in machineConfigDir → globalStore branch should not fire
+describe("resolveBacklogDirectory — in-repo (local) resolution", () => {
+	it("(a) no machine config → no resolution (regression)", () => {
 		const resolution = resolveBacklogDirectory(repoDir);
 		expect(resolution.backlogPath).toBeNull();
 		expect(resolution.configPath).toBeNull();
 		expect(resolution.source).toBeNull();
 	});
 
-	it("(b) globalStore set, no in-repo backlog, projectRoot in a git repo → returns external slot paths", async () => {
+	it("(b) globalStore set, no in-repo backlog → no resolution (repos are not tagged to projects)", async () => {
+		// Model B: a repo with no in-repo backlog/ resolves to nothing even when
+		// globalStore is set. Global projects are addressed by name/current,
+		// resolved at the CLI layer (resolveCliProjectRoot), not from a repo.
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 
 		const resolution = resolveBacklogDirectory(repoDir);
 
-		const repoBasename = repoDir.split("/").at(-1) ?? "";
-		const expectedBacklogPath = join(globalStoreDir, repoBasename);
-		expect(resolution.backlogPath).toBe(expectedBacklogPath);
-		expect(resolution.configPath).toBe(join(expectedBacklogPath, "config.yml"));
-		expect(resolution.source).toBe("custom");
-		expect(resolution.projectRoot).toBe(repoDir);
+		expect(resolution.backlogPath).toBeNull();
+		expect(resolution.configPath).toBeNull();
+		expect(resolution.source).toBeNull();
 	});
 
 	it("(c) globalStore set BUT local backlog/ exists → local wins", async () => {

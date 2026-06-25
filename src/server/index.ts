@@ -1609,12 +1609,65 @@ export class BacklogServer {
 		}
 	}
 
+	/**
+	 * Create a new global-store project keyed by name. The slot
+	 * `<globalStore>/<name>/` is both project root and data dir, so there is no
+	 * repo and no marker — the scan discovers it from its config.yml alone.
+	 */
+	private async createGlobalProject(name: string): Promise<Response> {
+		const { readMachineConfig } = await import("../utils/machine-config.ts");
+		const { isSafeSlotName } = await import("../utils/backlog-directory.ts");
+		const { globalStore } = readMachineConfig();
+		if (!globalStore) {
+			return Response.json(
+				{ error: "globalStore is not configured. Set it in ~/.config/backlog/config.yml." },
+				{ status: 400 },
+			);
+		}
+		if (!isSafeSlotName(name)) {
+			return Response.json(
+				{ error: `Invalid project name: "${name}". It must not contain path separators or '..'.` },
+				{ status: 400 },
+			);
+		}
+		const slotPath = join(globalStore, name);
+		// The slot IS the project root here (no repo), so init's repo-vs-slot
+		// branch detection doesn't apply — guard against an existing project
+		// directly.
+		if (await pathExistsAsDirectory(slotPath)) {
+			return Response.json({ error: `A project named "${name}" already exists.` }, { status: 409 });
+		}
+		const initCore = new Core(slotPath);
+		initCore.filesystem.setGlobalStoreSlot(slotPath, name);
+		await initializeProject(initCore, {
+			projectName: name,
+			integrationMode: "none",
+			filesystemOnly: true,
+			repoless: true,
+		});
+		// Make the new project current so the UI's "switch after add" works.
+		// Look up the freshly-created slot by its path to get the scan id.
+		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
+		const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+		const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);
+		if (created) await setCurrentWorkspaceId(created.id);
+		const payload = await this.listWorkspacesPayload();
+		return Response.json({ ...payload, addedId: created?.id ?? null });
+	}
+
 	private async handleAddWorkspace(req: Request): Promise<Response> {
 		try {
 			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+			// Create a new global-store project by name (no path, no repo): the
+			// preferred "add a project" path. A repo-less slot needs no marker — it
+			// is found by the scan via <globalStore>/<name>/config.yml.
+			const name = typeof body.name === "string" ? body.name.trim() : "";
+			if (name) {
+				return await this.createGlobalProject(name);
+			}
 			const raw = typeof body.path === "string" ? body.path.trim() : "";
 			if (!raw) {
-				return Response.json({ error: "path is required" }, { status: 400 });
+				return Response.json({ error: "name or path is required" }, { status: 400 });
 			}
 			const projectRoot = toAbsoluteProjectRoot(raw);
 			try {

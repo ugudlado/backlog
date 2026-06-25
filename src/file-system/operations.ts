@@ -1100,9 +1100,6 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
-				case "store":
-					if (value.replace(/['"]/g, "") === "global") config.store = "global";
-					break;
 				case "suppress_legacy_folder_warning":
 				case "suppressLegacyFolderWarning":
 					config.suppressLegacyFolderWarning = value.toLowerCase() === "true";
@@ -1166,7 +1163,6 @@ ${description || `Milestone: ${title}`}`,
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
-			...(config.store ? [`store: "${config.store}"`] : []),
 			...(typeof config.suppressLegacyFolderWarning === "boolean"
 				? [`suppress_legacy_folder_warning: ${config.suppressLegacyFolderWarning}`]
 				: []),

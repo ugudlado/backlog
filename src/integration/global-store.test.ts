@@ -80,17 +80,15 @@ describe("globalStore end-to-end integration", () => {
 		const slotStat = await stat(join(slotPath, "tasks")).catch(() => null);
 		expect(slotStat?.isDirectory()).toBe(true);
 
-		// Code repo should NOT have an in-repo backlog/ directory (data is external)...
+		// The code repo is left completely untouched: no in-repo backlog/ dir and
+		// no marker (repos are not tagged to projects in the global-store model).
 		const backlogStat = await stat(join(repoDir, "backlog")).catch(() => null);
 		expect(backlogStat).toBeNull();
-
-		// ...but it SHOULD carry the self-describing repo-root marker.
 		const markerStat = await stat(join(repoDir, "backlog.config.yml")).catch(() => null);
-		expect(markerStat?.isFile()).toBe(true);
+		expect(markerStat).toBeNull();
 
 		const status = await $`git -C ${repoDir} status --porcelain`.text();
-		expect(status.includes("backlog/")).toBe(false);
-		expect(status.includes("backlog.config.yml")).toBe(true);
+		expect(status.trim()).toBe("");
 	});
 
 	it("(b) task create and list operate against external slot", async () => {
