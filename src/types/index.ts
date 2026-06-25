@@ -246,6 +246,12 @@ export interface BacklogConfig {
 	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 	/** Project-relative backlog folder when config is stored at project root in backlog.config.yml. */
 	backlogDirectory?: string;
+	/**
+	 * Marks that this project's task data lives in the machine-configured global
+	 * store. Recorded in the repo-root marker so the repo is self-describing —
+	 * no registry path needed.
+	 */
+	store?: "global";
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */
 	onStatusChange?: string;
 	/** Suppress the startup warning about legacy backlog/drafts/, backlog/docs/, backlog/decisions/ folders. */

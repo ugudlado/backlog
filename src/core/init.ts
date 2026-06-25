@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { isAbsolute, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -7,7 +7,7 @@ import {
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
-import { DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
+import { DEFAULT_FILES, DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import { readMachineConfig } from "../utils/machine-config.ts";
@@ -40,6 +40,17 @@ async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
 function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): boolean {
 	if (!isAbsolute(backlogPath)) return false;
 	return relative(projectRoot, backlogPath).startsWith("..");
+}
+
+/**
+ * Write the repo-root marker for a global-store project. The repo's own
+ * `backlog/` directory does not exist in global mode (data lives in the
+ * slot), so this marker is the only thing at the repo root that identifies
+ * it as a Backlog project and names its global-store slot.
+ */
+async function writeGlobalStoreMarker(projectRoot: string, projectName: string): Promise<void> {
+	const markerPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+	await Bun.write(markerPath, `project_name: "${projectName}"\nstore: "global"\n`);
 }
 
 export const MCP_SERVER_NAME = "backlog";
@@ -247,6 +258,12 @@ export async function initializeProject(
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();
+		// Write a repo-root marker so the repo is self-describing: it names the
+		// project and records store=global. Resolution and the server can then
+		// learn "this repo's tasks live in the global store slot <project_name>"
+		// from the repo itself, without a registry path. Minimal by design — the
+		// full config lives in the slot's config.yml.
+		await writeGlobalStoreMarker(projectRoot, config.projectName);
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
 		const inferredBacklogDirectorySource = normalizedBacklogDirectory
@@ -290,12 +307,30 @@ export async function initializeProject(
 	// Mints + persists a stable id into the project config if missing.
 	// Best-effort: if the home directory isn't writable (sandboxed envs,
 	// read-only setups), init still succeeds.
+	//
+	// Global-store projects are discovered by scanning <globalStore>/* (the slot
+	// IS the source of truth), so they do NOT get a registry path — that's the
+	// whole point of the repo-root marker. We still set the current pointer to
+	// the new project's id so it becomes active. Local-mode projects keep their
+	// registry path, which is their only address.
+	const isGlobalStore = isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot);
 	try {
-		const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
-		const { entry } = await registerWorkspaceAtPath(projectRoot, { data: workspaceDataDir });
-		if (entry.id) {
+		if (isGlobalStore) {
+			// Mark the new project current using the SAME id the global-store scan
+			// reports: the slot's config id if present, else the slot dir name.
+			// Keeping these in sync lets the persisted `current` pointer match a
+			// scanned project across restarts.
+			const cfgId = (await core.filesystem.loadConfig())?.id;
+			const id = cfgId ?? basename(core.filesystem.backlogDir);
 			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
-			await setCurrentWorkspaceId(entry.id);
+			await setCurrentWorkspaceId(id);
+		} else {
+			const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
+			const { entry } = await registerWorkspaceAtPath(projectRoot, { data: workspaceDataDir });
+			if (entry.id) {
+				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+				await setCurrentWorkspaceId(entry.id);
+			}
 		}
 	} catch (err) {
 		console.warn(`Warning: could not register workspace in machine index: ${(err as Error).message}`);

@@ -1571,20 +1571,31 @@ export class BacklogServer {
 	}> {
 		const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
 		const { readWorkspacesIndex } = await import("../utils/workspaces-index.ts");
+		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
 		const entries = await readWorkspacesWithIds();
 		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
 		const persisted = (await readWorkspacesIndex()).current;
-		const persistedHit = persisted ? withIds.find((e) => e.id === persisted) : undefined;
+
+		// Global-store projects are discovered by scanning <globalStore>/* — they
+		// need no registry path. Merge them with registry (local-mode) workspaces,
+		// preferring the scan when ids collide so a re-init'd global project does
+		// not appear twice.
+		const scanned = await scanGlobalStoreProjects();
+		const all = new Map<string, string>(withIds.map((e) => [e.id, toAbsoluteProjectRoot(e.path)]));
+		for (const p of scanned) all.set(p.id, p.slotPath);
+
+		const workspaces = [...all.entries()].map(([id, path]) => ({ id, path }));
+		const persistedHit = persisted && all.has(persisted) ? persisted : undefined;
 		const currentPath = toAbsoluteProjectRoot(this.core.filesystem.rootDir);
-		const memoryHit = withIds.find((e) => toAbsoluteProjectRoot(e.path) === currentPath);
+		const memoryHit = workspaces.find((w) => toAbsoluteProjectRoot(w.path) === currentPath)?.id;
 		return {
-			workspaces: withIds.map((e) => ({ id: e.id, path: toAbsoluteProjectRoot(e.path) })),
+			workspaces,
 			// The workspace the server actually rendered wins over the persisted
 			// `current:` pointer. Persisted can drift from what's on screen (cwd
 			// resolution / external switches rewrite it without reloading the
 			// server), and trusting it made the dropdown highlight jump to a
 			// different workspace the moment it was opened.
-			currentId: memoryHit?.id ?? persistedHit?.id ?? null,
+			currentId: memoryHit ?? persistedHit ?? null,
 		};
 	}
 
@@ -1651,10 +1662,32 @@ export class BacklogServer {
 				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
 				const entries = await readWorkspacesWithIds();
 				const target = entries.find((e) => e.id === id);
-				if (!target) {
-					return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+
+				// Resolve the switch target's project root and data dir. A registry
+				// (local-mode) entry uses its repo path + optional data override; a
+				// scanned global-store project uses its slot dir as BOTH project root
+				// and data dir (no registry path needed).
+				let targetPath: string;
+				let resolvedData: string | undefined;
+				if (target) {
+					targetPath = toAbsoluteProjectRoot(target.path);
+					const { isAbsolute, resolve: resolvePath } = await import("node:path");
+					const targetData = (target as { data?: string }).data;
+					resolvedData = targetData
+						? isAbsolute(targetData)
+							? targetData
+							: resolvePath(targetPath, targetData)
+						: undefined;
+				} else {
+					const { findGlobalStoreProject } = await import("../utils/global-store-scan.ts");
+					const slot = await findGlobalStoreProject(id);
+					if (!slot) {
+						return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+					}
+					targetPath = slot.slotPath;
+					resolvedData = slot.slotPath;
 				}
-				const targetPath = toAbsoluteProjectRoot(target.path);
+
 				if (!(await pathExistsAsDirectory(targetPath))) {
 					return Response.json({ error: `Workspace path no longer exists: ${targetPath}` }, { status: 410 });
 				}
@@ -1666,13 +1699,6 @@ export class BacklogServer {
 					// empty <repo>/backlog and the UI shows the empty-registry
 					// screen ("No Backlog.md projects yet").
 					const { setActiveWorkspaceDataDir } = await import("../utils/active-workspace.ts");
-					const { isAbsolute, resolve: resolvePath } = await import("node:path");
-					const targetData = (target as { data?: string }).data;
-					const resolvedData = targetData
-						? isAbsolute(targetData)
-							? targetData
-							: resolvePath(targetPath, targetData)
-						: undefined;
 					setActiveWorkspaceDataDir(targetPath, resolvedData);
 
 					// Clear subscription and cached services before reinitializing so

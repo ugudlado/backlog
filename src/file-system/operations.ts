@@ -126,6 +126,19 @@ export class FileSystem {
 		}
 	}
 
+	/**
+	 * Point the FileSystem at an absolute global-store slot. Used by init when
+	 * the slot is keyed by project name (which the relative-only
+	 * `setBacklogDirectory` cannot express). `slotName` is recorded as the
+	 * directory name for display/marker purposes.
+	 */
+	setGlobalStoreSlot(absoluteSlotPath: string, slotName: string): void {
+		this.resolvedBacklogDirName = slotName;
+		this.resolvedBacklogDir = absoluteSlotPath;
+		this.resolvedConfigPath = join(absoluteSlotPath, DEFAULT_FILES.CONFIG);
+		this.configSource = "folder";
+	}
+
 	setConfigLocation(configSource: BacklogConfigSource): void {
 		this.configSource = configSource;
 		this.resolvedConfigPath =
@@ -1087,6 +1100,9 @@ ${description || `Milestone: ${title}`}`,
 				case "backlogDirectory":
 					config.backlogDirectory = value.replace(/['"]/g, "");
 					break;
+				case "store":
+					if (value.replace(/['"]/g, "") === "global") config.store = "global";
+					break;
 				case "suppress_legacy_folder_warning":
 				case "suppressLegacyFolderWarning":
 					config.suppressLegacyFolderWarning = value.toLowerCase() === "true";
@@ -1150,6 +1166,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.store ? [`store: "${config.store}"`] : []),
 			...(typeof config.suppressLegacyFolderWarning === "boolean"
 				? [`suppress_legacy_folder_warning: ${config.suppressLegacyFolderWarning}`]
 				: []),

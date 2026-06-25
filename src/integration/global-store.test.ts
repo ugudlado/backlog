@@ -9,12 +9,12 @@
  *   (a) backlog init creates external slot, code repo stays clean
  *   (b) task create/list operate against external slot
  *   (d) missing globalStore dir → clean error message
- *   (e) backlog init --global registers workspace in machine index
+ *   (e) backlog init stores NO registry path; project is scan-discoverable + current
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { $ } from "bun";
 import { readWorkspacesIndex } from "../utils/workspaces-index.ts";
 
@@ -69,28 +69,32 @@ afterEach(async () => {
 
 describe("globalStore end-to-end integration", () => {
 	it("(a) backlog init creates external slot and leaves code repo clean", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
+		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
 			.quiet();
 
-		// Slot should be created in globalStore
-		const slotPath = join(globalStoreDir, basename(repoDir));
+		// Slot is keyed by project name (not folder name).
+		const slotPath = join(globalStoreDir, "E2E Project");
 		const slotStat = await stat(join(slotPath, "tasks")).catch(() => null);
 		expect(slotStat?.isDirectory()).toBe(true);
 
-		// Code repo should NOT have backlog/ directory
+		// Code repo should NOT have an in-repo backlog/ directory (data is external)...
 		const backlogStat = await stat(join(repoDir, "backlog")).catch(() => null);
 		expect(backlogStat).toBeNull();
 
-		// git status should be clean (no tracked backlog files)
+		// ...but it SHOULD carry the self-describing repo-root marker.
+		const markerStat = await stat(join(repoDir, "backlog.config.yml")).catch(() => null);
+		expect(markerStat?.isFile()).toBe(true);
+
 		const status = await $`git -C ${repoDir} status --porcelain`.text();
-		expect(status.includes("backlog")).toBe(false);
+		expect(status.includes("backlog/")).toBe(false);
+		expect(status.includes("backlog.config.yml")).toBe(true);
 	});
 
 	it("(b) task create and list operate against external slot", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
+		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
@@ -108,8 +112,8 @@ describe("globalStore end-to-end integration", () => {
 		const listResult = await $`bun run ${CLI_PATH} task list --plain`.cwd(repoDir).env(cliEnv()).nothrow().text();
 		expect(listResult).toContain("Integration test task");
 
-		// Verify task file is in external slot, not in code repo
-		const slotTasksDir = join(globalStoreDir, basename(repoDir), "tasks");
+		// Verify task file is in external slot (keyed by project name), not in code repo
+		const slotTasksDir = join(globalStoreDir, "E2E Project", "tasks");
 		const slotTaskFiles = await readdir(slotTasksDir);
 		expect(slotTaskFiles.some((f) => f.endsWith(".md"))).toBe(true);
 
@@ -125,7 +129,7 @@ describe("globalStore end-to-end integration", () => {
 		await writeFile(join(badMachineConfigDir, "config.yml"), `globalStore: ${missingDir}\n`);
 
 		const badEnv = { ...cliEnv(), BACKLOG_MACHINE_CONFIG_DIR: badMachineConfigDir };
-		const result = await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
+		const result = await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
 			.cwd(repoDir)
 			.env(badEnv)
 			.nothrow();
@@ -134,15 +138,30 @@ describe("globalStore end-to-end integration", () => {
 		expect(output).toMatch(/Global store directory does not exist/i);
 	});
 
-	it("(e) backlog init --global registers workspace in machine index", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --global --integration-mode none`
+	it("(e) backlog init stores NO registry path; project is scan-discoverable + current", async () => {
+		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
 			.cwd(repoDir)
 			.env(cliEnv())
 			.nothrow()
 			.quiet();
 
+		// Global projects carry no registry path — they are found by scanning the
+		// global store. So the registry must have no workspace entry for this repo...
 		const index = await readWorkspacesIndex(machineConfigDir);
 		const registered = index.workspaces.some((w) => w.path === repoDir);
-		expect(registered).toBe(true);
+		expect(registered).toBe(false);
+
+		// ...the project is discoverable via the global-store scan (point the
+		// in-process machine-config reader at the test's isolated dir)...
+		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
+		clearMachineConfigCache();
+		const scanned = await scanGlobalStoreProjects();
+		const hit = scanned.find((p) => p.name === "E2E Project");
+		expect(hit).toBeDefined();
+
+		// ...and it is marked current (by the slot's scan id) so it serves on start.
+		expect(index.current).toBe(hit?.id);
 	});
 });

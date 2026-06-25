@@ -18,9 +18,12 @@ export interface BacklogDirectoryResolution {
 	rootConfigExists: boolean;
 }
 
-interface BacklogConfigMetadata {
+export interface BacklogConfigMetadata {
 	projectName: string | null;
 	backlogDirectory: string | null;
+	id: string | null;
+	/** Marker that this project's tasks live in the global store. */
+	store: "global" | null;
 }
 
 function directoryExists(path: string): boolean {
@@ -39,9 +42,16 @@ function fileExists(path: string): boolean {
 	}
 }
 
-function parseBacklogConfigMetadata(content: string): BacklogConfigMetadata {
+/**
+ * Parse the handful of scalar keys Backlog reads out of a `config.yml` /
+ * `backlog.config.yml`. Shared by resolution, the global-store scan, and the
+ * registry guard so there is one line-parser, not three.
+ */
+export function parseBacklogConfigMetadata(content: string): BacklogConfigMetadata {
 	let projectName: string | null = null;
 	let backlogDirectory: string | null = null;
+	let id: string | null = null;
+	let store: "global" | null = null;
 
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -59,13 +69,15 @@ function parseBacklogConfigMetadata(content: string): BacklogConfigMetadata {
 			.replace(/^['"]|['"]$/g, "");
 		if ((key === "project_name" || key === "projectName") && value) {
 			projectName = value;
-			continue;
-		}
-		if (key === "backlog_directory" || key === "backlogDirectory") {
+		} else if (key === "backlog_directory" || key === "backlogDirectory") {
 			backlogDirectory = normalizeProjectBacklogDirectory(value);
+		} else if (key === "id" && value) {
+			id = value;
+		} else if (key === "store" && value === "global") {
+			store = "global";
 		}
 	}
-	return { projectName, backlogDirectory };
+	return { projectName, backlogDirectory, id, store };
 }
 
 function readRootBacklogConfigMetadata(rootConfigPath: string): BacklogConfigMetadata | null {
@@ -161,19 +173,28 @@ function resolveGlobalStoreBacklogDirectory(
 	projectRoot: string,
 	rootConfigPath: string,
 	rootConfigExists: boolean,
+	explicitSlot?: string,
 ): BacklogDirectoryResolution | null {
 	const machine = readMachineConfig();
 	if (!machine.globalStore) return null;
 
-	const gitRoot = resolveGitRootSync(projectRoot);
-	if (!gitRoot) return null;
+	// An explicit slot comes from a repo-root marker (`store: global` +
+	// `project_name`). The repo names its own global-store slot, so we trust it
+	// and skip the git-root walk-up entirely — the marker IS the project root.
+	let slot: string;
+	if (explicitSlot) {
+		slot = explicitSlot;
+	} else {
+		const gitRoot = resolveGitRootSync(projectRoot);
+		if (!gitRoot) return null;
 
-	// Only resolve when the caller is asking about the git root itself,
-	// not a subdirectory inside it. This ensures findBacklogRoot's walk-up
-	// terminates at the correct level.
-	if (gitRoot !== projectRoot) return null;
+		// Only resolve when the caller is asking about the git root itself,
+		// not a subdirectory inside it. This ensures findBacklogRoot's walk-up
+		// terminates at the correct level.
+		if (gitRoot !== projectRoot) return null;
 
-	const slot = basename(gitRoot);
+		slot = basename(gitRoot);
+	}
 	const backlogPath = join(machine.globalStore, slot);
 	const configPath = join(backlogPath, DEFAULT_FILES.CONFIG);
 	return {
@@ -233,6 +254,19 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 
 	if (rootConfigExists) {
 		const metadata = readRootBacklogConfigMetadata(rootConfigPath);
+		// A repo-root marker that declares `store: global` is self-describing:
+		// its task data lives in the global-store slot named after the project,
+		// independent of any registry path. The marker's project_name IS the
+		// slot, so a repo can be named independently of its directory.
+		if (metadata?.store === "global" && metadata.projectName) {
+			const resolved = resolveGlobalStoreBacklogDirectory(
+				projectRoot,
+				rootConfigPath,
+				rootConfigExists,
+				metadata.projectName,
+			);
+			if (resolved) return resolved;
+		}
 		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
 		if (metadata && configuredBacklogDir) {
 			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);

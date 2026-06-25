@@ -108,7 +108,7 @@ describe("initializeProject — globalStore branch", () => {
 		expect(await dirExists(localBacklog)).toBe(false);
 	});
 
-	it("(c) git status in the code repo shows no new files after init", async () => {
+	it("(c) global init writes only the repo-root marker, no in-repo backlog/ dir", async () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 		clearProjectRootCache();
@@ -116,10 +116,11 @@ describe("initializeProject — globalStore branch", () => {
 		const core = new Core(repoDir);
 		await initializeProject(core, makeInitOptions());
 
-		// git status should be clean (no staged or untracked backlog files)
+		// The repo is self-describing via a backlog.config.yml marker, but task
+		// data lives in the global store — so no in-repo backlog/ dir is created.
 		const status = await $`git -C ${repoDir} status --porcelain`.text();
-		// Should either be empty or not contain backlog files from this init
-		expect(status.includes("backlog/") || status.includes("backlog.config.yml")).toBe(false);
+		expect(status.includes("backlog/")).toBe(false);
+		expect(status.includes("backlog.config.yml")).toBe(true);
 	});
 
 	it("(d) throws when slot already exists and is non-empty", async () => {

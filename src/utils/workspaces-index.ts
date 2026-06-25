@@ -1,9 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import lockfile from "proper-lockfile";
-import { resolveBacklogDirectory } from "./backlog-directory.ts";
+import { DEFAULT_FILES } from "../constants/index.ts";
+import { parseBacklogConfigMetadata, resolveBacklogDirectory } from "./backlog-directory.ts";
 import { findBacklogRoot } from "./find-backlog-root.ts";
 
 /**
@@ -379,6 +380,21 @@ function backlogConfiguredAtProjectRoot(projectRoot: string): boolean {
 }
 
 /**
+ * True when the repo-root marker declares `store: global` — i.e. this repo's
+ * tasks live in the global store and it is discovered by scanning, not by a
+ * registry path.
+ */
+function isGlobalStoreProjectRoot(projectRoot: string): boolean {
+	try {
+		const markerPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+		if (!existsSync(markerPath)) return false;
+		return parseBacklogConfigMetadata(readFileSync(markerPath, "utf8")).store === "global";
+	} catch {
+		return false;
+	}
+}
+
+/**
  * An entry is a usable backlog project if config resolves at its project
  * root, OR — for a `data:` entry — at the data location (where config lives
  * for a data-overridden workspace). Without this, cwd matching would reject
@@ -475,7 +491,14 @@ export async function setCurrentWorkspaceId(id: string | null, override?: string
 			await withWriteLock(filePath, async () => {
 				const index = await readWorkspacesIndex(override);
 				if (id !== null && !index.workspaces.some((e) => e.id === id)) {
-					throw new Error(`No workspace with id "${id}" in registry`);
+					// Not a registry (local-mode) workspace — allow it only if it is a
+					// global-store project (discovered by scanning <globalStore>/*),
+					// which legitimately has no registry entry.
+					const { scanGlobalStoreProjects } = await import("./global-store-scan.ts");
+					const isGlobal = (await scanGlobalStoreProjects()).some((p) => p.id === id);
+					if (!isGlobal) {
+						throw new Error(`No workspace with id "${id}" in registry`);
+					}
 				}
 				const next: WorkspacesIndex = { ...index, workspaces: index.workspaces };
 				if (id) {
@@ -516,6 +539,13 @@ export async function removeWorkspaceEntry(projectRoot: string, override?: strin
 
 export async function autoRegisterDiscoveredRepo(projectRoot: string): Promise<void> {
 	if (!backlogConfiguredAtProjectRoot(projectRoot)) {
+		return;
+	}
+	// Global-store projects are discovered by scanning <globalStore>/* and must
+	// NOT get a registry path — the repo-root marker + scan are their source of
+	// truth. Registering a path here would make them appear twice and reintroduce
+	// the path coupling the marker exists to remove.
+	if (isGlobalStoreProjectRoot(projectRoot)) {
 		return;
 	}
 	// Dynamic import to avoid a static cycle (workspace-registration imports from this file).
