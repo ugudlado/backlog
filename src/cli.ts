@@ -1039,7 +1039,7 @@ program
 				// name is a safe single path component — without this, `init "../x"`
 				// would escape the global store (path traversal at a trust boundary).
 				{
-					const { isSafeSlotName } = await import("./utils/global-store-scan.ts");
+					const { isSafeSlotName } = await import("./utils/backlog-directory.ts");
 					if (!isSafeSlotName(name)) {
 						console.error(
 							`Invalid project name: "${name}". ` +

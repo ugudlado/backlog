@@ -7,6 +7,19 @@ import { readMachineConfig } from "./machine-config.ts";
 export type BacklogDirectorySource = "backlog" | ".backlog" | "custom";
 export type BacklogConfigSource = "folder" | "root";
 
+/**
+ * A project name is usable as a global-store slot only if it is a single safe
+ * path component AND safe to write into the YAML marker: no path separators,
+ * no `.`/`..` traversal, no NUL, and no quote/newline/backslash that could
+ * break out of the quoted marker value. Keying or writing an unsanitized name
+ * would let `init "../x"` escape the store or corrupt the marker.
+ */
+export function isSafeSlotName(name: string): boolean {
+	if (!name || name === "." || name === "..") return false;
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: NUL is exactly what we reject
+	return !/[/\\\0"\r\n]/.test(name);
+}
+
 export interface BacklogDirectoryResolution {
 	projectRoot: string;
 	backlogDir: string | null;
@@ -179,10 +192,12 @@ function resolveGlobalStoreBacklogDirectory(
 	if (!machine.globalStore) return null;
 
 	// An explicit slot comes from a repo-root marker (`store: global` +
-	// `project_name`). The repo names its own global-store slot, so we trust it
-	// and skip the git-root walk-up entirely — the marker IS the project root.
+	// `project_name`). The marker is an on-disk file that may be hand-edited or
+	// crafted, so validate it as a safe single path component before joining it
+	// into the store path — never trust it to be traversal-free.
 	let slot: string;
 	if (explicitSlot) {
+		if (!isSafeSlotName(explicitSlot)) return null;
 		slot = explicitSlot;
 	} else {
 		const gitRoot = resolveGitRootSync(projectRoot);

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isSafeSlotName, scanGlobalStoreProjects } from "./global-store-scan.ts";
+import { isSafeSlotName } from "./backlog-directory.ts";
+import { scanGlobalStoreProjects } from "./global-store-scan.ts";
 import { clearMachineConfigCache } from "./machine-config.ts";
 
 describe("isSafeSlotName", () => {
@@ -18,6 +19,10 @@ describe("isSafeSlotName", () => {
 		expect(isSafeSlotName("../escaped")).toBe(false);
 		expect(isSafeSlotName("a/b")).toBe(false);
 		expect(isSafeSlotName("a\\b")).toBe(false);
+		// YAML-marker-breaking characters
+		expect(isSafeSlotName('a"b')).toBe(false);
+		expect(isSafeSlotName("a\nb")).toBe(false);
+		expect(isSafeSlotName("a\rb")).toBe(false);
 	});
 });
 

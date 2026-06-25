@@ -18,16 +18,6 @@ export interface GlobalStoreProject {
 }
 
 /**
- * A project name is usable as a global-store slot only if it is a single safe
- * path component: no separators, no `.`/`..` traversal, no NUL. Keying the slot
- * directory by an unsanitized name would let `init "../x"` escape the store.
- */
-export function isSafeSlotName(name: string): boolean {
-	if (!name || name === "." || name === "..") return false;
-	return !/[/\\\0]/.test(name);
-}
-
-/**
  * Enumerate global-store projects by scanning the configured globalStore. Each
  * immediate subdirectory with a readable `config.yml` is a project. Returns an
  * empty list when globalStore is unset or unreadable — callers fall back to the

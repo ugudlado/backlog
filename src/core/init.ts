@@ -9,7 +9,7 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_FILES, DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { isSafeSlotName, normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import { readMachineConfig } from "../utils/machine-config.ts";
 import type { Core } from "./backlog.ts";
 
@@ -49,6 +49,11 @@ function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): 
  * it as a Backlog project and names its global-store slot.
  */
 async function writeGlobalStoreMarker(projectRoot: string, projectName: string): Promise<void> {
+	// The name is interpolated into a quoted YAML value AND used as the slot dir
+	// name, so reject anything that could break out of the quotes or traverse.
+	if (!isSafeSlotName(projectName)) {
+		throw new Error(`Invalid project name for global-store slot: ${projectName}`);
+	}
 	const markerPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
 	await Bun.write(markerPath, `project_name: "${projectName}"\nstore: "global"\n`);
 }
