@@ -16,7 +16,7 @@ async function setupProject(testDir: string, statuses?: string[], defaultStatus?
 	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
 	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	const effectiveStatuses = statuses ?? ["To Do", "Ready", "In Progress", "Code Review", "QA review", "Done"];
+	const effectiveStatuses = statuses ?? ["To Do", "Ready", "In Progress", "Review", "Verify", "Done"];
 	const effectiveDefault = defaultStatus ?? "To Do";
 	const statusList = effectiveStatuses.map((s) => `"${s}"`).join(", ");
 	const config = `project_name: "Test"
