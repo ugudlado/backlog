@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 let TEST_DIR: string;
-let core: Core;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("CLI auto-plain behavior in non-TTY runs", () => {
 	beforeEach(async () => {
@@ -17,12 +19,11 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Auto Plain Non-TTY Test");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Auto Plain Non-TTY Test"));
 
 		const seedTask: Task = {
 			id: "task-1",
@@ -34,7 +35,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 			dependencies: [],
 			description: "Seed task description",
 		};
-		await core.createTask(seedTask);
+		await CORE.createTask(seedTask);
 	});
 
 	afterEach(async () => {
@@ -46,7 +47,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task list falls back to plain output without --plain", async () => {
-		const result = await $`bun ${CLI_PATH} task list`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const out = result.stdout.toString();
@@ -56,7 +57,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task view falls back to plain output without --plain", async () => {
-		const result = await $`bun ${CLI_PATH} task view 1`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task view 1`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const out = result.stdout.toString();
@@ -67,7 +68,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task create preserves legacy concise output without --plain", async () => {
-		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task create "Second Task"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 
 		const out = result.stdout.toString();
@@ -77,7 +78,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	test("task edit preserves legacy concise output without --plain", async () => {
-		const result = await $`bun ${CLI_PATH} task edit 1 -s "In Progress"`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task edit 1 -s "In Progress"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout.toString()).toContain("Updated task TASK-1");
 	});

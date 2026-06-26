@@ -6,7 +6,6 @@ import {
 	getMachineConfigDir,
 	getProjectsFilePath,
 	readProjectsIndex,
-	upsertProjectEntry,
 	writeProjectsIndex,
 } from "../utils/projects-index.ts";
 
@@ -17,10 +16,9 @@ describe("ensureProjectsFileExists", () => {
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, ".config", "backlog.md");
 		try {
 			await ensureProjectsFileExists();
-			const content = await readFile(getProjectsFilePath(), "utf8");
-			expect(content).toContain("projects:");
+			await readFile(getProjectsFilePath(), "utf8"); // file was created
 			const parsed = await readProjectsIndex();
-			expect(parsed.projects).toEqual([]);
+			expect(parsed).toEqual({});
 		} finally {
 			if (prevMachine === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
@@ -37,10 +35,10 @@ describe("ensureProjectsFileExists", () => {
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, ".config", "backlog.md");
 		try {
 			await mkdir(process.env.BACKLOG_MACHINE_CONFIG_DIR, { recursive: true });
-			await writeProjectsIndex({ projects: [{ path: "/some/repo" }] });
+			await writeProjectsIndex({ current: "someid" });
 			await ensureProjectsFileExists();
 			const parsed = await readProjectsIndex();
-			expect(parsed.projects).toEqual([{ path: "/some/repo" }]);
+			expect(parsed.current).toBe("someid");
 		} finally {
 			if (prevMachine === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
@@ -79,21 +77,21 @@ describe("machine-config-dir override precedence", () => {
 		try {
 			await mkdir(overrideDir, { recursive: true });
 			await ensureProjectsFileExists(overrideDir);
-			await upsertProjectEntry({ path: "/projects/alpha" }, overrideDir);
+			await writeProjectsIndex({ current: "alpha-id" }, overrideDir);
 
 			// File landed under the override, not the env path.
 			const overrideFile = await readFile(getProjectsFilePath(overrideDir), "utf8");
-			expect(overrideFile).toContain("/projects/alpha");
+			expect(overrideFile).toContain("alpha-id");
 
 			// Env path was never touched.
 			const envFilePath = getProjectsFilePath();
 			expect(readFile(envFilePath, "utf8")).rejects.toThrow();
 
-			// Read with override returns the entry; read without override goes to env path → empty.
+			// Read with override returns the pointer; read without override goes to env path → empty.
 			const overrideRead = await readProjectsIndex(overrideDir);
-			expect(overrideRead.projects).toEqual([{ path: "/projects/alpha" }]);
+			expect(overrideRead.current).toBe("alpha-id");
 			const envRead = await readProjectsIndex();
-			expect(envRead.projects).toEqual([]);
+			expect(envRead).toEqual({});
 		} finally {
 			if (prev === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;

@@ -2,25 +2,28 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import type { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { editTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-notes");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Implementation Notes Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Implementation Notes Test Project"));
 	});
 
 	afterEach(async () => {
@@ -36,12 +39,13 @@ describe("Implementation Notes CLI", () => {
 			// Test 1: create task with implementation notes using --notes
 			const result1 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 1", "--notes", "Initial implementation completed"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result1.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("<!-- SECTION:NOTES:BEGIN -->");
@@ -52,7 +56,8 @@ describe("Implementation Notes CLI", () => {
 			// Test 2: create task with multi-line implementation notes
 			const result2 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 2", "--notes", "Step 1: Analysis completed\nStep 2: Implementation in progress"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result2.exitCode).toBe(0);
@@ -66,7 +71,8 @@ describe("Implementation Notes CLI", () => {
 			// Test 3: create task with both plan and notes (notes should come after plan)
 			const result3 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 3", "--plan", "1. Design\n2. Build\n3. Test", "--notes", "Following the plan step by step"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result3.exitCode).toBe(0);
@@ -87,7 +93,8 @@ describe("Implementation Notes CLI", () => {
 			// Test 4: create task with multiple options including notes
 			const result4 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 4", "-d", "Complex task description", "--ac", "Must work correctly,Must be tested", "--notes", "Using TDD approach"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result4.exitCode).toBe(0);
@@ -98,7 +105,11 @@ describe("Implementation Notes CLI", () => {
 			expect(extractStructuredSection(task?.rawContent || "", "implementationNotes")).toContain("Using TDD approach");
 
 			// Test 5: create task without notes should not add the section
-			const result5 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 5"]}`.cwd(TEST_DIR).quiet().nothrow();
+			const result5 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 5"]}`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet()
+				.nothrow();
 			expect(result5.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-5");
@@ -110,7 +121,7 @@ describe("Implementation Notes CLI", () => {
 
 	describe("task edit with implementation notes", () => {
 		it("should handle all implementation notes scenarios", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Test 1: add implementation notes to existing task
 			const task1: Task = {
@@ -130,7 +141,8 @@ describe("Implementation Notes CLI", () => {
 					taskId: "1",
 					notes: "Fixed the bug by updating the validation logic",
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -158,7 +170,8 @@ describe("Implementation Notes CLI", () => {
 					taskId: "2",
 					notes: "Added error handling",
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -191,7 +204,8 @@ describe("Implementation Notes CLI", () => {
 					status: "Done",
 					notes: "Implemented using the factory pattern\nAdded unit tests\nUpdated documentation",
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -230,7 +244,8 @@ Technical decisions:
 					taskId: "4",
 					notes: multiLineNotes,
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -259,7 +274,8 @@ Technical decisions:
 					taskId: "5",
 					notes: "Followed the plan successfully",
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -291,7 +307,8 @@ Technical decisions:
 					taskId: "6",
 					notes: "",
 				},
-				TEST_DIR,
+				PROJECT_ROOT,
+				CORE,
 			);
 			expect(result.exitCode).toBe(0);
 
@@ -302,7 +319,7 @@ Technical decisions:
 		});
 
 		it("preserves nested H2 headings when migrating legacy implementation notes", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task: Task = {
 				id: "task-7",
 				title: "Legacy Notes",
@@ -317,7 +334,8 @@ Technical decisions:
 			await core.createTask(task);
 
 			const appendResult = await $`bun ${CLI_PATH} task edit 7 --append-notes "Added verification details"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet()
 				.nothrow();
 			expect(appendResult.exitCode).toBe(0);

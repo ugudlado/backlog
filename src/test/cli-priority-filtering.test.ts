@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
@@ -15,20 +14,18 @@ const CLI_PATH = join(process.cwd(), "src/cli.ts");
  */
 describe("CLI Priority Filtering", () => {
 	let TEST_DIR: string;
+	let PROJECT_ROOT: string;
+	let ENV: Record<string, string>;
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-priority-filter");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Priority Test");
+		({ projectRoot: PROJECT_ROOT, env: ENV } = await initializeGlobalTestProject(TEST_DIR, "Priority Test"));
 
-		await $`bun ${CLI_PATH} task create "High task" --priority high`.cwd(TEST_DIR).quiet();
-		await $`bun ${CLI_PATH} task create "Medium task" --priority medium`.cwd(TEST_DIR).quiet();
-		await $`bun ${CLI_PATH} task create "Low task" --priority low`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} task create "High task" --priority high`.cwd(PROJECT_ROOT).env(ENV).quiet();
+		await $`bun ${CLI_PATH} task create "Medium task" --priority medium`.cwd(PROJECT_ROOT).env(ENV).quiet();
+		await $`bun ${CLI_PATH} task create "Low task" --priority low`.cwd(PROJECT_ROOT).env(ENV).quiet();
 	});
 
 	afterEach(async () => {
@@ -36,7 +33,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--priority high shows only high priority tasks", async () => {
-		const result = await $`bun ${CLI_PATH} task list --priority high --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --priority high --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		expect(output).toMatch(/\[HIGH\]/);
@@ -45,7 +42,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--priority medium shows only medium priority tasks", async () => {
-		const result = await $`bun ${CLI_PATH} task list --priority medium --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --priority medium --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		expect(output).toMatch(/\[MEDIUM\]/);
@@ -54,7 +51,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--priority low shows only low priority tasks", async () => {
-		const result = await $`bun ${CLI_PATH} task list --priority low --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --priority low --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		expect(output).toMatch(/\[LOW\]/);
@@ -63,15 +60,19 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--priority invalid shows error", async () => {
-		const result = await $`bun ${CLI_PATH} task list --priority invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task list --priority invalid --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.nothrow()
+			.quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid priority: invalid");
 		expect(result.stderr.toString()).toContain("Valid values are: high, medium, low");
 	});
 
 	test("--priority is case insensitive", async () => {
-		const upper = await $`bun ${CLI_PATH} task list --priority HIGH --plain`.cwd(TEST_DIR).quiet();
-		const mixed = await $`bun ${CLI_PATH} task list --priority High --plain`.cwd(TEST_DIR).quiet();
+		const upper = await $`bun ${CLI_PATH} task list --priority HIGH --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
+		const mixed = await $`bun ${CLI_PATH} task list --priority High --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(upper.exitCode).toBe(0);
 		expect(mixed.exitCode).toBe(0);
 		for (const out of [upper.stdout.toString(), mixed.stdout.toString()]) {
@@ -82,7 +83,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--sort priority orders high before medium before low", async () => {
-		const result = await $`bun ${CLI_PATH} task list --sort priority --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --sort priority --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		const high = output.indexOf("[HIGH]");
@@ -94,19 +95,26 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("--sort id exits successfully", async () => {
-		const result = await $`bun ${CLI_PATH} task list --sort id --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --sort id --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 	});
 
 	test("--sort invalid shows error", async () => {
-		const result = await $`bun ${CLI_PATH} task list --sort invalid --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task list --sort invalid --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.nothrow()
+			.quiet();
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr.toString()).toContain("Invalid sort field: invalid");
 		expect(result.stderr.toString()).toContain("Valid values are: priority, id");
 	});
 
 	test("priority filter combines with sort", async () => {
-		const result = await $`bun ${CLI_PATH} task list --priority high --sort id --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --priority high --sort id --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		expect(output).toMatch(/\[HIGH\]/);
@@ -115,7 +123,7 @@ describe("CLI Priority Filtering", () => {
 	});
 
 	test("plain output includes priority indicators", async () => {
-		const result = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH} task list --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 		expect(output).toMatch(/\[HIGH\]/);

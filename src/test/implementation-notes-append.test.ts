@@ -2,24 +2,26 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import type { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("Implementation Notes - append", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-notes-append");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Append Notes Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Append Notes Test Project"));
 	});
 
 	afterEach(async () => {
@@ -27,7 +29,7 @@ describe("Implementation Notes - append", () => {
 	});
 
 	it("appends to existing Implementation Notes with single blank line", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const task: Task = {
 			id: "task-1",
 			title: "Task",
@@ -42,7 +44,8 @@ describe("Implementation Notes - append", () => {
 		await core.createTask(task);
 
 		const result = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Second block"]}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(result.exitCode).toBe(0);
 
@@ -51,7 +54,7 @@ describe("Implementation Notes - append", () => {
 	});
 
 	it("creates Implementation Notes at correct position when missing (after plan, else AC, else Description)", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const t: Task = {
 			id: "task-1",
 			title: "Planned",
@@ -67,7 +70,8 @@ describe("Implementation Notes - append", () => {
 		await core.createTask(t);
 
 		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Followed plan"]}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(res.exitCode).toBe(0);
 
@@ -79,7 +83,7 @@ describe("Implementation Notes - append", () => {
 	});
 
 	it("supports multiple --append-notes flags in order", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const task: Task = {
 			id: "task-1",
 			title: "Task",
@@ -93,7 +97,8 @@ describe("Implementation Notes - append", () => {
 		await core.createTask(task);
 
 		const res = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "First", "--append-notes", "Second"]}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(res.exitCode).toBe(0);
 
@@ -102,21 +107,26 @@ describe("Implementation Notes - append", () => {
 	});
 
 	it("edit --append-notes works and allows combining with --notes", async () => {
-		const resOk = await $`bun ${[CLI_PATH, "task", "create", "T", "--plan", "1. A\n2. B"]}`.cwd(TEST_DIR).quiet();
+		const resOk = await $`bun ${[CLI_PATH, "task", "create", "T", "--plan", "1. A\n2. B"]}`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(resOk.exitCode).toBe(0);
 
 		const res1 = await $`bun ${[CLI_PATH, "task", "edit", "1", "--append-notes", "Alpha", "--append-notes", "Beta"]}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(res1.exitCode).toBe(0);
 
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		let taskBody = await core.getTaskContent("task-1");
 		expect(extractStructuredSection(taskBody ?? "", "implementationNotes")).toBe("Alpha\n\nBeta");
 
 		// Combining --notes (replace) with --append-notes (append) should work
 		const combined = await $`bun ${[CLI_PATH, "task", "edit", "1", "--notes", "Y", "--append-notes", "X"]}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet()
 			.nothrow();
 		expect(combined.exitCode).toBe(0);

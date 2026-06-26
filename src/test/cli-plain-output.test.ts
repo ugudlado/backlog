@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../index.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 let SUBTASKS: Array<{ id: string; title: string }> = [];
 
 describe("CLI plain output for AI agents", () => {
@@ -20,14 +23,12 @@ describe("CLI plain output for AI agents", () => {
 		}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		// Initialize git repo first using shell API (same pattern as other tests)
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		// Initialize backlog project using Core (same pattern as other tests)
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Plain Output Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Plain Output Test Project"));
+		const core = CORE;
 
 		// Create a test task
 		await core.createTask({
@@ -76,7 +77,7 @@ describe("CLI plain output for AI agents", () => {
 	});
 
 	it("should output plain text with task view --plain", async () => {
-		const result = await $`bun ${cliPath} task view 1 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task view 1 --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -110,12 +111,12 @@ describe("CLI plain output for AI agents", () => {
 
 	it("should output plain text with task <id> --plain shortcut", async () => {
 		// Verify task exists before running CLI command
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const task = await core.filesystem.loadTask("task-1");
 		expect(task).not.toBeNull();
 		expect(task?.id).toBe("TASK-1");
 
-		const result = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task 1 --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -139,7 +140,7 @@ describe("CLI plain output for AI agents", () => {
 	});
 
 	it("should not include a subtask list when none exist", async () => {
-		const result = await $`bun ${cliPath} task view 2 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task view 2 --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());

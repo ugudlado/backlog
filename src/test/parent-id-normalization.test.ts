@@ -2,24 +2,25 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
+import type { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
-
-async function initGitRepo(dir: string) {
-	await $`git init -b main`.cwd(dir).quiet();
-	await $`git config user.name "Test User"`.cwd(dir).quiet();
-	await $`git config user.email test@example.com`.cwd(dir).quiet();
-}
 
 describe("CLI parent task id normalization", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-parent-normalization");
 		await mkdir(TEST_DIR, { recursive: true });
-		await initGitRepo(TEST_DIR);
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Normalization Test"));
 	});
 
 	afterEach(async () => {
@@ -31,8 +32,7 @@ describe("CLI parent task id normalization", () => {
 	});
 
 	it("should normalize parent task id when creating subtasks", async () => {
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Normalization Test");
+		const core = CORE;
 
 		const parent: Task = {
 			id: "task-4",
@@ -45,7 +45,7 @@ describe("CLI parent task id normalization", () => {
 		};
 		await core.createTask(parent);
 
-		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(TEST_DIR).quiet();
+		await $`bun run ${CLI_PATH} task create Child --parent 4`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		const child = await core.filesystem.loadTask("task-4.1");
 		expect(child?.parentTaskId).toBe("TASK-4");

@@ -128,17 +128,19 @@ export interface TaskEditOptions {
 export async function editTaskPlatformAware(
 	options: TaskEditOptions,
 	testDir: string,
+	core?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	// Always use Core API for tests to avoid CLI process spawning issues
-	return editTaskViaCore(options, testDir);
+	return editTaskViaCore(options, testDir, core);
 }
 
 async function editTaskViaCore(
 	options: TaskEditOptions,
 	testDir: string,
+	providedCore?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = providedCore ?? new Core(testDir);
 
 		// Load existing task
 		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
@@ -196,17 +198,19 @@ export interface TaskViewOptions {
 export async function viewTaskPlatformAware(
 	options: TaskViewOptions,
 	testDir: string,
+	core?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	// Always use Core API for tests to avoid CLI process spawning issues
-	return viewTaskViaCore(options, testDir);
+	return viewTaskViaCore(options, testDir, core);
 }
 
 async function viewTaskViaCore(
 	options: TaskViewOptions,
 	testDir: string,
+	providedCore?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = providedCore ?? new Core(testDir);
 		const taskId = hasAnyPrefix(options.taskId) ? options.taskId : `task-${options.taskId}`;
 
 		const task = await core.filesystem.loadTask(taskId);
@@ -306,17 +310,19 @@ export interface TaskListOptions {
 export async function listTasksPlatformAware(
 	options: TaskListOptions,
 	testDir: string,
+	core?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	// Always use Core API for tests to avoid CLI process spawning issues
-	return listTasksViaCore(options, testDir);
+	return listTasksViaCore(options, testDir, core);
 }
 
 async function listTasksViaCore(
 	options: TaskListOptions,
 	testDir: string,
+	providedCore?: Core,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	try {
-		const core = new Core(testDir);
+		const core = providedCore ?? new Core(testDir);
 		const tasks = await core.filesystem.listTasks();
 
 		// Filter by status if provided

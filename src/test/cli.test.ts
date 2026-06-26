@@ -5,9 +5,18 @@ import { $ } from "bun";
 import { Core } from "../index.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
-import { createTestGlobalStore, createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	createTestGlobalStore,
+	createUniqueTestDir,
+	initializeGlobalTestProject,
+	initializeTestProject,
+	safeCleanup,
+} from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("CLI Integration", () => {
@@ -300,34 +309,32 @@ describe("CLI Integration", () => {
 
 	describe("create commands", () => {
 		beforeEach(async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Create Command Test");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "Create Command Test"));
 		});
 	});
 
 	describe("task list command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "List Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "List Test Project"));
 		});
 
 		it("should show 'No tasks found' when no tasks exist", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const tasks = await core.filesystem.listTasks();
 			expect(tasks).toHaveLength(0);
 		});
 
 		it("should list tasks grouped by status", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create test tasks with different statuses
 			await core.createTask({
@@ -377,7 +384,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should respect config status order", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Load and verify default config status order
 			const config = await core.filesystem.loadConfig();
@@ -385,7 +392,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should filter tasks by status", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -408,7 +415,7 @@ describe("CLI Integration", () => {
 				rawContent: "Second test task",
 			});
 
-			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task list --plain --status Done`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			const out = result.stdout.toString();
 			expect(out).toContain("Done:");
 			expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
@@ -416,7 +423,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should filter tasks by status case-insensitively", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -442,7 +449,7 @@ describe("CLI Integration", () => {
 			const testCases = ["done", "DONE", "DoNe"];
 
 			for (const status of testCases) {
-				const result = await $`bun ${CLI_PATH} task list --plain --status ${status}`.cwd(TEST_DIR).quiet();
+				const result = await $`bun ${CLI_PATH} task list --plain --status ${status}`.cwd(PROJECT_ROOT).env(ENV).quiet();
 				const out = result.stdout.toString();
 				expect(out).toContain("Done:");
 				expect(out).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
@@ -450,7 +457,7 @@ describe("CLI Integration", () => {
 			}
 
 			// Test with -s flag
-			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, TEST_DIR);
+			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, PROJECT_ROOT, CORE);
 			const outShort = resultShort.stdout;
 			expect(outShort).toContain("Done:");
 			expect(outShort).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
@@ -458,7 +465,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should filter tasks by assignee", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -481,7 +488,7 @@ describe("CLI Integration", () => {
 				rawContent: "Other task",
 			});
 
-			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task list --plain --assignee alice`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			const out = result.stdout.toString();
 			expect(out).toContain("TASK-1 - Assigned Task"); // IDs normalized to uppercase
 			expect(out).not.toContain("TASK-2 - Unassigned Task");
@@ -491,16 +498,15 @@ describe("CLI Integration", () => {
 	describe("task view command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "View Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "View Test Project"));
 		});
 
 		it("should display task details with markdown formatting", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			const testTask = {
@@ -528,7 +534,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should handle task IDs with and without 'task-' prefix", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -553,14 +559,14 @@ describe("CLI Integration", () => {
 		});
 
 		it("should return null for non-existent tasks", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			const nonExistentTask = await core.filesystem.loadTask("task-999");
 			expect(nonExistentTask).toBeNull();
 		});
 
 		it("should not modify task files (read-only operation)", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			const originalTask = {
@@ -590,16 +596,15 @@ describe("CLI Integration", () => {
 
 	describe("task shortcut command", () => {
 		beforeEach(async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Shortcut Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "Shortcut Test Project"));
 		});
 
 		it("should display formatted task details like the view command", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -612,8 +617,12 @@ describe("CLI Integration", () => {
 				rawContent: "Shortcut description",
 			});
 
-			const resultShortcut = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
-			const resultView = await viewTaskPlatformAware({ taskId: "1", plain: true, useViewCommand: true }, TEST_DIR);
+			const resultShortcut = await viewTaskPlatformAware({ taskId: "1", plain: true }, PROJECT_ROOT, CORE);
+			const resultView = await viewTaskPlatformAware(
+				{ taskId: "1", plain: true, useViewCommand: true },
+				PROJECT_ROOT,
+				CORE,
+			);
 
 			const outShortcut = resultShortcut.stdout;
 			const outView = resultView.stdout;
@@ -626,16 +635,15 @@ describe("CLI Integration", () => {
 	describe("task edit command", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Edit Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "Edit Test Project"));
 		});
 
 		it("should update task title, description, and status", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -669,7 +677,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should update assignee", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -692,7 +700,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should replace all labels with new labels", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task with existing labels
 			await core.createTask({
@@ -715,7 +723,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should add labels without replacing existing ones", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task with existing labels
 			await core.createTask({
@@ -738,7 +746,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should remove specific labels", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task with multiple labels
 			await core.createTask({
@@ -761,14 +769,14 @@ describe("CLI Integration", () => {
 		});
 
 		it("should handle non-existent task gracefully", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			const nonExistentTask = await core.filesystem.loadTask("task-999");
 			expect(nonExistentTask).toBeNull();
 		});
 
 		it("should automatically set updated_date field when editing", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -793,7 +801,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should preserve YAML frontmatter formatting", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -831,16 +839,15 @@ describe("CLI Integration", () => {
 	describe("task archive and state transition commands", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Archive Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "Archive Test Project"));
 		});
 
 		it("should archive a task", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create a test task
 			await core.createTask({
@@ -864,12 +871,12 @@ describe("CLI Integration", () => {
 
 			// Verify task exists in archive
 			const { readdir } = await import("node:fs/promises");
-			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
+			const archiveFiles = await readdir(join(PROJECT_ROOT, "archive", "tasks"));
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
 		it("should handle archiving non-existent task", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			const success = await core.archiveTask("task-999");
 			expect(success).toBe(false);
@@ -878,16 +885,15 @@ describe("CLI Integration", () => {
 
 	describe("board view command", () => {
 		beforeEach(async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Board Test Project");
+			({
+				projectRoot: PROJECT_ROOT,
+				core: CORE,
+				env: ENV,
+			} = await initializeGlobalTestProject(TEST_DIR, "Board Test Project"));
 		});
 
 		it("should display kanban board with tasks grouped by status", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create test tasks with different statuses
 			await core.createTask({
@@ -956,7 +962,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should handle empty project with default statuses", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			const tasks = await core.filesystem.listTasks();
 			expect(tasks).toHaveLength(0);
@@ -974,7 +980,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should support vertical layout option", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -1002,7 +1008,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should support --vertical shortcut flag", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-1",
@@ -1031,7 +1037,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should default to view when no subcommand is provided", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			await core.createTask({
 				id: "task-99",
@@ -1044,14 +1050,14 @@ describe("CLI Integration", () => {
 				rawContent: "test",
 			});
 
-			const resultDefault = await $`bun ${["src/cli.ts", "board"]}`.cwd(TEST_DIR).quiet().nothrow();
-			const resultView = await $`bun ${["src/cli.ts", "board", "view"]}`.cwd(TEST_DIR).quiet().nothrow();
+			const resultDefault = await $`bun ${["src/cli.ts", "board"]}`.cwd(PROJECT_ROOT).env(ENV).quiet().nothrow();
+			const resultView = await $`bun ${["src/cli.ts", "board", "view"]}`.cwd(PROJECT_ROOT).env(ENV).quiet().nothrow();
 
 			expect(resultDefault.stdout.toString()).toBe(resultView.stdout.toString());
 		});
 
 		it("should export kanban board to file", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 
 			// Create test tasks
 			await core.createTask({

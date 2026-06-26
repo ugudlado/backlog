@@ -1,43 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir } from "./test-utils.ts";
+import type { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, initializeGlobalTestProject } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
-// Fast setup: write minimal config directly rather than calling initializeProject.
-// Config must use the format that operations.ts parseConfig understands:
-// - snake_case keys (project_name, default_status, check_active_branches, etc.)
-// - statuses and labels as inline arrays: statuses: ["A", "B"]
-async function setupProject(testDir: string, statuses?: string[], defaultStatus?: string): Promise<void> {
-	await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	const effectiveStatuses = statuses ?? ["To Do", "Ready", "In Progress", "Review", "Verify", "Done"];
-	const effectiveDefault = defaultStatus ?? "To Do";
-	const statusList = effectiveStatuses.map((s) => `"${s}"`).join(", ");
-	const config = `project_name: "Test"
-default_status: "${effectiveDefault}"
-statuses: [${statusList}]
-labels: []
-date_format: yyyy-mm-dd
-check_active_branches: false
-filesystem_only: true
-`;
-	await writeFile(join(testDir, "backlog", "config.yml"), config);
+// Initialize a global-store project, then optionally override statuses/defaultStatus
+// via the slot-aware config (no removed keys like check_active_branches/filesystem_only).
+async function setupProject(
+	testDir: string,
+	statuses?: string[],
+	defaultStatus?: string,
+): Promise<{ projectRoot: string; core: Core; env: Record<string, string> }> {
+	await mkdir(testDir, { recursive: true });
+	const { projectRoot, core, env } = await initializeGlobalTestProject(testDir, "Test");
+	if (statuses || defaultStatus) {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Failed to load config");
+		if (statuses) config.statuses = statuses;
+		if (defaultStatus) config.defaultStatus = defaultStatus;
+		await core.filesystem.saveConfig(config);
+	}
+	return { projectRoot, core, env };
 }
 
 describe("CLI task next", () => {
 	let testDir: string;
+	let projectRoot: string;
 	let core: Core;
+	let env: Record<string, string>;
 
 	beforeEach(async () => {
 		testDir = createUniqueTestDir("cli-task-next");
-		await setupProject(testDir);
-		core = new Core(testDir);
+		({ projectRoot, core, env } = await setupProject(testDir));
 	});
 
 	afterEach(async () => {
@@ -47,7 +44,7 @@ describe("CLI task next", () => {
 	it("picks the top Ready task and outputs id, title, and status transition", async () => {
 		await core.createTaskFromInput({ title: "My Ready Task", status: "Ready" });
 
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -61,7 +58,7 @@ describe("CLI task next", () => {
 	it("output contains task id", async () => {
 		await core.createTaskFromInput({ title: "Task With ID", status: "Ready" });
 
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -76,7 +73,7 @@ describe("CLI task next", () => {
 			description: "This is the task description",
 		});
 
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -87,7 +84,7 @@ describe("CLI task next", () => {
 		await core.createTaskFromInput({ title: "To Do Task", status: "To Do" });
 		await core.createTaskFromInput({ title: "Ready Task", status: "Ready" });
 
-		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -98,7 +95,7 @@ describe("CLI task next", () => {
 	it("--agent @alice strips @ and sets assignee", async () => {
 		await core.createTaskFromInput({ title: "Agent Task", status: "Ready" });
 
-		const result = await $`bun ${CLI_PATH} task next --agent @alice`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next --agent @alice`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		// Reload the task from disk to verify assignee was written
@@ -112,7 +109,7 @@ describe("CLI task next", () => {
 		// No Ready tasks
 		await core.createTaskFromInput({ title: "Not-ready task", status: "To Do" });
 
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).not.toBe(0);
 
 		const stderr = result.stderr.toString();
@@ -120,7 +117,11 @@ describe("CLI task next", () => {
 	});
 
 	it("invalid --status exits non-zero with valid statuses listed", async () => {
-		const result = await $`bun ${CLI_PATH} task next --status "InvalidStatus"`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next --status "InvalidStatus"`
+			.cwd(projectRoot)
+			.env(env)
+			.nothrow()
+			.quiet();
 		expect(result.exitCode).not.toBe(0);
 
 		const stderr = result.stderr.toString();
@@ -132,12 +133,11 @@ describe("CLI task next", () => {
 		// Recreate with legacy config (no Ready/Backlog)
 		await rm(testDir, { recursive: true, force: true });
 		testDir = createUniqueTestDir("cli-task-next-legacy");
-		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
-		core = new Core(testDir);
+		({ projectRoot, core, env } = await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do"));
 
 		await core.createTaskFromInput({ title: "Legacy Task", status: "To Do" });
 
-		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next --status "To Do"`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -150,13 +150,12 @@ describe("CLI task next", () => {
 		// In a legacy repo with defaultStatus=To Do and no Ready status, the default should be To Do
 		await rm(testDir, { recursive: true, force: true });
 		testDir = createUniqueTestDir("cli-task-next-legacy-default");
-		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
-		core = new Core(testDir);
+		({ projectRoot, core, env } = await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do"));
 
 		await core.createTaskFromInput({ title: "Legacy Default Task", status: "To Do" });
 
 		// No --status flag: should fall back to defaultStatus (To Do) since Ready isn't configured
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).toBe(0);
 
 		const output = result.stdout.toString();
@@ -168,11 +167,10 @@ describe("CLI task next", () => {
 		// not a hardcoded "Ready" fallback.
 		await rm(testDir, { recursive: true, force: true });
 		testDir = createUniqueTestDir("cli-task-next-legacy-error");
-		await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do");
-		core = new Core(testDir);
+		({ projectRoot, core, env } = await setupProject(testDir, ["To Do", "In Progress", "Done"], "To Do"));
 
 		// No tasks at all — empty queue with legacy config
-		const result = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const result = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(result.exitCode).not.toBe(0);
 
 		const stderr = result.stderr.toString();

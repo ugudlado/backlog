@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import type { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Acceptance Criteria CLI", () => {
@@ -14,12 +17,12 @@ describe("Acceptance Criteria CLI", () => {
 		TEST_DIR = createUniqueTestDir("test-acceptance-criteria");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "AC Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "AC Test Project"));
 	});
 
 	afterEach(async () => {
@@ -32,14 +35,17 @@ describe("Acceptance Criteria CLI", () => {
 
 	describe("task create with acceptance criteria", () => {
 		it("should create task with single acceptance criterion using -ac", async () => {
-			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Must work correctly"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Must work correctly"`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet();
 			if (result.exitCode !== 0) {
 				console.error("STDOUT:", result.stdout.toString());
 				console.error("STDERR:", result.stderr.toString());
 			}
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Acceptance Criteria");
@@ -49,11 +55,12 @@ describe("Acceptance Criteria CLI", () => {
 		it("should create task with multiple criteria using multiple --ac flags", async () => {
 			const result =
 				await $`bun ${CLI_PATH} task create "Test Task" --ac "Criterion 1" --ac "Criterion 2" --ac "Criterion 3"`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("- [ ] #1 Criterion 1");
@@ -63,11 +70,12 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("should treat comma-separated text as single criterion", async () => {
 			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Criterion 1, Criterion 2, Criterion 3"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			// Should create single criterion with commas intact
@@ -78,11 +86,12 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("should create task with criteria using --acceptance-criteria", async () => {
 			const result = await $`bun ${CLI_PATH} task create "Test Task" --acceptance-criteria "Full flag test"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Acceptance Criteria");
@@ -92,11 +101,12 @@ describe("Acceptance Criteria CLI", () => {
 		it("should create task with both description and acceptance criteria", async () => {
 			const result =
 				await $`bun ${CLI_PATH} task create "Test Task" -d "Task description" --ac "Must pass tests" --ac "Must be documented"`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Description");
@@ -109,7 +119,7 @@ describe("Acceptance Criteria CLI", () => {
 
 	describe("task edit with acceptance criteria", () => {
 		beforeEach(async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-1",
 				title: "Existing Task",
@@ -124,11 +134,12 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("should add acceptance criteria to existing task", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion 1" --ac "New criterion 2"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Description");
@@ -139,7 +150,7 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-9",
 				title: "Dup AC Task",
@@ -153,7 +164,7 @@ describe("Acceptance Criteria CLI", () => {
 			});
 
 			// Add a new criterion via CLI; this triggers consolidation
-			const result = await $`bun ${CLI_PATH} task edit 9 --ac "New C"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 9 --ac "New C"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
 			const task = await core.filesystem.loadTask("task-9");
@@ -170,7 +181,7 @@ describe("Acceptance Criteria CLI", () => {
 		});
 
 		it("consolidates legacy and marked AC sections to a single marked section", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-10",
 				title: "Mixed AC Task",
@@ -183,7 +194,7 @@ describe("Acceptance Criteria CLI", () => {
 					"## Description\n\nY\n\n## Acceptance Criteria\n\n- [ ] Legacy 1\n- [ ] Legacy 2\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Marked 1\n<!-- AC:END -->",
 			});
 
-			const result = await $`bun ${CLI_PATH} task edit 10 --ac "Marked 2"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 10 --ac "Marked 2"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
 			const task = await core.filesystem.loadTask("task-10");
@@ -203,15 +214,16 @@ describe("Acceptance Criteria CLI", () => {
 		it("should add to existing acceptance criteria", async () => {
 			// First add some criteria via CLI to avoid direct body mutation
 			const res = await $`bun ${CLI_PATH} task edit 1 --ac "Old criterion 1" --ac "Old criterion 2"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(res.exitCode).toBe(0);
 
 			// Now add new criterion
-			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 1 --ac "New criterion"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Acceptance Criteria");
@@ -222,11 +234,12 @@ describe("Acceptance Criteria CLI", () => {
 
 		it("should update title and add acceptance criteria together", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 -t "Updated Title" --ac "Must be updated" --ac "Must work"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.title).toBe("Updated Title");
@@ -239,10 +252,10 @@ describe("Acceptance Criteria CLI", () => {
 	describe("acceptance criteria parsing", () => {
 		it("should handle empty criteria gracefully", async () => {
 			// Skip the --ac flag entirely when empty, as the shell API doesn't handle empty strings the same way
-			const result = await $`bun ${CLI_PATH} task create "Test Task"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task create "Test Task"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			// Should not add acceptance criteria section for empty input
@@ -252,11 +265,12 @@ describe("Acceptance Criteria CLI", () => {
 		it("should trim whitespace from criteria", async () => {
 			const result =
 				await $`bun ${CLI_PATH} task create "Test Task" --ac "  Criterion with spaces  " --ac "  Another one  "`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("- [ ] #1 Criterion with spaces");
@@ -266,7 +280,7 @@ describe("Acceptance Criteria CLI", () => {
 
 	describe("new AC management features", () => {
 		beforeEach(async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-1",
 				title: "Test Task",
@@ -290,11 +304,12 @@ Test task with acceptance criteria
 
 		it("should add new acceptance criteria with --ac", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 --ac "Fourth criterion" --ac "Fifth criterion"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 			expect(task?.rawContent).toContain("- [ ] #2 Second criterion");
@@ -304,10 +319,10 @@ Test task with acceptance criteria
 		});
 
 		it("should remove acceptance criterion by index with --remove-ac", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 2`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 2`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 			expect(task?.rawContent).not.toContain("Second criterion");
@@ -316,11 +331,12 @@ Test task with acceptance criteria
 
 		it("removes acceptance criteria section after deleting all items", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 1 --remove-ac 2 --remove-ac 3`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			const body = task?.rawContent || "";
 			expect(body).not.toContain("## Acceptance Criteria");
@@ -329,10 +345,10 @@ Test task with acceptance criteria
 		});
 
 		it("should check acceptance criterion by index with --check-ac", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 2`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 2`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 			expect(task?.rawContent).toContain("- [x] #2 Second criterion");
@@ -341,24 +357,25 @@ Test task with acceptance criteria
 
 		it("should uncheck acceptance criterion by index with --uncheck-ac", async () => {
 			// First check a criterion
-			await $`bun ${CLI_PATH} task edit 1 --check-ac 1`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} task edit 1 --check-ac 1`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 			// Then uncheck it
-			const result = await $`bun ${CLI_PATH} task edit 1 --uncheck-ac 1`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 1 --uncheck-ac 1`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task?.rawContent).toContain("- [ ] #1 First criterion");
 		});
 
 		it("should handle multiple operations in one command", async () => {
 			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 1 --remove-ac 2 --ac "New criterion"`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 			expect(result.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			const task = await core.filesystem.loadTask("task-1");
 			expect(task?.rawContent).toContain("- [x] #1 First criterion");
 			expect(task?.rawContent).not.toContain("Second criterion");
@@ -368,7 +385,7 @@ Test task with acceptance criteria
 
 		it("should error on invalid index for --remove-ac", async () => {
 			try {
-				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(TEST_DIR).quiet();
+				await $`bun ${CLI_PATH} task edit 1 --remove-ac 10`.cwd(PROJECT_ROOT).env(ENV).quiet();
 				expect(true).toBe(false); // Should not reach here
 			} catch (error: unknown) {
 				const e = error as { exitCode?: number; stderr?: unknown };
@@ -380,7 +397,7 @@ Test task with acceptance criteria
 
 		it("should error on invalid index for --check-ac", async () => {
 			try {
-				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(TEST_DIR).quiet();
+				await $`bun ${CLI_PATH} task edit 1 --check-ac 10`.cwd(PROJECT_ROOT).env(ENV).quiet();
 				expect(true).toBe(false); // Should not reach here
 			} catch (error: unknown) {
 				const e = error as { exitCode?: number; stderr?: unknown };
@@ -391,19 +408,19 @@ Test task with acceptance criteria
 		});
 
 		it("should error on non-numeric index", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac abc`.cwd(TEST_DIR).quiet().nothrow();
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac abc`.cwd(PROJECT_ROOT).env(ENV).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
 		it("should error on zero index", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 0`.cwd(TEST_DIR).quiet().nothrow();
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac 0`.cwd(PROJECT_ROOT).env(ENV).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
 
 		it("should error on negative index", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac=-1`.cwd(TEST_DIR).quiet().nothrow();
+			const result = await $`bun ${CLI_PATH} task edit 1 --remove-ac=-1`.cwd(PROJECT_ROOT).env(ENV).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
 			expect(result.stderr.toString()).toContain("Invalid index");
 		});
@@ -411,7 +428,7 @@ Test task with acceptance criteria
 
 	describe("stable format migration", () => {
 		it("should convert old format to stable format when editing", async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-2",
 				title: "Old Format Task",
@@ -428,7 +445,7 @@ Test task with acceptance criteria
 - [x] Old format criterion 2`,
 			});
 
-			const result = await $`bun ${CLI_PATH} task edit 2 --ac "New criterion"`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${CLI_PATH} task edit 2 --ac "New criterion"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 			expect(result.exitCode).toBe(0);
 
 			const task = await core.filesystem.loadTask("task-2");
@@ -443,18 +460,19 @@ Test task with acceptance criteria
 
 describe("AcceptanceCriteriaManager unit tests", () => {
 	let TEST_DIR_UNIT: string;
+	let PROJECT_ROOT_UNIT: string;
+	let ENV_UNIT: Record<string, string>;
 	const CLI_PATH_UNIT = join(process.cwd(), "src", "cli.ts");
 
 	beforeEach(async () => {
 		TEST_DIR_UNIT = createUniqueTestDir("test-acceptance-criteria-unit");
 		await rm(TEST_DIR_UNIT, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR_UNIT, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR_UNIT).quiet();
 
-		const core = new Core(TEST_DIR_UNIT);
-		await initializeTestProject(core, "AC Unit Test Project");
+		({ projectRoot: PROJECT_ROOT_UNIT, env: ENV_UNIT } = await initializeGlobalTestProject(
+			TEST_DIR_UNIT,
+			"AC Unit Test Project",
+		));
 	});
 
 	afterEach(async () => {
@@ -534,9 +552,9 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 	describe("Multi-value CLI operations", () => {
 		it("should support multiple --ac flags in task create", async () => {
 			const result =
-				await $`bun run ${CLI_PATH_UNIT} task create "Multi AC Test" --ac "First" --ac "Second" --ac "Third"`.cwd(
-					TEST_DIR_UNIT,
-				);
+				await $`bun run ${CLI_PATH_UNIT} task create "Multi AC Test" --ac "First" --ac "Second" --ac "Third"`
+					.cwd(PROJECT_ROOT_UNIT)
+					.env(ENV_UNIT);
 			expect(result.exitCode).toBe(0);
 
 			// Parse task ID from output
@@ -544,7 +562,7 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 			expect(taskId).toBeTruthy();
 
 			// Verify ACs were created
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
+			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(PROJECT_ROOT_UNIT).env(ENV_UNIT);
 			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First");
 			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Second");
 			expect(taskResult.stdout.toString()).toContain("- [ ] #3 Third");
@@ -553,19 +571,19 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		it("should support multiple --check-ac flags in single command", async () => {
 			// Create task with multiple ACs
 			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Check Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
-					TEST_DIR_UNIT,
-				);
+				await $`bun run ${CLI_PATH_UNIT} task create "Check Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`
+					.cwd(PROJECT_ROOT_UNIT)
+					.env(ENV_UNIT);
 			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Check multiple ACs at once
-			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 3`.cwd(
-				TEST_DIR_UNIT,
-			);
+			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 3`
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT);
 			expect(checkResult.exitCode).toBe(0);
 
 			// Verify correct ACs were checked
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
+			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(PROJECT_ROOT_UNIT).env(ENV_UNIT);
 			expect(taskResult.stdout.toString()).toContain("- [x] #1 First");
 			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Second");
 			expect(taskResult.stdout.toString()).toContain("- [x] #3 Third");
@@ -575,22 +593,24 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		it("should support mixed AC operations in single command", async () => {
 			// Create task with multiple ACs
 			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Mixed Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
-					TEST_DIR_UNIT,
-				);
+				await $`bun run ${CLI_PATH_UNIT} task create "Mixed Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`
+					.cwd(PROJECT_ROOT_UNIT)
+					.env(ENV_UNIT);
 			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Check some ACs first
-			await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 2 --check-ac 3`.cwd(TEST_DIR_UNIT);
+			await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 2 --check-ac 3`
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT);
 
 			// Now do mixed operations: uncheck 1, keep 2 checked, check 4
-			const mixedResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --uncheck-ac 1 --check-ac 4`.cwd(
-				TEST_DIR_UNIT,
-			);
+			const mixedResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --uncheck-ac 1 --check-ac 4`
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT);
 			expect(mixedResult.exitCode).toBe(0);
 
 			// Verify final state
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
+			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(PROJECT_ROOT_UNIT).env(ENV_UNIT);
 			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First"); // unchecked
 			expect(taskResult.stdout.toString()).toContain("- [x] #2 Second"); // remained checked
 			expect(taskResult.stdout.toString()).toContain("- [x] #3 Third"); // remained checked
@@ -600,19 +620,19 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		it("should support multiple --remove-ac flags with proper renumbering", async () => {
 			// Create task with 5 ACs
 			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Remove Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth" --ac "Fifth"`.cwd(
-					TEST_DIR_UNIT,
-				);
+				await $`bun run ${CLI_PATH_UNIT} task create "Remove Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth" --ac "Fifth"`
+					.cwd(PROJECT_ROOT_UNIT)
+					.env(ENV_UNIT);
 			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Remove ACs 2 and 4 (should be processed in descending order to avoid index shifting)
-			const removeResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --remove-ac 2 --remove-ac 4`.cwd(
-				TEST_DIR_UNIT,
-			);
+			const removeResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --remove-ac 2 --remove-ac 4`
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT);
 			expect(removeResult.exitCode).toBe(0);
 
 			// Verify remaining ACs are properly renumbered
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
+			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(PROJECT_ROOT_UNIT).env(ENV_UNIT);
 			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First"); // original #1
 			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Third"); // original #3 -> #2
 			expect(taskResult.stdout.toString()).toContain("- [ ] #3 Fifth"); // original #5 -> #3
@@ -622,14 +642,15 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 
 		it("should handle invalid indices gracefully in multi-value operations", async () => {
 			// Create task with 2 ACs
-			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
-				TEST_DIR_UNIT,
-			);
+			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT);
 			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
 
 			// Try to check valid and invalid indices
 			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 5`
-				.cwd(TEST_DIR_UNIT)
+				.cwd(PROJECT_ROOT_UNIT)
+				.env(ENV_UNIT)
 				.nothrow();
 			expect(checkResult.exitCode).toBe(1);
 			expect(checkResult.stderr.toString()).toContain("Acceptance criterion #5 not found");

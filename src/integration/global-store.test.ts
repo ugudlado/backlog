@@ -144,12 +144,10 @@ describe("globalStore end-to-end integration", () => {
 			.quiet();
 
 		// Global projects carry no registry path — they are found by scanning the
-		// global store. So the registry must have no workspace entry for this repo...
+		// global store, and the registry only holds the `current` pointer.
 		const index = await readProjectsIndex(machineConfigDir);
-		const registered = index.projects.some((w) => w.path === repoDir);
-		expect(registered).toBe(false);
 
-		// ...the project is discoverable via the global-store scan (point the
+		// The project is discoverable via the global-store scan (point the
 		// in-process machine-config reader at the test's isolated dir)...
 		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
 		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");

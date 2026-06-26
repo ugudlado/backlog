@@ -2,23 +2,24 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
-import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Implementation Plan CLI", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-plan");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Implementation Plan Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Implementation Plan Test Project"));
 	});
 
 	afterEach(async () => {
@@ -34,12 +35,13 @@ describe("Implementation Plan CLI", () => {
 			// Test 1: create task with implementation plan using --plan
 			const result1 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 1", "--plan", "Step 1: Analyze\nStep 2: Implement"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result1.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Implementation Plan");
@@ -49,7 +51,8 @@ describe("Implementation Plan CLI", () => {
 			// Test 2: create task with both description and implementation plan
 			const result2 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task 2", "-d", "Task description", "--plan", "1. First step\n2. Second step"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 			expect(result2.exitCode).toBe(0);
@@ -63,22 +66,13 @@ describe("Implementation Plan CLI", () => {
 			expect(task?.rawContent).toContain("2. Second step");
 
 			// Test 3: create task with acceptance criteria and implementation plan
-			const result = await createTaskPlatformAware(
-				{
-					title: "Test Task 3",
-					ac: "Must work correctly, Must be tested",
-					plan: "Phase 1: Setup\nPhase 2: Testing",
-				},
-				TEST_DIR,
-			);
+			const { task: createdTask } = await core.createTaskFromInput({
+				title: "Test Task 3",
+				acceptanceCriteria: [{ text: "Must work correctly, Must be tested", checked: false }],
+				implementationPlan: "Phase 1: Setup\nPhase 2: Testing",
+			});
 
-			if (result.exitCode !== 0) {
-				console.error("CLI Error:", result.stderr || result.stdout);
-				console.error("Exit code:", result.exitCode);
-			}
-			expect(result.exitCode).toBe(0);
-
-			task = await core.filesystem.loadTask(result.taskId || "task-3");
+			task = await core.filesystem.loadTask(createdTask.id || "task-3");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Acceptance Criteria");
 			expect(task?.rawContent).toContain("- [ ] #1 Must work correctly, Must be tested");
@@ -90,7 +84,7 @@ describe("Implementation Plan CLI", () => {
 
 	describe("task edit with implementation plan", () => {
 		beforeEach(async () => {
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			await core.createTask({
 				id: "task-1",
 				title: "Existing Task",
@@ -104,11 +98,11 @@ describe("Implementation Plan CLI", () => {
 		});
 
 		it("should handle all task editing scenarios with implementation plans", async () => {
-			// Test 1: add implementation plan to existing task
-			const result1 = await editTaskPlatformAware({ taskId: "1", plan: "New plan:\n- Step A\n- Step B" }, TEST_DIR);
-			expect(result1.exitCode).toBe(0);
+			const core = CORE;
 
-			const core = new Core(TEST_DIR);
+			// Test 1: add implementation plan to existing task
+			await core.updateTaskFromInput("task-1", { implementationPlan: "New plan:\n- Step A\n- Step B" });
+
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Description");
@@ -123,11 +117,7 @@ describe("Implementation Plan CLI", () => {
 			await core.updateTaskFromInput("task-1", { implementationPlan: "Old plan:\n1. Old step 1\n2. Old step 2" });
 
 			// Now update with new plan
-			const result2 = await editTaskPlatformAware(
-				{ taskId: "1", plan: "Updated plan:\n1. New step 1\n2. New step 2" },
-				TEST_DIR,
-			);
-			expect(result2.exitCode).toBe(0);
+			await core.updateTaskFromInput("task-1", { implementationPlan: "Updated plan:\n1. New step 1\n2. New step 2" });
 
 			task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
@@ -141,7 +131,8 @@ describe("Implementation Plan CLI", () => {
 			// Test 3: update both title and implementation plan
 			const result =
 				await $`bun ${[CLI_PATH, "task", "edit", "1", "--title", "Updated Title", "--plan", "Implementation:\n- Do this\n- Then that"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 
@@ -166,7 +157,8 @@ describe("Implementation Plan CLI", () => {
 			// Test 1: place implementation plan after acceptance criteria when both exist
 			const result1 =
 				await $`bun ${[CLI_PATH, "task", "create", "Test Task", "-d", "Description text", "--ac", "Criterion 1", "--plan", "Plan text"]}`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet()
 					.nothrow();
 
@@ -176,7 +168,7 @@ describe("Implementation Plan CLI", () => {
 			}
 			expect(result1.exitCode).toBe(0);
 
-			const core = new Core(TEST_DIR);
+			const core = CORE;
 			let task = await core.filesystem.loadTask("task-1");
 			expect(task).not.toBeNull();
 
@@ -190,7 +182,11 @@ describe("Implementation Plan CLI", () => {
 			expect(acIndex).toBeLessThan(planIndex);
 
 			// Test 2: create task without plan (should not add the section)
-			const result2 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 2"]}`.cwd(TEST_DIR).quiet().nothrow();
+			const result2 = await $`bun ${[CLI_PATH, "task", "create", "Test Task 2"]}`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet()
+				.nothrow();
 
 			if (result2.exitCode !== 0) {
 				console.error("CLI Error:", result2.stderr.toString() || result2.stdout.toString());

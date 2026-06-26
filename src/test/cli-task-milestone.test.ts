@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../index.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("CLI task milestone assignment", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -19,12 +22,11 @@ describe("CLI task milestone assignment", () => {
 		}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "CLI Milestone Assignment Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "CLI Milestone Assignment Project"));
 	});
 
 	afterEach(async () => {
@@ -36,11 +38,12 @@ describe("CLI task milestone assignment", () => {
 	});
 
 	it("creates tasks with milestone titles resolved to canonical milestone IDs", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const milestone = await core.filesystem.createMilestone("Release CLI");
 
 		const result = await $`bun ${cliPath} task create "Milestone create task" --milestone "Release CLI" --plain`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 
 		expect(result.exitCode).toBe(0);
@@ -51,23 +54,27 @@ describe("CLI task milestone assignment", () => {
 	});
 
 	it("edits and clears task milestones from the CLI", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const first = await core.filesystem.createMilestone("Release Alpha");
 		const second = await core.filesystem.createMilestone("Release Beta");
 
 		const create = await $`bun ${cliPath} task create "Milestone edit task" --milestone ${first.id}`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(create.exitCode).toBe(0);
 
-		const edit = await $`bun ${cliPath} task edit 1 --milestone "Release Beta" --plain`.cwd(TEST_DIR).quiet();
+		const edit = await $`bun ${cliPath} task edit 1 --milestone "Release Beta" --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(edit.exitCode).toBe(0);
 		expect(edit.stdout.toString()).toContain(`Milestone: ${second.id}`);
 
 		const updated = await core.filesystem.loadTask("task-1");
 		expect(updated?.milestone).toBe(second.id);
 
-		const clear = await $`bun ${cliPath} task edit 1 --clear-milestone --plain`.cwd(TEST_DIR).quiet();
+		const clear = await $`bun ${cliPath} task edit 1 --clear-milestone --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(clear.exitCode).toBe(0);
 		expect(clear.stdout.toString()).not.toContain("Milestone:");
 
@@ -76,12 +83,13 @@ describe("CLI task milestone assignment", () => {
 	});
 
 	it("rejects conflicting milestone edit flags", async () => {
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		await core.filesystem.createMilestone("Release CLI");
-		await $`bun ${cliPath} task create "Conflicting milestone flags"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Conflicting milestone flags"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		const result = await $`bun ${cliPath} task edit 1 --milestone "Release CLI" --clear-milestone`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet()
 			.nothrow();
 
@@ -90,8 +98,8 @@ describe("CLI task milestone assignment", () => {
 	});
 
 	it("shows milestone create and edit flags in help output", async () => {
-		const createHelp = await $`bun ${cliPath} task create --help`.cwd(TEST_DIR).quiet();
-		const editHelp = await $`bun ${cliPath} task edit --help`.cwd(TEST_DIR).quiet();
+		const createHelp = await $`bun ${cliPath} task create --help`.cwd(PROJECT_ROOT).env(ENV).quiet();
+		const editHelp = await $`bun ${cliPath} task edit --help`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		expect(createHelp.stdout.toString()).toContain("-m, --milestone <milestone>");
 		expect(editHelp.stdout.toString()).toContain("-m, --milestone <milestone>");

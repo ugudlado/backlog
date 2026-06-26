@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../index.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("CLI milestone filtering", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -19,12 +22,12 @@ describe("CLI milestone filtering", () => {
 		}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Milestone Filter Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Milestone Filter Test Project"));
+		const core = CORE;
 		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
 
 		await core.createTask({
@@ -108,7 +111,7 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("filters by milestone with case-insensitive matching", async () => {
-		const result = await $`bun ${cliPath} task list --milestone RELEASE-1 --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task list --milestone RELEASE-1 --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
@@ -122,7 +125,10 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("supports -m shorthand and combines milestone with status filter", async () => {
-		const result = await $`bun ${cliPath} task list -m release-1 --status "To Do" --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task list -m release-1 --status "To Do" --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
@@ -136,7 +142,10 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("matches closest milestone for partial and typo inputs", async () => {
-		const typoResult = await $`bun ${cliPath} task list --milestone releas-1 --plain`.cwd(TEST_DIR).quiet();
+		const typoResult = await $`bun ${cliPath} task list --milestone releas-1 --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(typoResult.exitCode).toBe(0);
 		const typoOutput = typoResult.stdout.toString();
 
@@ -146,7 +155,10 @@ describe("CLI milestone filtering", () => {
 		expect(typoOutput).not.toContain("TASK-4 - No milestone task");
 		expect(typoOutput).not.toContain("TASK-5 - Roadmap milestone task");
 
-		const partialResult = await $`bun ${cliPath} task list --milestone roadmp --plain`.cwd(TEST_DIR).quiet();
+		const partialResult = await $`bun ${cliPath} task list --milestone roadmp --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(partialResult.exitCode).toBe(0);
 		const partialOutput = partialResult.stdout.toString();
 
@@ -159,7 +171,7 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("matches milestone title when tasks store milestone IDs", async () => {
-		const result = await $`bun ${cliPath} task list -m new --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task list -m new --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();
 
@@ -172,7 +184,7 @@ describe("CLI milestone filtering", () => {
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {
-		const result = await $`bun ${cliPath} task list --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task list --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		expect(result.exitCode).toBe(0);
 		const output = result.stdout.toString();

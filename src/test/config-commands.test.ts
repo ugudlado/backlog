@@ -4,10 +4,13 @@ import { join } from "node:path";
 import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
-import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../core/backlog.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("Config commands", () => {
@@ -18,13 +21,12 @@ describe("Config commands", () => {
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
-		// Configure git for tests - required for CI
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-
-		core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Test Config Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Test Config Project"));
+		core = CORE;
 	});
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {
@@ -110,22 +112,22 @@ describe("Config commands", () => {
 	});
 
 	it("exposes config list/get/set subcommands", async () => {
-		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(PROJECT_ROOT).env(ENV).text();
 		expect(listOutput).toContain("Configuration:");
 
-		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
-		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(TEST_DIR).text();
+		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(PROJECT_ROOT).env(ENV).text();
 		expect(portOutput.trim()).toBe("7001");
 	});
 
 	it("surfaces milestones in config get/list from milestone files", async () => {
 		await core.filesystem.createMilestone("Release 1");
 
-		const milestonesOutput = await $`bun ${CLI_PATH} config get milestones`.cwd(TEST_DIR).text();
+		const milestonesOutput = await $`bun ${CLI_PATH} config get milestones`.cwd(PROJECT_ROOT).env(ENV).text();
 		expect(milestonesOutput.trim()).toBe("m-0");
 
-		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(PROJECT_ROOT).env(ENV).text();
 		expect(listOutput).toContain("milestones: [m-0]");
 	});
 

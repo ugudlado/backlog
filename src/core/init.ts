@@ -274,36 +274,22 @@ export async function initializeProject(
 		await core.ensureConfigLoaded();
 	}
 
-	// Register the workspace in the machine-wide index and mark it current.
-	// Mints + persists a stable id into the project config if missing.
+	// Global-store projects are discovered by scanning <globalStore>/* (the slot
+	// IS the source of truth). Mark the new project current so it becomes active.
 	// Best-effort: if the home directory isn't writable (sandboxed envs,
 	// read-only setups), init still succeeds.
-	//
-	// Global-store projects are discovered by scanning <globalStore>/* (the slot
-	// IS the source of truth), so they do NOT get a registry path. We set the
-	// current pointer to the new project's id so it becomes active. Local-mode
-	// projects keep their registry path, which is their only address.
-	const isGlobalStore = core.filesystem.isGlobalStoreSlot();
-	try {
-		if (isGlobalStore) {
-			// Mark the new project current using the SAME id the global-store scan
-			// reports: the slot's config id if present, else the slot dir name.
-			// Keeping these in sync lets the persisted `current` pointer match a
-			// scanned project across restarts.
+	if (core.filesystem.isGlobalStoreSlot()) {
+		try {
+			// Use the SAME id the global-store scan reports: the slot's config id if
+			// present, else the slot dir name. Keeping these in sync lets the
+			// persisted `current` pointer match a scanned project across restarts.
 			const cfgId = (await core.filesystem.loadConfig())?.id;
 			const id = cfgId ?? basename(core.filesystem.backlogDir);
 			const { setCurrentProjectId } = await import("../utils/projects-index.ts");
 			await setCurrentProjectId(id);
-		} else {
-			const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
-			const { entry } = await registerWorkspaceAtPath(projectRoot, { data: workspaceDataDir });
-			if (entry.id) {
-				const { setCurrentProjectId } = await import("../utils/projects-index.ts");
-				await setCurrentProjectId(entry.id);
-			}
+		} catch (err) {
+			console.warn(`Warning: could not set current project pointer: ${(err as Error).message}`);
 		}
-	} catch (err) {
-		console.warn(`Warning: could not register workspace in machine index: ${(err as Error).message}`);
 	}
 
 	const mcpResults: Record<string, string> = {};

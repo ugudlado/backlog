@@ -1,17 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
-import {
-	readProjectsIndex,
-	setCurrentProjectId,
-	withRegistryLock,
-	writeProjectsIndex,
-} from "../utils/projects-index.ts";
-import { applyFixes, scanWorkspaces, type WorkspaceIssue } from "./workspace-doctor.ts";
-
-interface DoctorOptions {
-	fix?: boolean;
-	yes?: boolean;
-}
+import { readProjectsIndex, setCurrentProjectId } from "../utils/projects-index.ts";
 
 async function runAction(fn: () => Promise<void>): Promise<void> {
 	try {
@@ -20,74 +9,6 @@ async function runAction(fn: () => Promise<void>): Promise<void> {
 		console.error(err instanceof Error ? err.message : String(err));
 		process.exit(1);
 	}
-}
-
-function formatIssue(issue: WorkspaceIssue): string {
-	const id = issue.entryId ?? "(no id)";
-	const target = issue.kind === "stale-current-pointer" ? `current=${id}` : `${id} ${issue.path}`;
-	return `  [${issue.kind}] ${target}`;
-}
-
-function pluralEntries(n: number): string {
-	return `${n} ${n === 1 ? "entry" : "entries"}`;
-}
-
-function pluralIssues(n: number): string {
-	return `${n} ${n === 1 ? "issue" : "issues"}`;
-}
-
-function printReport(issues: WorkspaceIssue[], totalEntries: number): void {
-	if (issues.length === 0) {
-		console.log(`Registry healthy — ${pluralEntries(totalEntries)}, no issues.`);
-		return;
-	}
-	console.log(`Found ${pluralIssues(issues.length)} across ${pluralEntries(totalEntries)}:`);
-	for (const issue of issues) {
-		console.log(formatIssue(issue));
-	}
-}
-
-async function doDoctor(opts: DoctorOptions): Promise<void> {
-	const index = await readProjectsIndex();
-	const issues = await scanWorkspaces(index.projects, index.current);
-
-	printReport(issues, index.projects.length);
-
-	if (issues.length === 0) {
-		process.exit(0);
-	}
-
-	if (!opts.fix) {
-		console.log("\nRun with --fix to repair (use --yes to skip the prompt).");
-		process.exit(1);
-	}
-
-	if (!opts.yes) {
-		const result = await clack.confirm({
-			message: `Remove ${issues.length} broken entry/entries?`,
-			initialValue: false,
-		});
-		if (clack.isCancel(result) || result !== true) {
-			console.log("Aborted — registry left unchanged.");
-			process.exit(1);
-		}
-	}
-
-	await withRegistryLock(async () => {
-		const fresh = await readProjectsIndex();
-		const freshIssues = await scanWorkspaces(fresh.projects, fresh.current);
-		const fixed = applyFixes(fresh.projects, freshIssues, fresh.current);
-		const next = { ...fresh, workspaces: fixed.entries };
-		if (fixed.current === undefined) {
-			delete next.current;
-		} else {
-			next.current = fixed.current;
-		}
-		await writeProjectsIndex(next);
-	});
-
-	console.log(`Removed/repaired ${pluralIssues(issues.length)}.`);
-	process.exit(0);
 }
 
 export function registerProjectCommand(program: Command): void {
@@ -201,12 +122,4 @@ export function registerProjectCommand(program: Command): void {
 				console.log(`Archived project ${match.name} -> ${dest}`);
 			}),
 		);
-
-	// Registry maintenance for the local-mode fallback registry (advanced).
-	proj
-		.command("doctor")
-		.description("scan the local-mode registry for drift; --fix to repair")
-		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
-		.option("--yes", "skip the confirmation prompt when --fix is supplied")
-		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
 }

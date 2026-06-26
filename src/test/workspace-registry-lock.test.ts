@@ -1,13 +1,7 @@
 /**
- * RED phase: tests for withRegistryLock cross-process serialisation and timeout error.
+ * Test for withRegistryLock timeout error.
  *
- * These tests FAIL until T-2 implements withRegistryLock in workspaces-index.ts.
- *
- * Test 1: Two child Bun processes each upsert multiple entries against a shared
- * BACKLOG_MACHINE_CONFIG_DIR — without withRegistryLock, overlapping RMW cycles
- * cause lost updates; with it, all entries land.
- *
- * Test 2: Hold the registry lock manually, then call withRegistryLock with a short
+ * Hold the registry lock manually, then call withRegistryLock with a short
  * timeout — expect EREGISTRYLOCK error code.
  */
 
@@ -15,81 +9,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
-import { readProjectsIndex, withRegistryLock } from "../utils/projects-index.ts";
+import { withRegistryLock } from "../utils/projects-index.ts";
 
 const tmpRoot = (label: string) =>
 	join(process.cwd(), `tmp-registry-lock-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 
-// ─── Test 1: Cross-process concurrent writers ────────────────────────────────
-
-describe("withRegistryLock cross-process serialisation", () => {
-	let base: string;
-	let machineConfigDir: string;
-	let prevEnv: string | undefined;
-
-	beforeEach(async () => {
-		base = tmpRoot("race");
-		machineConfigDir = join(base, ".config", "backlog.md");
-		await mkdir(machineConfigDir, { recursive: true });
-		prevEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
-		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
-	});
-
-	afterEach(async () => {
-		if (prevEnv === undefined) delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
-		else process.env.BACKLOG_MACHINE_CONFIG_DIR = prevEnv;
-		await rm(base, { recursive: true, force: true });
-	});
-
-	it("preserves all entries when two child processes upsert concurrently", async () => {
-		// Each child upserts 5 entries. Without cross-process locking, at least
-		// one child's entries will be lost (second rename overwrites the first's changes).
-		// With withRegistryLock, all 10 entries must land.
-		const childAIds = ["a0", "a1", "a2", "a3", "a4"];
-		const childBIds = ["b0", "b1", "b2", "b3", "b4"];
-
-		// Inline script: import workspaces-index, upsert N entries sequentially.
-		// Each child writes to the shared BACKLOG_MACHINE_CONFIG_DIR inherited from env.
-		const childScript = (ids: string[]) => `
-import { upsertProjectEntry } from ${JSON.stringify(join(process.cwd(), "src/utils/projects-index.ts"))};
-const ids = ${JSON.stringify(ids)};
-for (const id of ids) {
-  await upsertProjectEntry({ path: "/tmp/ws-" + id, id });
-}
-`;
-
-		const procA = Bun.spawn(["bun", "-e", childScript(childAIds)], {
-			env: { ...process.env, BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir },
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		const procB = Bun.spawn(["bun", "-e", childScript(childBIds)], {
-			env: { ...process.env, BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir },
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		const [exitA, exitB] = await Promise.all([procA.exited, procB.exited]);
-
-		if (exitA !== 0) {
-			const stderr = await new Response(procA.stderr).text();
-			throw new Error(`Child A exited with code ${exitA}: ${stderr}`);
-		}
-		if (exitB !== 0) {
-			const stderr = await new Response(procB.stderr).text();
-			throw new Error(`Child B exited with code ${exitB}: ${stderr}`);
-		}
-
-		// All 10 entries must survive — no lost updates.
-		const idx = await readProjectsIndex(machineConfigDir);
-		const ids = idx.projects.map((e) => e.id).sort();
-		const expected = [...childAIds, ...childBIds].sort();
-		expect(ids).toEqual(expected);
-	}, 30_000); // Allow up to 30 s for child process startup overhead.
-});
-
-// ─── Test 2: Lock timeout surfaces EREGISTRYLOCK ─────────────────────────────
+// ─── Lock timeout surfaces EREGISTRYLOCK ─────────────────────────────
 
 describe("withRegistryLock timeout error", () => {
 	let base: string;

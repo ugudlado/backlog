@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import { createUniqueTestDir } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -13,37 +13,39 @@ const getText = (content: unknown[] | undefined, index = 0): string => {
 	return item?.text ?? "";
 };
 
-// Fast setup using the serialized config format that operations.ts parseConfig understands
-async function setupTestProject(testDir: string): Promise<void> {
-	await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "archive", "tasks"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "milestones"), { recursive: true });
-	await mkdir(join(testDir, "backlog", "completed"), { recursive: true });
-	await writeFile(
-		join(testDir, "backlog", "config.yml"),
-		`project_name: "Test"
-default_status: "To Do"
-statuses: ["To Do", "Ready", "In Progress", "Review", "Verify", "Done"]
-labels: []
-date_format: yyyy-mm-dd
-check_active_branches: false
-filesystem_only: true
-`,
-	);
+// Build an MCP server pointed at a global-store slot (slot-aware filesystem), optionally
+// overriding statuses/defaultStatus via config.
+async function setupServer(
+	testDir: string,
+	projectName: string,
+	statuses?: string[],
+	defaultStatus?: string,
+): Promise<{ server: McpServer; projectRoot: string; env: Record<string, string> }> {
+	await mkdir(testDir, { recursive: true });
+	const { projectRoot, env } = await initializeGlobalTestProject(testDir, projectName);
+	const server = new McpServer(projectRoot, "Test instructions");
+	server.filesystem.setGlobalStoreSlot(projectRoot, projectName);
+
+	const config = await server.filesystem.loadConfig();
+	if (!config) throw new Error("Failed to load config");
+	if (statuses || defaultStatus) {
+		if (statuses) config.statuses = statuses;
+		if (defaultStatus) config.defaultStatus = defaultStatus;
+		await server.filesystem.saveConfig(config);
+	}
+	registerTaskTools(server, config);
+	return { server, projectRoot, env };
 }
 
 describe("MCP task_next", () => {
 	let testDir: string;
 	let server: McpServer;
+	let projectRoot: string;
+	let env: Record<string, string>;
 
 	beforeEach(async () => {
 		testDir = createUniqueTestDir("mcp-task-next");
-		await setupTestProject(testDir);
-		server = new McpServer(testDir, "Test instructions");
-
-		const config = await server.filesystem.loadConfig();
-		if (!config) throw new Error("Failed to load config");
-		registerTaskTools(server, config);
+		({ server, projectRoot, env } = await setupServer(testDir, "Test"));
 	});
 
 	afterEach(async () => {
@@ -134,25 +136,7 @@ describe("MCP task_next", () => {
 		// Bug fix: on a legacy repo without Ready status, the error must say "To Do"
 		// not the hardcoded fallback "Ready".
 		const legacyDir = createUniqueTestDir("mcp-task-next-legacy-err");
-		await mkdir(join(legacyDir, "backlog", "tasks"), { recursive: true });
-		await mkdir(join(legacyDir, "backlog", "archive", "tasks"), { recursive: true });
-		await mkdir(join(legacyDir, "backlog", "milestones"), { recursive: true });
-		await mkdir(join(legacyDir, "backlog", "completed"), { recursive: true });
-		await writeFile(
-			join(legacyDir, "backlog", "config.yml"),
-			`project_name: "Legacy"
-default_status: "To Do"
-statuses: ["To Do", "In Progress", "Done"]
-labels: []
-date_format: yyyy-mm-dd
-check_active_branches: false
-filesystem_only: true
-`,
-		);
-		const legacyServer = new McpServer(legacyDir, "Test instructions");
-		const legacyConfig = await legacyServer.filesystem.loadConfig();
-		if (!legacyConfig) throw new Error("Failed to load config");
-		registerTaskTools(legacyServer, legacyConfig);
+		const { server: legacyServer } = await setupServer(legacyDir, "Legacy", ["To Do", "In Progress", "Done"], "To Do");
 
 		try {
 			// No tasks — empty queue
@@ -183,7 +167,7 @@ filesystem_only: true
 		});
 
 		// CLI claims one
-		const cliResult = await $`bun ${CLI_PATH} task next`.cwd(testDir).nothrow().quiet();
+		const cliResult = await $`bun ${CLI_PATH} task next`.cwd(projectRoot).env(env).nothrow().quiet();
 		expect(cliResult.exitCode).toBe(0);
 		const cliOutput = cliResult.stdout.toString();
 		expect(cliOutput).toContain("→");

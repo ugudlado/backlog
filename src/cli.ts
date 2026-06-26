@@ -331,33 +331,14 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * usage.
  */
 async function resolveServerProjectRoot(): Promise<string> {
-	const { readProjectsIndex, toAbsoluteProjectRoot } = await import("./utils/projects-index.ts");
+	const { readProjectsIndex } = await import("./utils/projects-index.ts");
 	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
-	const { isAbsolute, resolve: resolvePath } = await import("node:path");
 	const index = await readProjectsIndex();
 
-	// Resolve the chosen entry to its project root AND record its `data:`
-	// override so the server's FileSystem reads tasks/config from there
-	// (the CLI path does the same via requireProjectRoot).
-	const pick = (entry: { path: string; data?: string }): string => {
-		const root = toAbsoluteProjectRoot(entry.path);
-		const dataDir = entry.data ? (isAbsolute(entry.data) ? entry.data : resolvePath(root, entry.data)) : undefined;
-		setActiveWorkspaceDataDir(root, dataDir);
-		return root;
-	};
-
-	if (index.current) {
-		const entry = index.projects.find((e) => e.id === index.current);
-		if (entry) return pick(entry);
-	}
-	const first = index.projects[0];
-	if (first) return pick(first);
-
-	// No registry entry. Global-store projects carry no registry path — they are
-	// discovered by scanning <globalStore>/*. Bootstrap onto the current (or
-	// first) scanned slot so the daemon serves a global project even when CWD is
-	// `/` (systemd WorkingDirectory) and the registry is empty. The slot is both
-	// project root and data dir.
+	// Projects are discovered by scanning <globalStore>/*. Bootstrap onto the
+	// current (or first) scanned slot so the daemon serves a project even when
+	// CWD is `/` (systemd WorkingDirectory). The slot is both project root and
+	// data dir.
 	const { scanGlobalStoreProjects } = await import("./utils/global-store-scan.ts");
 	const scanned = await scanGlobalStoreProjects();
 	const slot = scanned.find((p) => p.id === index.current) ?? scanned[0];
@@ -388,14 +369,7 @@ async function requireProjectRoot(): Promise<string> {
 	}
 	const resolved = await resolveCliProjectRoot(runtimeCwd.cwd, projectName);
 	if (!resolved.ok) {
-		if (resolved.kind === "ambiguous") {
-			console.error(
-				`Multiple Backlog.md projects match the current directory:\n  ${resolved.paths.join("\n  ")}\n` +
-					"Select one with `backlog --project <name>` or `backlog project switch <name>`.",
-			);
-		} else {
-			console.error("No Backlog.md project found. Run `backlog init` to initialize.");
-		}
+		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
 		process.exit(1);
 	}
 	// When the cwd is not a Backlog.md project, resolution falls back to the

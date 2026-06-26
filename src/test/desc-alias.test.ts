@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../index.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("--desc alias functionality", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -19,14 +22,11 @@ describe("--desc alias functionality", () => {
 		}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		// Initialize git repo first
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email "test@example.com"`.cwd(TEST_DIR).quiet();
-
-		// Initialize backlog project using Core
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Desc Alias Test Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Desc Alias Test Project"));
 	});
 
 	afterEach(async () => {
@@ -38,20 +38,23 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should create task with --desc alias", async () => {
-		await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Test --desc alias" --desc "Created with --desc"`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 
 		// Check that command succeeded (no exception thrown)
-		const output = await $`bun ${cliPath} task 1 --plain`.cwd(TEST_DIR).text();
+		const output = await $`bun ${cliPath} task 1 --plain`.cwd(PROJECT_ROOT).env(ENV).text();
 		expect(output).toContain("Test --desc alias");
 		expect(output).toContain("Created with --desc");
 	});
 
 	it("should verify task created with --desc has correct description", async () => {
 		// Create task with --desc
-		await $`bun ${cliPath} task create "Test task" --desc "Description via --desc"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Test task" --desc "Description via --desc"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		// Verify the task was created with correct description
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		const task = await core.filesystem.loadTask("task-1");
 
 		expect(task).not.toBeNull();
@@ -60,7 +63,7 @@ describe("--desc alias functionality", () => {
 
 	it("should edit task description with --desc alias", async () => {
 		// Create initial task
-		const core = new Core(TEST_DIR);
+		const core = CORE;
 		await core.createTask({
 			id: "task-1",
 			title: "Edit test task",
@@ -73,7 +76,7 @@ describe("--desc alias functionality", () => {
 		});
 
 		// Edit with --desc
-		await $`bun ${cliPath} task edit 1 --desc "Updated via --desc"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task edit 1 --desc "Updated via --desc"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		// Command succeeded without throwing
 
@@ -83,7 +86,7 @@ describe("--desc alias functionality", () => {
 	});
 
 	it("should show --desc in help text", async () => {
-		const result = await $`bun ${cliPath} task create --help`.cwd(TEST_DIR).text();
+		const result = await $`bun ${cliPath} task create --help`.cwd(PROJECT_ROOT).env(ENV).text();
 
 		expect(result).toContain("-d, --description <text>");
 		expect(result).toContain("--desc <text>");

@@ -1484,22 +1484,14 @@ export class BacklogServer {
 		projects: Array<{ id: string; path: string }>;
 		currentId: string | null;
 	}> {
-		const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
 		const { readProjectsIndex } = await import("../utils/projects-index.ts");
 		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-		const entries = await readProjectsWithIds();
-		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
 		const persisted = (await readProjectsIndex()).current;
 
-		// Global-store projects are discovered by scanning <globalStore>/*. Merge
-		// them with registry (local-mode fallback) entries, preferring the scan
-		// when ids collide so a re-init'd project does not appear twice.
+		// Projects are discovered by scanning <globalStore>/*.
 		const scanned = await scanGlobalStoreProjects();
-		const all = new Map<string, string>(withIds.map((e) => [e.id, toAbsoluteProjectRoot(e.path)]));
-		for (const p of scanned) all.set(p.id, p.slotPath);
-
-		const projects = [...all.entries()].map(([id, path]) => ({ id, path }));
-		const persistedHit = persisted && all.has(persisted) ? persisted : undefined;
+		const projects = scanned.map((p) => ({ id: p.id, path: p.slotPath }));
+		const persistedHit = persisted && scanned.some((p) => p.id === persisted) ? persisted : undefined;
 		const currentPath = toAbsoluteProjectRoot(this.core.filesystem.rootDir);
 		const memoryHit = projects.find((p) => toAbsoluteProjectRoot(p.path) === currentPath)?.id;
 		return {
@@ -1571,34 +1563,15 @@ export class BacklogServer {
 				return Response.json({ error: "Only { current: true } is supported" }, { status: 400 });
 			}
 			return await this.withWorkspaceMutation(async () => {
-				const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
-				const entries = await readProjectsWithIds();
-				const target = entries.find((e) => e.id === id);
-
-				// Resolve the switch target's project root and data dir. A registry
-				// (local-mode) entry uses its repo path + optional data override; a
-				// scanned global-store project uses its slot dir as BOTH project root
-				// and data dir (no registry path needed).
-				let targetPath: string;
-				let resolvedData: string | undefined;
-				if (target) {
-					targetPath = toAbsoluteProjectRoot(target.path);
-					const { isAbsolute, resolve: resolvePath } = await import("node:path");
-					const targetData = (target as { data?: string }).data;
-					resolvedData = targetData
-						? isAbsolute(targetData)
-							? targetData
-							: resolvePath(targetPath, targetData)
-						: undefined;
-				} else {
-					const { findGlobalStoreProject } = await import("../utils/global-store-scan.ts");
-					const slot = await findGlobalStoreProject(id);
-					if (!slot) {
-						return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
-					}
-					targetPath = slot.slotPath;
-					resolvedData = slot.slotPath;
+				// The switch target is a global-store project: its slot dir is BOTH
+				// project root and data dir.
+				const { findGlobalStoreProject } = await import("../utils/global-store-scan.ts");
+				const slot = await findGlobalStoreProject(id);
+				if (!slot) {
+					return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
 				}
+				const targetPath = slot.slotPath;
+				const resolvedData = slot.slotPath;
 
 				if (!(await pathExistsAsDirectory(targetPath))) {
 					return Response.json({ error: `Project path no longer exists: ${targetPath}` }, { status: 410 });

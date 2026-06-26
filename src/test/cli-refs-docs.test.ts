@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let ENV: Record<string, string>;
 
 describe("CLI --ref and --doc flags", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -17,12 +18,7 @@ describe("CLI --ref and --doc flags", () => {
 		} catch {}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "CLI Refs Docs Test");
+		({ projectRoot: PROJECT_ROOT, env: ENV } = await initializeGlobalTestProject(TEST_DIR, "CLI Refs Docs Test"));
 	});
 
 	afterEach(async () => {
@@ -34,7 +30,8 @@ describe("CLI --ref and --doc flags", () => {
 	describe("task create with --ref flag", () => {
 		it("creates task with single reference", async () => {
 			const result = await $`bun ${cliPath} task create "Feature" --ref https://github.com/issue/123 --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -45,7 +42,8 @@ describe("CLI --ref and --doc flags", () => {
 		it("creates task with multiple references", async () => {
 			const result =
 				await $`bun ${cliPath} task create "Feature" --ref https://github.com/issue/123 --ref src/api.ts --plain`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -55,7 +53,8 @@ describe("CLI --ref and --doc flags", () => {
 
 		it("creates task with comma-separated references", async () => {
 			const result = await $`bun ${cliPath} task create "Feature" --ref "file1.ts,file2.ts" --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -67,7 +66,8 @@ describe("CLI --ref and --doc flags", () => {
 	describe("task create with --doc flag", () => {
 		it("creates task with single documentation", async () => {
 			const result = await $`bun ${cliPath} task create "Feature" --doc https://design-docs.example.com --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -78,7 +78,8 @@ describe("CLI --ref and --doc flags", () => {
 		it("creates task with multiple documentation entries", async () => {
 			const result =
 				await $`bun ${cliPath} task create "Feature" --doc https://design-docs.example.com --doc docs/spec.md --plain`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -88,7 +89,8 @@ describe("CLI --ref and --doc flags", () => {
 
 		it("creates task with comma-separated documentation", async () => {
 			const result = await $`bun ${cliPath} task create "Feature" --doc "doc1.md,doc2.md" --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -101,7 +103,8 @@ describe("CLI --ref and --doc flags", () => {
 		it("creates task with both references and documentation", async () => {
 			const result =
 				await $`bun ${cliPath} task create "Feature" --ref src/api.ts --doc https://design-docs.example.com --plain`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -115,7 +118,8 @@ describe("CLI --ref and --doc flags", () => {
 		it("creates task with multiple modified files", async () => {
 			const result =
 				await $`bun ${cliPath} task create "Feature" --modified-file src/api.ts --modified-file src/ui.ts --plain`
-					.cwd(TEST_DIR)
+					.cwd(PROJECT_ROOT)
+					.env(ENV)
 					.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -126,10 +130,11 @@ describe("CLI --ref and --doc flags", () => {
 
 	describe("task edit with --ref flag", () => {
 		it("sets references on existing task", async () => {
-			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 			const result = await $`bun ${cliPath} task edit 1 --ref https://github.com/issue/456 --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -138,9 +143,12 @@ describe("CLI --ref and --doc flags", () => {
 		});
 
 		it("sets multiple references on existing task", async () => {
-			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
-			const result = await $`bun ${cliPath} task edit 1 --ref file1.ts --ref file2.ts --plain`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${cliPath} task edit 1 --ref file1.ts --ref file2.ts --plain`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet();
 
 			expect(result.exitCode).toBe(0);
 			const out = result.stdout.toString();
@@ -150,10 +158,11 @@ describe("CLI --ref and --doc flags", () => {
 
 	describe("task edit with --doc flag", () => {
 		it("sets documentation on existing task", async () => {
-			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 			const result = await $`bun ${cliPath} task edit 1 --doc https://api-docs.example.com --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -162,9 +171,12 @@ describe("CLI --ref and --doc flags", () => {
 		});
 
 		it("sets multiple documentation entries on existing task", async () => {
-			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
-			const result = await $`bun ${cliPath} task edit 1 --doc doc1.md --doc doc2.md --plain`.cwd(TEST_DIR).quiet();
+			const result = await $`bun ${cliPath} task edit 1 --doc doc1.md --doc doc2.md --plain`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet();
 
 			expect(result.exitCode).toBe(0);
 			const out = result.stdout.toString();
@@ -174,10 +186,11 @@ describe("CLI --ref and --doc flags", () => {
 
 	describe("task edit with --modified-file flag", () => {
 		it("sets modified files on existing task", async () => {
-			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 			const result = await $`bun ${cliPath} task edit 1 --modified-file src/api.ts --modified-file src/ui.ts --plain`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
 			expect(result.exitCode).toBe(0);
@@ -188,18 +201,24 @@ describe("CLI --ref and --doc flags", () => {
 
 	describe("persistence in markdown files", () => {
 		it("persists references in task markdown file", async () => {
-			await $`bun ${cliPath} task create "Feature" --ref https://example.com --ref src/index.ts`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature" --ref https://example.com --ref src/index.ts`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet();
 
-			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
+			const taskFile = await Bun.file(join(PROJECT_ROOT, "tasks", "task-1 - Feature.md")).text();
 			expect(taskFile).toContain("references:");
 			expect(taskFile).toContain("https://example.com");
 			expect(taskFile).toContain("src/index.ts");
 		});
 
 		it("persists documentation in task markdown file", async () => {
-			await $`bun ${cliPath} task create "Feature" --doc https://docs.example.com --doc spec.md`.cwd(TEST_DIR).quiet();
+			await $`bun ${cliPath} task create "Feature" --doc https://docs.example.com --doc spec.md`
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
+				.quiet();
 
-			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
+			const taskFile = await Bun.file(join(PROJECT_ROOT, "tasks", "task-1 - Feature.md")).text();
 			expect(taskFile).toContain("documentation:");
 			expect(taskFile).toContain("https://docs.example.com");
 			expect(taskFile).toContain("spec.md");
@@ -207,10 +226,11 @@ describe("CLI --ref and --doc flags", () => {
 
 		it("persists modified files in task markdown file", async () => {
 			await $`bun ${cliPath} task create "Feature" --modified-file src/index.ts --modified-file src/ui.ts`
-				.cwd(TEST_DIR)
+				.cwd(PROJECT_ROOT)
+				.env(ENV)
 				.quiet();
 
-			const taskFile = await Bun.file(join(TEST_DIR, "backlog/tasks/task-1 - Feature.md")).text();
+			const taskFile = await Bun.file(join(PROJECT_ROOT, "tasks", "task-1 - Feature.md")).text();
 			expect(taskFile).toContain("modified_files:");
 			expect(taskFile).toContain("src/index.ts");
 			expect(taskFile).toContain("src/ui.ts");

@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import type { Core } from "../index.ts";
+import { createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let CORE: Core;
+let ENV: Record<string, string>;
 
 describe("CLI --plain for task create/edit", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -17,14 +20,11 @@ describe("CLI --plain for task create/edit", () => {
 		} catch {}
 		await mkdir(TEST_DIR, { recursive: true });
 
-		// Initialize git repo first using shell API (same as other tests)
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		// Initialize backlog project using Core
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Plain Create/Edit Project");
+		({
+			projectRoot: PROJECT_ROOT,
+			core: CORE,
+			env: ENV,
+		} = await initializeGlobalTestProject(TEST_DIR, "Plain Create-Edit Project"));
 	});
 
 	afterEach(async () => {
@@ -34,7 +34,10 @@ describe("CLI --plain for task create/edit", () => {
 	});
 
 	it("prints plain details after task create --plain", async () => {
-		const result = await $`bun ${cliPath} task create "Example" --desc "Hello" --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task create "Example" --desc "Hello" --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());
@@ -55,19 +58,30 @@ describe("CLI --plain for task create/edit", () => {
 		// Should not contain TUI escape codes
 		expect(out).not.toContain("[?1049h");
 		expect(out).not.toContain("\x1b");
+
+		// Verify the slot-aware Core reads the task the CLI subprocess wrote
+		const task = await CORE.filesystem.loadTask("task-1");
+		expect(task?.title).toBe("Example");
 	});
 
 	it("assigns default tail ordinals and preserves explicit ordinals on CLI create", async () => {
-		const first = await $`bun ${cliPath} task create "First ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		const first = await $`bun ${cliPath} task create "First ordinal CLI task" --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(first.exitCode).toBe(0);
 		expect(first.stdout.toString()).toContain("Ordinal: 1000");
 
-		const second = await $`bun ${cliPath} task create "Second ordinal CLI task" --plain`.cwd(TEST_DIR).quiet();
+		const second = await $`bun ${cliPath} task create "Second ordinal CLI task" --plain`
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
+			.quiet();
 		expect(second.exitCode).toBe(0);
 		expect(second.stdout.toString()).toContain("Ordinal: 2000");
 
 		const explicit = await $`bun ${cliPath} task create "Explicit ordinal CLI task" --ordinal 7500 --plain`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet();
 		expect(explicit.exitCode).toBe(0);
 		expect(explicit.stdout.toString()).toContain("Ordinal: 7500");
@@ -75,7 +89,8 @@ describe("CLI --plain for task create/edit", () => {
 
 	it("rejects non-finite ordinals on CLI create", async () => {
 		const result = await $`bun ${cliPath} task create "Invalid ordinal CLI task" --ordinal Infinity`
-			.cwd(TEST_DIR)
+			.cwd(PROJECT_ROOT)
+			.env(ENV)
 			.quiet()
 			.nothrow();
 
@@ -85,9 +100,9 @@ describe("CLI --plain for task create/edit", () => {
 
 	it("prints plain details after task edit --plain", async () => {
 		// Create base task first (without plain)
-		await $`bun ${cliPath} task create "Edit Me" --desc "First"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} task create "Edit Me" --desc "First"`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
-		const result = await $`bun ${cliPath} task edit 1 -s "In Progress" --plain`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} task edit 1 -s "In Progress" --plain`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		if (result.exitCode !== 0) {
 			console.error("STDOUT:", result.stdout.toString());

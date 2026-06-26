@@ -28,14 +28,19 @@ describe("CLI Splash (bare run)", () => {
 	});
 
 	it("prints quickstart (initialized repo)", async () => {
-		// Initialize Git + project via Core
+		// Splash detects an initialized project via findBacklogRoot(cwd) — a local,
+		// cwd-discoverable layout — not the global `current` pointer. Write a local
+		// project into TEST_DIR (initializeTestProject uses configLocation:"folder"),
+		// with an isolated machine config so init has a global store to read.
+		const { env, machineConfigDir } = await createTestGlobalStore(TEST_DIR);
+		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Splash Test");
 
-		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).env(env).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);
 		expect(out).toContain("Quickstart");
@@ -60,4 +65,4 @@ describe("CLI Splash (bare run)", () => {
 	});
 });
 
-import { initializeTestProject } from "./test-utils.ts";
+import { createTestGlobalStore, initializeTestProject } from "./test-utils.ts";

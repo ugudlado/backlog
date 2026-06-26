@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createTestGlobalStore, createUniqueTestDir, initializeGlobalTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let PROJECT_ROOT: string;
+let ENV: Record<string, string>;
 
 describe("CLI agents command", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -15,14 +16,7 @@ describe("CLI agents command", () => {
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
-		// Initialize git repo first
-		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		// Initialize backlog project using Core
-		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Agents Test Project");
+		({ projectRoot: PROJECT_ROOT, env: ENV } = await initializeGlobalTestProject(TEST_DIR, "Agents Test Project"));
 	});
 
 	afterEach(async () => {
@@ -34,13 +28,13 @@ describe("CLI agents command", () => {
 	});
 
 	it("should show help when no options are provided", async () => {
-		const result = await $`bun ${cliPath} agents`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} agents`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		expect(result.exitCode).toBe(0);
 	});
 
 	it("should show help text with agents --help", async () => {
-		const result = await $`bun ${cliPath} agents --help`.cwd(TEST_DIR).quiet();
+		const result = await $`bun ${cliPath} agents --help`.cwd(PROJECT_ROOT).env(ENV).quiet();
 
 		expect(result.exitCode).toBe(0);
 	});
@@ -91,7 +85,14 @@ describe("CLI agents command", () => {
 		await $`git config user.name "Test User"`.cwd(nonBacklogDir).quiet();
 		await $`git config user.email test@example.com`.cwd(nonBacklogDir).quiet();
 
-		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(nonBacklogDir).nothrow().quiet();
+		// Use an isolated, empty global store (no `current` pointer) so resolution
+		// can't fall back to a real/other project and must fail.
+		const { env: emptyStoreEnv } = await createTestGlobalStore(nonBacklogDir);
+		const result = await $`bun ${cliPath} agents --update-instructions`
+			.cwd(nonBacklogDir)
+			.env(emptyStoreEnv)
+			.nothrow()
+			.quiet();
 
 		expect(result.exitCode).toBe(1);
 
