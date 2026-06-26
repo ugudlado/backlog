@@ -111,16 +111,16 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 		}
 	};
 
-	const handleAddToIndex = async () => {
+	const handleCreateProject = async () => {
 		const trimmed = addPath.trim();
 		if (!trimmed) {
-			setActionError("Enter an absolute project path.");
+			setActionError("Enter a project name.");
 			return;
 		}
 		try {
 			setBusy(true);
 			setActionError(null);
-			const updated = await apiClient.addWorkspace(trimmed);
+			const updated = await apiClient.createProject(trimmed);
 			setAddPath("");
 			setData(updated);
 			if (switchAfterAdd && updated.addedId) {
@@ -133,7 +133,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 			}
 		} catch (e) {
 			setSwitching(false);
-			setActionError(e instanceof Error ? e.message : "Could not add workspace");
+			setActionError(e instanceof Error ? e.message : "Could not create project");
 		} finally {
 			setBusy(false);
 		}
@@ -227,18 +227,21 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 						<div className="flex gap-1">
 							<input
 								type="text"
-								placeholder="/abs/path/to/repo"
+								placeholder="New project name"
 								value={addPath}
 								onChange={(e) => setAddPath(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") void handleCreateProject();
+								}}
 								className="min-w-0 flex-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100"
 							/>
 							<button
 								type="button"
 								disabled={busy || !addPath.trim()}
-								onClick={() => void handleAddToIndex()}
+								onClick={() => void handleCreateProject()}
 								className="shrink-0 rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
 							>
-								Add
+								Create
 							</button>
 						</div>
 						<label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
@@ -248,7 +251,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 								onChange={(e) => setSwitchAfterAdd(e.target.checked)}
 								className="rounded border-gray-300 dark:border-gray-600"
 							/>
-							Switch to new path after add
+							Switch to new project after create
 						</label>
 					</div>
 				</div>

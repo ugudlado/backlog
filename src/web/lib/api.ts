@@ -472,10 +472,11 @@ export class ApiClient {
 		return this.fetchJson<WorkspacesResponse>(`${API_BASE}/workspaces`);
 	}
 
-	async addWorkspace(path: string): Promise<AddWorkspaceResponse> {
+	/** Create a new global-store project by name. */
+	async createProject(name: string): Promise<AddWorkspaceResponse> {
 		return this.fetchJson<AddWorkspaceResponse>(`${API_BASE}/workspaces`, {
 			method: "POST",
-			body: JSON.stringify({ path }),
+			body: JSON.stringify({ name }),
 		});
 	}
 
