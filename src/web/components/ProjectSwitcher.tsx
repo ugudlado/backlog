@@ -96,8 +96,8 @@ const ProjectSwitcher: React.FC<ProjectSwitcherProps> = ({ onProjectSwitched }) 
 		}
 	};
 
-	const handleRemove = async (id: string, displayPath: string) => {
-		if (!window.confirm(`Remove this project from the registry?\n\n${displayPath}\n\nThe project files on disk are not deleted.`)) {
+	const handleRemove = async (id: string, displayName: string) => {
+		if (!window.confirm(`Remove "${displayName}" from the registry?\n\nThe project files on disk are not deleted.`)) {
 			return;
 		}
 		try {
@@ -198,19 +198,18 @@ const ProjectSwitcher: React.FC<ProjectSwitcherProps> = ({ onProjectSwitched }) 
 											type="button"
 											disabled={busy || active}
 											onClick={() => void handlePick(w.id)}
-											className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-3 py-2 text-left text-sm disabled:opacity-50"
+											className="flex min-w-0 flex-1 items-center px-3 py-2 text-left text-sm disabled:opacity-50"
 										>
 											<span className="font-medium text-gray-900 dark:text-gray-100 truncate w-full">
 												{pathBasename(w.path)}
 												{active ? " · current" : ""}
 											</span>
-											<span className="text-xs text-gray-500 dark:text-gray-400 break-all">{w.path}</span>
 										</button>
 										{!active && (
 											<button
 												type="button"
 												disabled={busy}
-												onClick={() => void handleRemove(w.id, w.path)}
+												onClick={() => void handleRemove(w.id, pathBasename(w.path))}
 												title="Remove from registry"
 												aria-label={`Remove ${pathBasename(w.path)} from registry`}
 												className="shrink-0 px-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
