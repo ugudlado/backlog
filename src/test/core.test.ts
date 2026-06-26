@@ -42,18 +42,6 @@ describe("Core", () => {
 			expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Review", "Verify", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
 		});
-
-		it("should use root backlog.config.yml for custom backlog directories", async () => {
-			await initializeTestProject(core, "Custom Root Project", "planning/backlog-data");
-
-			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
-			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
-
-			const freshCore = new Core(TEST_DIR);
-			const config = await freshCore.filesystem.loadConfig();
-			expect(config?.projectName).toBe("Custom Root Project");
-			expect(freshCore.filesystem.backlogDirName).toBe("planning/backlog-data");
-		});
 	});
 
 	describe("task operations", () => {

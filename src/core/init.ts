@@ -9,7 +9,6 @@ import {
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import { readMachineConfig } from "../utils/machine-config.ts";
 import type { Core } from "./backlog.ts";
 
@@ -88,14 +87,6 @@ export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
 export interface InitializeProjectOptions {
 	projectName: string;
-	/**
-	 * Optional `data:` override recorded in the machine workspace index, for
-	 * when this workspace's task data lives outside `<projectRoot>/backlog`.
-	 */
-	workspaceDataDir?: string;
-	backlogDirectory?: string;
-	backlogDirectorySource?: "backlog" | ".backlog" | "custom";
-	configLocation?: "folder" | "root";
 	integrationMode: IntegrationMode;
 	mcpClients?: McpClient[];
 	agentInstructions?: AgentInstructionFile[];
@@ -160,23 +151,6 @@ export async function initializeProject(
 	const isReInitialization = !!existingConfig;
 	const projectRoot = core.filesystem.rootDir;
 
-	// When `--workspace-data <path>` is given, that path IS the workspace:
-	// config + tasks are created there, not under <projectRoot>/backlog.
-	// Record the override and create the directory up front so every
-	// subsequent resolve (structure creation, saveConfig, registration)
-	// — all centralised through resolveBacklogDirectory — targets it.
-	let workspaceDataDir: string | undefined;
-	if (options.workspaceDataDir) {
-		const { setActiveWorkspaceDataDir } = await import("../utils/active-workspace.ts");
-		const { resolve: resolvePath } = await import("node:path");
-		const { mkdir } = await import("node:fs/promises");
-		// Normalise so the index entry and the resolver agree on the path.
-		workspaceDataDir = resolvePath(options.workspaceDataDir);
-		await mkdir(workspaceDataDir, { recursive: true });
-		setActiveWorkspaceDataDir(projectRoot, workspaceDataDir);
-		core.filesystem.invalidateConfigCache();
-	}
-
 	const normalizedAdvancedConfig = advancedConfig;
 	const hasDefinitionOfDoneOverride = Object.hasOwn(normalizedAdvancedConfig, "definitionOfDone");
 
@@ -236,39 +210,11 @@ export async function initializeProject(
 		// name (current pointer / --project), not tagged to repos. The scan finds
 		// the slot via <globalStore>/<name>/config.yml.
 	} else {
-		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
-		const inferredBacklogDirectorySource = normalizedBacklogDirectory
-			? normalizedBacklogDirectory === ".backlog"
-				? ".backlog"
-				: normalizedBacklogDirectory === "backlog"
-					? "backlog"
-					: "custom"
-			: undefined;
-		if (
-			options.backlogDirectorySource &&
-			inferredBacklogDirectorySource &&
-			options.backlogDirectorySource !== inferredBacklogDirectorySource
-		) {
-			throw new Error("Backlog directory source and backlog directory value must agree.");
-		}
-		const effectiveBacklogDirectorySource = options.backlogDirectorySource ?? inferredBacklogDirectorySource;
-		if (effectiveBacklogDirectorySource === "custom" && !normalizedBacklogDirectory) {
-			throw new Error("Backlog directory must be a valid project-relative path.");
-		}
-		const effectiveConfigLocation =
-			options.configLocation ?? (effectiveBacklogDirectorySource === "custom" ? "root" : "folder");
-		if (effectiveBacklogDirectorySource === "custom" && effectiveConfigLocation !== "root") {
-			throw new Error("Custom backlog directories require root config discovery.");
-		}
-		const selectedBacklogDirectory =
-			normalizedBacklogDirectory ??
-			(effectiveBacklogDirectorySource === ".backlog"
-				? ".backlog"
-				: effectiveBacklogDirectorySource === "backlog"
-					? "backlog"
-					: "backlog");
-		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
-		core.filesystem.setConfigLocation(effectiveConfigLocation);
+		// Non-slot init: used by the in-process test harness. Creates the default
+		// `backlog/` + folder-config layout. (Production init always sets a
+		// global-store slot and takes the branch above.)
+		core.filesystem.setBacklogDirectory("backlog");
+		core.filesystem.setConfigLocation("folder");
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();

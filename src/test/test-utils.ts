@@ -109,22 +109,12 @@ export function getExitCode(result: { status: number | null; error?: Error }): n
 }
 
 /**
- * Shared test helper for project initialization.
- * Uses the same init path as CLI/web.
+ * Shared test helper for in-process project initialization (default `backlog/`
+ * layout). Uses the same init path as CLI/web.
  */
-export async function initializeTestProject(core: Core, projectName: string, backlogDirectory?: string): Promise<void> {
-	const backlogDirectorySource = backlogDirectory
-		? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
-			? (backlogDirectory as "backlog" | ".backlog")
-			: "custom"
-		: undefined;
-	const configLocation = backlogDirectorySource === "custom" ? "root" : "folder";
-
+export async function initializeTestProject(core: Core, projectName: string): Promise<void> {
 	await initializeProjectShared(core, {
 		projectName,
-		backlogDirectory,
-		backlogDirectorySource,
-		configLocation,
 		integrationMode: "none",
 	});
 }
