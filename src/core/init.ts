@@ -56,7 +56,7 @@ export interface CreateGlobalProjectResult {
  * (`project create` / `init <name>`) and the server (POST /api/projects).
  * Does NOT set the current pointer — callers decide that.
  */
-export async function createGlobalProject(name: string): Promise<CreateGlobalProjectResult> {
+export async function createGlobalProject(name: string, taskPrefix?: string): Promise<CreateGlobalProjectResult> {
 	const { join } = await import("node:path");
 	const { readMachineConfig } = await import("../utils/machine-config.ts");
 	const { isSafeSlotName } = await import("../utils/backlog-directory.ts");
@@ -72,7 +72,12 @@ export async function createGlobalProject(name: string): Promise<CreateGlobalPro
 
 	const core = new Core(slotPath);
 	core.filesystem.setGlobalStoreSlot(slotPath, name);
-	await initializeProject(core, { projectName: name, integrationMode: "none", filesystemOnly: true });
+	await initializeProject(core, {
+		projectName: name,
+		integrationMode: "none",
+		filesystemOnly: true,
+		...(taskPrefix ? { advancedConfig: { taskPrefix } } : {}),
+	});
 
 	const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
 	const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);

@@ -141,10 +141,31 @@ export function registerProjectCommand(program: Command): void {
 	proj
 		.command("create <name>")
 		.description("create a new project in the global store")
-		.action((name: string) =>
+		.option("--prefix <prefix>", "custom task prefix, letters only (default: task)")
+		.action((name: string, opts: { prefix?: string }) =>
 			runAction(async () => {
+				let taskPrefix = opts.prefix;
+				if (!taskPrefix && process.stdin.isTTY) {
+					const entered = await clack.text({
+						message: "Task prefix (default: task):",
+						validate: (value) => {
+							const v = String(value ?? "").trim();
+							if (v && !/^[a-zA-Z]+$/.test(v)) return "Task prefix must contain only letters (a-z, A-Z).";
+							return undefined;
+						},
+					});
+					if (clack.isCancel(entered)) {
+						console.log("Aborted.");
+						process.exit(1);
+					}
+					taskPrefix = String(entered ?? "").trim() || undefined;
+				}
+				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
+					console.error("Task prefix must contain only letters (a-z, A-Z).");
+					process.exit(1);
+				}
 				const { createGlobalProject } = await import("../core/init.ts");
-				const result = await createGlobalProject(name);
+				const result = await createGlobalProject(name, taskPrefix);
 				if (!result.ok) {
 					const msg =
 						result.error === "no_global_store"
