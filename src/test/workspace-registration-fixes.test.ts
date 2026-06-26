@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	readProjectsIndex,
+	removeProjectEntry,
+	upsertProjectEntry,
+	writeProjectsIndex,
+} from "../utils/projects-index.ts";
+import {
 	mintWorkspaceId,
-	readWorkspacesWithIds,
+	readProjectsWithIds,
 	registerWorkspaceAtPath,
 	WorkspaceRegistrationError,
 } from "../utils/workspace-registration.ts";
-import {
-	readWorkspacesIndex,
-	removeWorkspaceEntry,
-	upsertWorkspaceEntry,
-	writeWorkspacesIndex,
-} from "../utils/workspaces-index.ts";
 
 const tmpRoot = (label: string) =>
 	join(process.cwd(), `tmp-ws-fixes-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
@@ -99,8 +99,8 @@ describe("registerWorkspaceAtPath error codes", () => {
 		await writeFile(join(dataDir, "config.yml"), `project_name: "Data Override Project"\n`);
 		const result = await registerWorkspaceAtPath(dir, { data: dataDir });
 		expect(result.entry.data).toBe(dataDir);
-		const index = await readWorkspacesIndex();
-		const persisted = index.workspaces.find((w) => w.id === result.entry.id);
+		const index = await readProjectsIndex();
+		const persisted = index.projects.find((w) => w.id === result.entry.id);
 		expect(persisted?.data).toBe(dataDir);
 	});
 
@@ -109,13 +109,13 @@ describe("registerWorkspaceAtPath error codes", () => {
 		await makeProject(dir, "No Data Project");
 		const result = await registerWorkspaceAtPath(dir);
 		expect(result.entry.data).toBeUndefined();
-		const index = await readWorkspacesIndex();
-		const persisted = index.workspaces.find((w) => w.id === result.entry.id);
+		const index = await readProjectsIndex();
+		const persisted = index.projects.find((w) => w.id === result.entry.id);
 		expect(persisted?.data).toBeUndefined();
 	});
 });
 
-describe("readWorkspacesWithIds batched migration", () => {
+describe("readProjectsWithIds batched migration", () => {
 	let base: string;
 	let prev: string | undefined;
 	beforeEach(() => {
@@ -135,26 +135,26 @@ describe("readWorkspacesWithIds batched migration", () => {
 		await makeProject(a, "Alpha", "alpha-deadbeef");
 		await makeProject(b, "Bravo", "bravo-cafef00d");
 		// Seed registry without ids.
-		await writeWorkspacesIndex({ workspaces: [{ path: a }, { path: b }] });
-		const entries = await readWorkspacesWithIds();
+		await writeProjectsIndex({ projects: [{ path: a }, { path: b }] });
+		const entries = await readProjectsWithIds();
 		expect(entries.map((e) => e.id)).toEqual(["alpha-deadbeef", "bravo-cafef00d"]);
 		// File should now have ids persisted.
-		const onDisk = await readWorkspacesIndex();
-		expect(onDisk.workspaces.map((e) => e.id)).toEqual(["alpha-deadbeef", "bravo-cafef00d"]);
+		const onDisk = await readProjectsIndex();
+		expect(onDisk.projects.map((e) => e.id)).toEqual(["alpha-deadbeef", "bravo-cafef00d"]);
 	});
 
 	it("does not rewrite when nothing needs migrating", async () => {
 		const a = join(base, "a");
 		await makeProject(a, "Alpha", "alpha-deadbeef");
-		await writeWorkspacesIndex({ workspaces: [{ path: a, id: "alpha-deadbeef" }] });
-		const before = await readFile(join(base, ".config", "backlog.md", "workspaces.yml"), "utf8");
-		await readWorkspacesWithIds();
-		const after = await readFile(join(base, ".config", "backlog.md", "workspaces.yml"), "utf8");
+		await writeProjectsIndex({ projects: [{ path: a, id: "alpha-deadbeef" }] });
+		const before = await readFile(join(base, ".config", "backlog.md", "projects.yml"), "utf8");
+		await readProjectsWithIds();
+		const after = await readFile(join(base, ".config", "backlog.md", "projects.yml"), "utf8");
 		expect(after).toBe(before);
 	});
 });
 
-describe("upsertWorkspaceEntry concurrency", () => {
+describe("upsertProjectEntry concurrency", () => {
 	let base: string;
 	let prev: string | undefined;
 	beforeEach(() => {
@@ -172,23 +172,23 @@ describe("upsertWorkspaceEntry concurrency", () => {
 		const N = 8;
 		const paths = Array.from({ length: N }, (_, i) => join(base, `p${i}`));
 		await Promise.all(paths.map((p) => mkdir(p, { recursive: true })));
-		await Promise.all(paths.map((p, i) => upsertWorkspaceEntry({ path: p, id: `id-${i}` })));
-		const idx = await readWorkspacesIndex();
-		expect(idx.workspaces.length).toBe(N);
-		const ids = idx.workspaces.map((e) => e.id).sort();
+		await Promise.all(paths.map((p, i) => upsertProjectEntry({ path: p, id: `id-${i}` })));
+		const idx = await readProjectsIndex();
+		expect(idx.projects.length).toBe(N);
+		const ids = idx.projects.map((e) => e.id).sort();
 		expect(ids).toEqual(Array.from({ length: N }, (_, i) => `id-${i}`).sort());
 	});
 
-	it("removeWorkspaceEntry serializes against upsert", async () => {
+	it("removeProjectEntry serializes against upsert", async () => {
 		const a = join(base, "a");
 		const b = join(base, "b");
 		await mkdir(a, { recursive: true });
 		await mkdir(b, { recursive: true });
-		await upsertWorkspaceEntry({ path: a, id: "a" });
+		await upsertProjectEntry({ path: a, id: "a" });
 		// Race a remove(a) against an upsert(b) — both should land.
-		await Promise.all([removeWorkspaceEntry(a), upsertWorkspaceEntry({ path: b, id: "b" })]);
-		const idx = await readWorkspacesIndex();
-		const ids = idx.workspaces.map((e) => e.id).sort();
+		await Promise.all([removeProjectEntry(a), upsertProjectEntry({ path: b, id: "b" })]);
+		const idx = await readProjectsIndex();
+		const ids = idx.projects.map((e) => e.id).sort();
 		expect(ids).toEqual(["b"]);
 	});
 });

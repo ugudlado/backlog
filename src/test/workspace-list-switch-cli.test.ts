@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readWorkspacesIndex, setCurrentWorkspaceId } from "../utils/workspaces-index.ts";
+import { readProjectsIndex, setCurrentProjectId } from "../utils/projects-index.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -59,7 +59,7 @@ describe("backlog project list + switch CLI integration", () => {
 		await mkdir(globalStoreDir, { recursive: true });
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		env = { BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir };
-		// In-process helpers (setCurrentWorkspaceId / readWorkspacesIndex below)
+		// In-process helpers (setCurrentProjectId / readProjectsIndex below)
 		// read the machine config from this env var, so point it at the test dir.
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
 		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
@@ -77,7 +77,7 @@ describe("backlog project list + switch CLI integration", () => {
 	it("list shows both projects; current is marked *; exits 0", async () => {
 		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
 		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
+		await setCurrentProjectId("alpha-1", machineConfigDir);
 
 		const result = await runCli(["project", "list"], env);
 		expect(result.exitCode).toBe(0);
@@ -90,7 +90,7 @@ describe("backlog project list + switch CLI integration", () => {
 	it("list --plain emits JSON of the scanned projects", async () => {
 		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
 		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
+		await setCurrentProjectId("alpha-1", machineConfigDir);
 
 		const result = await runCli(["project", "list", "--plain"], env);
 		expect(result.exitCode).toBe(0);
@@ -115,13 +115,13 @@ describe("backlog project list + switch CLI integration", () => {
 	it("switch by name: exits 0, confirms, current updates", async () => {
 		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
 		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
+		await setCurrentProjectId("alpha-1", machineConfigDir);
 
 		const result = await runCli(["project", "switch", "Beta"], env);
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Switched to project Beta");
 
-		const index = await readWorkspacesIndex(machineConfigDir);
+		const index = await readProjectsIndex(machineConfigDir);
 		expect(index.current).toBe("beta-2");
 	});
 

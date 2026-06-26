@@ -13,8 +13,8 @@ import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { pathExistsAsDirectory, removeProjectEntry, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
 import { getVersion } from "../utils/version.ts";
-import { pathExistsAsDirectory, removeWorkspaceEntry, toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
@@ -1566,12 +1566,12 @@ export class BacklogServer {
 		projects: Array<{ id: string; path: string }>;
 		currentId: string | null;
 	}> {
-		const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
-		const { readWorkspacesIndex } = await import("../utils/workspaces-index.ts");
+		const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
+		const { readProjectsIndex } = await import("../utils/projects-index.ts");
 		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-		const entries = await readWorkspacesWithIds();
+		const entries = await readProjectsWithIds();
 		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
-		const persisted = (await readWorkspacesIndex()).current;
+		const persisted = (await readProjectsIndex()).current;
 
 		// Global-store projects are discovered by scanning <globalStore>/*. Merge
 		// them with registry (local-mode fallback) entries, preferring the scan
@@ -1640,9 +1640,9 @@ export class BacklogServer {
 		// Make the new project current so the UI's "switch after add" works.
 		// Look up the freshly-created slot by its path to get the scan id.
 		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-		const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
+		const { setCurrentProjectId } = await import("../utils/projects-index.ts");
 		const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);
-		if (created) await setCurrentWorkspaceId(created.id);
+		if (created) await setCurrentProjectId(created.id);
 		const payload = await this.listProjectsPayload();
 		return Response.json({ ...payload, addedId: created?.id ?? null });
 	}
@@ -1663,8 +1663,8 @@ export class BacklogServer {
 				return Response.json({ error: "Only { current: true } is supported" }, { status: 400 });
 			}
 			return await this.withWorkspaceMutation(async () => {
-				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
-				const entries = await readWorkspacesWithIds();
+				const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
+				const entries = await readProjectsWithIds();
 				const target = entries.find((e) => e.id === id);
 
 				// Resolve the switch target's project root and data dir. A registry
@@ -1716,8 +1716,8 @@ export class BacklogServer {
 					await this.core.ensureConfigLoaded();
 					this.mcpServer?.reinitializeProjectRoot(targetPath);
 				}
-				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
-				await setCurrentWorkspaceId(id);
+				const { setCurrentProjectId } = await import("../utils/projects-index.ts");
+				await setCurrentProjectId(id);
 				return Response.json({ ok: true });
 			});
 		} catch (error) {
@@ -1730,8 +1730,8 @@ export class BacklogServer {
 	private async handleDeleteProject(id: string): Promise<Response> {
 		try {
 			return await this.withWorkspaceMutation(async () => {
-				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
-				const entries = await readWorkspacesWithIds();
+				const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
+				const entries = await readProjectsWithIds();
 				const target = entries.find((e) => e.id === id);
 				if (!target) {
 					return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
@@ -1742,7 +1742,7 @@ export class BacklogServer {
 						{ status: 409 },
 					);
 				}
-				const removed = await removeWorkspaceEntry(target.path);
+				const removed = await removeProjectEntry(target.path);
 				if (!removed) {
 					return Response.json({ error: "Workspace entry not found in index" }, { status: 404 });
 				}

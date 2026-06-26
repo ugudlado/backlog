@@ -4,8 +4,8 @@
  * These tests FAIL until T-6 implements src/commands/workspace-doctor.ts.
  *
  * Design contract (design.md):
- *   scanWorkspaces(entries: WorkspaceEntry[], current?: string): Promise<WorkspaceIssue[]>
- *   applyFixes(entries: WorkspaceEntry[], issues: WorkspaceIssue[], current?: string): { entries: WorkspaceEntry[]; current?: string }
+ *   scanWorkspaces(entries: ProjectEntry[], current?: string): Promise<WorkspaceIssue[]>
+ *   applyFixes(entries: ProjectEntry[], issues: WorkspaceIssue[], current?: string): { entries: ProjectEntry[]; current?: string }
  *
  *   WorkspaceIssue = { entryId: string | null; path: string; kind: WorkspaceIssueKind }
  *   WorkspaceIssueKind = "missing-path" | "not-git-repo" | "no-backlog-dir" | "duplicate-path" | "stale-current-pointer"
@@ -16,7 +16,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyFixes, scanWorkspaces } from "../commands/workspace-doctor.ts";
-import type { WorkspaceEntry } from "../utils/workspaces-index.ts";
+import type { ProjectEntry } from "../utils/projects-index.ts";
 
 const tmpRoot = (label: string) =>
 	join(tmpdir(), `ws-doctor-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
@@ -49,7 +49,7 @@ describe("scanWorkspaces issue detection", () => {
 
 	it("flags missing-path when entry path does not exist on disk", async () => {
 		const missingPath = join(base, "does-not-exist");
-		const entries: WorkspaceEntry[] = [{ path: missingPath, id: "ws-missing" }];
+		const entries: ProjectEntry[] = [{ path: missingPath, id: "ws-missing" }];
 		const issues = await scanWorkspaces(entries);
 		expect(issues.some((i) => i.kind === "missing-path" && i.entryId === "ws-missing")).toBe(true);
 	});
@@ -57,7 +57,7 @@ describe("scanWorkspaces issue detection", () => {
 	it("flags not-git-repo when path exists but has no .git", async () => {
 		const dir = join(base, "not-git");
 		await mkdir(dir, { recursive: true });
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-not-git" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-not-git" }];
 		const issues = await scanWorkspaces(entries);
 		expect(issues.some((i) => i.kind === "not-git-repo" && i.entryId === "ws-not-git")).toBe(true);
 	});
@@ -65,7 +65,7 @@ describe("scanWorkspaces issue detection", () => {
 	it("flags no-backlog-dir when path is a git repo but has no backlog/ subdir", async () => {
 		const dir = join(base, "git-no-backlog");
 		await makeGitRepo(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-no-backlog" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-no-backlog" }];
 		const issues = await scanWorkspaces(entries);
 		expect(issues.some((i) => i.kind === "no-backlog-dir" && i.entryId === "ws-no-backlog")).toBe(true);
 	});
@@ -74,7 +74,7 @@ describe("scanWorkspaces issue detection", () => {
 		const dir = join(base, "shared");
 		await makeHealthyWorkspace(dir);
 		// one entry has an id, one doesn't
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-dup-with-id" }, { path: dir }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-dup-with-id" }, { path: dir }];
 		const issues = await scanWorkspaces(entries);
 		const dupIssues = issues.filter((i) => i.kind === "duplicate-path" && i.path === dir);
 		// Both entries for that path should be flagged
@@ -84,7 +84,7 @@ describe("scanWorkspaces issue detection", () => {
 	it("flags stale-current-pointer when current points to an id not in entries", async () => {
 		const dir = join(base, "healthy");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-real" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-real" }];
 		const issues = await scanWorkspaces(entries, "ws-nonexistent");
 		expect(issues.some((i) => i.kind === "stale-current-pointer")).toBe(true);
 	});
@@ -92,7 +92,7 @@ describe("scanWorkspaces issue detection", () => {
 	it("returns no issues for a healthy entry (git repo with backlog/)", async () => {
 		const dir = join(base, "healthy");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-ok" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-ok" }];
 		const issues = await scanWorkspaces(entries);
 		expect(issues).toEqual([]);
 	});
@@ -100,7 +100,7 @@ describe("scanWorkspaces issue detection", () => {
 	it("returns no issues when current pointer matches an entry id", async () => {
 		const dir = join(base, "healthy2");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-ok" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-ok" }];
 		const issues = await scanWorkspaces(entries, "ws-ok");
 		expect(issues).toEqual([]);
 	});
@@ -122,7 +122,7 @@ describe("applyFixes registry repair", () => {
 	it("preserves healthy entries untouched", async () => {
 		const dir = join(base, "healthy");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-ok" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-ok" }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		expect(fixed.some((e) => e.path === dir && e.id === "ws-ok")).toBe(true);
@@ -130,7 +130,7 @@ describe("applyFixes registry repair", () => {
 
 	it("removes missing-path entries", async () => {
 		const missing = join(base, "no-exist");
-		const entries: WorkspaceEntry[] = [{ path: missing, id: "ws-missing" }];
+		const entries: ProjectEntry[] = [{ path: missing, id: "ws-missing" }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		expect(fixed.some((e) => e.path === missing)).toBe(false);
@@ -139,7 +139,7 @@ describe("applyFixes registry repair", () => {
 	it("removes not-git-repo entries", async () => {
 		const dir = join(base, "not-git");
 		await mkdir(dir, { recursive: true });
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-not-git" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-not-git" }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		expect(fixed.some((e) => e.path === dir)).toBe(false);
@@ -148,7 +148,7 @@ describe("applyFixes registry repair", () => {
 	it("removes no-backlog-dir entries", async () => {
 		const dir = join(base, "git-only");
 		await makeGitRepo(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-no-backlog" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-no-backlog" }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		expect(fixed.some((e) => e.path === dir)).toBe(false);
@@ -157,7 +157,7 @@ describe("applyFixes registry repair", () => {
 	it("deduplicates duplicate-path: keeps entry with id, removes entry without", async () => {
 		const dir = join(base, "dup");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-dup-id" }, { path: dir }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-dup-id" }, { path: dir }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		const forPath = fixed.filter((e) => e.path === dir);
@@ -170,7 +170,7 @@ describe("applyFixes registry repair", () => {
 	it("deduplicates duplicate-path: first-wins when neither has id", async () => {
 		const dir = join(base, "dup-no-id");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir }, { path: dir }];
+		const entries: ProjectEntry[] = [{ path: dir }, { path: dir }];
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		const forPath = fixed.filter((e) => e.path === dir);
@@ -180,7 +180,7 @@ describe("applyFixes registry repair", () => {
 	it("clears current field when current is a stale pointer", async () => {
 		const dir = join(base, "healthy");
 		await makeHealthyWorkspace(dir);
-		const entries: WorkspaceEntry[] = [{ path: dir, id: "ws-real" }];
+		const entries: ProjectEntry[] = [{ path: dir, id: "ws-real" }];
 		const issues = await scanWorkspaces(entries, "ws-ghost");
 		const { current } = applyFixes(entries, issues, "ws-ghost");
 		expect(current).toBeUndefined();
@@ -194,7 +194,7 @@ describe("applyFixes registry repair", () => {
 		await makeHealthyWorkspace(healthy);
 		await makeHealthyWorkspace(dup);
 
-		const entries: WorkspaceEntry[] = [
+		const entries: ProjectEntry[] = [
 			{ path: healthy, id: "ws-healthy" },
 			{ path: missing, id: "ws-missing" },
 			{ path: dup, id: "ws-dup-a" },

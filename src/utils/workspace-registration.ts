@@ -3,14 +3,14 @@ import { FileSystem } from "../file-system/operations.ts";
 import { setActiveWorkspaceDataDir } from "./active-workspace.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import {
+	type ProjectEntry,
 	pathExistsAsDirectory,
-	readWorkspacesIndex,
+	readProjectsIndex,
 	toAbsoluteProjectRoot,
-	upsertWorkspaceEntry,
-	type WorkspaceEntry,
+	upsertProjectEntry,
 	withRegistryLock,
-	writeWorkspacesIndex,
-} from "./workspaces-index.ts";
+	writeProjectsIndex,
+} from "./projects-index.ts";
 
 export class WorkspaceRegistrationError extends Error {
 	constructor(
@@ -44,7 +44,7 @@ function slugify(s: string): string {
 }
 
 export interface RegisterResult {
-	entry: WorkspaceEntry;
+	entry: ProjectEntry;
 	minted: boolean;
 }
 
@@ -93,11 +93,11 @@ export async function registerWorkspaceAtPath(
 		minted = true;
 	}
 
-	const entry: WorkspaceEntry = { path: abs, id: config.id };
+	const entry: ProjectEntry = { path: abs, id: config.id };
 	if (options?.data) {
 		entry.data = options.data;
 	}
-	await upsertWorkspaceEntry(entry, options?.machineConfigDir);
+	await upsertProjectEntry(entry, options?.machineConfigDir);
 	return { entry, minted };
 }
 
@@ -125,12 +125,12 @@ export async function tryReadProjectId(projectRoot: string): Promise<string | nu
  * Migration is batched: one read of every project config followed by a
  * single rewrite of workspaces.yml — never N rewrites.
  */
-export async function readWorkspacesWithIds(machineConfigDir?: string): Promise<WorkspaceEntry[]> {
+export async function readProjectsWithIds(machineConfigDir?: string): Promise<ProjectEntry[]> {
 	// First pass: unlocked read to check whether migration is needed.
-	const index = await readWorkspacesIndex(machineConfigDir);
-	const needsMigration = index.workspaces.some((e) => !e.id);
+	const index = await readProjectsIndex(machineConfigDir);
+	const needsMigration = index.projects.some((e) => !e.id);
 	if (!needsMigration) {
-		return index.workspaces;
+		return index.projects;
 	}
 
 	// Migration needed: re-read and rewrite inside the registry lock to avoid
@@ -138,10 +138,10 @@ export async function readWorkspacesWithIds(machineConfigDir?: string): Promise<
 	// and one's write clobbers the other's workspace entries.
 	return withRegistryLock(
 		async () => {
-			const locked = await readWorkspacesIndex(machineConfigDir);
-			const out: WorkspaceEntry[] = [];
+			const locked = await readProjectsIndex(machineConfigDir);
+			const out: ProjectEntry[] = [];
 			let mutated = false;
-			for (const e of locked.workspaces) {
+			for (const e of locked.projects) {
 				if (e.id) {
 					out.push(e);
 					continue;
@@ -155,7 +155,7 @@ export async function readWorkspacesWithIds(machineConfigDir?: string): Promise<
 				}
 			}
 			if (mutated) {
-				await writeWorkspacesIndex({ ...locked, workspaces: out }, machineConfigDir);
+				await writeProjectsIndex({ ...locked, projects: out }, machineConfigDir);
 			}
 			return out;
 		},

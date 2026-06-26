@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { isGitRepository } from "../git/operations.ts";
-import type { WorkspaceEntry } from "../utils/workspaces-index.ts";
+import type { ProjectEntry } from "../utils/projects-index.ts";
 
 export type WorkspaceIssueKind =
 	| "missing-path"
@@ -33,11 +33,11 @@ async function pathExistsAsDirectory(p: string): Promise<boolean> {
  *   - duplicate-path: two or more entries share the same path
  *   - stale-current-pointer: current id does not match any entry
  */
-export async function scanWorkspaces(entries: WorkspaceEntry[], current?: string): Promise<WorkspaceIssue[]> {
+export async function scanWorkspaces(entries: ProjectEntry[], current?: string): Promise<WorkspaceIssue[]> {
 	const issues: WorkspaceIssue[] = [];
 
 	// Track duplicate paths: accumulate all entries per path
-	const pathToEntries = new Map<string, WorkspaceEntry[]>();
+	const pathToEntries = new Map<string, ProjectEntry[]>();
 	for (const e of entries) {
 		const existing = pathToEntries.get(e.path) ?? [];
 		existing.push(e);
@@ -103,10 +103,10 @@ export async function scanWorkspaces(entries: WorkspaceEntry[], current?: string
  *   - stale-current-pointer → clear the current field (return undefined)
  */
 export function applyFixes(
-	entries: WorkspaceEntry[],
+	entries: ProjectEntry[],
 	issues: WorkspaceIssue[],
 	current?: string,
-): { entries: WorkspaceEntry[]; current?: string } {
+): { entries: ProjectEntry[]; current?: string } {
 	// Build a set of paths that should be fully removed (missing, not-git, no-backlog)
 	const removeKinds: WorkspaceIssueKind[] = ["missing-path", "not-git-repo", "no-backlog-dir"];
 	const removePaths = new Set<string>();
@@ -121,7 +121,7 @@ export function applyFixes(
 
 	// For each duplicated path, pick the canonical entry to keep:
 	// prefer entry with id; otherwise first in original order
-	const canonicalForPath = new Map<string, WorkspaceEntry>();
+	const canonicalForPath = new Map<string, ProjectEntry>();
 	for (const path of duplicatedPaths) {
 		const group = entries.filter((e) => e.path === path && !removePaths.has(e.path));
 		if (group.length === 0) {
@@ -136,7 +136,7 @@ export function applyFixes(
 
 	// Build fixed entries list in original order
 	const seen = new Set<string>();
-	const fixed: WorkspaceEntry[] = [];
+	const fixed: ProjectEntry[] = [];
 	for (const e of entries) {
 		// Skip entries whose paths have hard issues (missing, not-git, no-backlog)
 		if (removePaths.has(e.path)) {
@@ -161,7 +161,7 @@ export function applyFixes(
 	const hasStale = issues.some((i) => i.kind === "stale-current-pointer");
 	const newCurrent = hasStale ? undefined : current;
 
-	const result: { entries: WorkspaceEntry[]; current?: string } = { entries: fixed };
+	const result: { entries: ProjectEntry[]; current?: string } = { entries: fixed };
 	if (newCurrent !== undefined) {
 		result.current = newCurrent;
 	}

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { getMachineConfigDir } from "./workspaces-index.ts";
+import { getMachineConfigDir } from "./projects-index.ts";
 
 export interface MachineConfig {
 	globalStore: string | null;

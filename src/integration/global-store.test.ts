@@ -16,7 +16,7 @@ import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
-import { readWorkspacesIndex } from "../utils/workspaces-index.ts";
+import { readProjectsIndex } from "../utils/projects-index.ts";
 
 const TMP_BASE = join(tmpdir(), "backlog-integration-test");
 const CLI_PATH = join(import.meta.dir, "..", "cli.ts");
@@ -145,8 +145,8 @@ describe("globalStore end-to-end integration", () => {
 
 		// Global projects carry no registry path — they are found by scanning the
 		// global store. So the registry must have no workspace entry for this repo...
-		const index = await readWorkspacesIndex(machineConfigDir);
-		const registered = index.workspaces.some((w) => w.path === repoDir);
+		const index = await readProjectsIndex(machineConfigDir);
+		const registered = index.projects.some((w) => w.path === repoDir);
 		expect(registered).toBe(false);
 
 		// ...the project is discoverable via the global-store scan (point the

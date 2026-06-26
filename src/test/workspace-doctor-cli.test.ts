@@ -15,7 +15,7 @@
  *
  * Fixture strategy:
  *   Each test creates an isolated machineConfigDir via BACKLOG_MACHINE_CONFIG_DIR
- *   and populates it with real workspace entries using `upsertWorkspaceEntry`.
+ *   and populates it with real workspace entries using `upsertProjectEntry`.
  *   Healthy entries point at real git repos with a `backlog/` subdir.
  *   Broken entries point at paths that do not exist on disk.
  */
@@ -25,7 +25,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
-import { upsertWorkspaceEntry } from "../utils/workspaces-index.ts";
+import { upsertProjectEntry } from "../utils/projects-index.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -97,7 +97,7 @@ describe("backlog project doctor CLI integration", () => {
 	it("healthy registry exits 0 and reports no issues", async () => {
 		const wsDir = join(base, "healthy-ws");
 		await makeHealthyWorkspace(wsDir);
-		await upsertWorkspaceEntry({ path: wsDir, id: "ws-healthy" }, machineConfigDir);
+		await upsertProjectEntry({ path: wsDir, id: "ws-healthy" }, machineConfigDir);
 
 		const result = await runCli(["project", "doctor"], {
 			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
@@ -116,7 +116,7 @@ describe("backlog project doctor CLI integration", () => {
 	it("broken registry exits 1 and reports the missing-path issue", async () => {
 		// Register a path that does not exist on disk.
 		const missingPath = join(base, "does-not-exist");
-		await upsertWorkspaceEntry({ path: missingPath, id: "ws-broken" }, machineConfigDir);
+		await upsertProjectEntry({ path: missingPath, id: "ws-broken" }, machineConfigDir);
 
 		const result = await runCli(["project", "doctor"], {
 			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
@@ -134,7 +134,7 @@ describe("backlog project doctor CLI integration", () => {
 	// ── 3. `--fix` with broken entry, prompt answered YES → prunes, exits 0 ───
 	it("--fix prompts for confirmation and prunes broken entries on yes", async () => {
 		const missingPath = join(base, "also-gone");
-		await upsertWorkspaceEntry({ path: missingPath, id: "ws-to-prune" }, machineConfigDir);
+		await upsertProjectEntry({ path: missingPath, id: "ws-to-prune" }, machineConfigDir);
 
 		// Pipe "y\n" so clack's ConfirmPrompt receives a 'y' keypress.
 		const result = await runCli(
@@ -154,7 +154,7 @@ describe("backlog project doctor CLI integration", () => {
 	// ── 4. `--yes` flag skips prompt and prunes, exits 0 ─────────────────────
 	it("--yes skips prompt and prunes broken entries automatically", async () => {
 		const missingPath = join(base, "yet-another-gone");
-		await upsertWorkspaceEntry({ path: missingPath, id: "ws-auto-prune" }, machineConfigDir);
+		await upsertProjectEntry({ path: missingPath, id: "ws-auto-prune" }, machineConfigDir);
 
 		// No stdin input needed — --yes bypasses the prompt entirely.
 		const result = await runCli(["project", "doctor", "--fix", "--yes"], {

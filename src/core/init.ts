@@ -301,14 +301,14 @@ export async function initializeProject(
 			// scanned project across restarts.
 			const cfgId = (await core.filesystem.loadConfig())?.id;
 			const id = cfgId ?? basename(core.filesystem.backlogDir);
-			const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
-			await setCurrentWorkspaceId(id);
+			const { setCurrentProjectId } = await import("../utils/projects-index.ts");
+			await setCurrentProjectId(id);
 		} else {
 			const { registerWorkspaceAtPath } = await import("../utils/workspace-registration.ts");
 			const { entry } = await registerWorkspaceAtPath(projectRoot, { data: workspaceDataDir });
 			if (entry.id) {
-				const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
-				await setCurrentWorkspaceId(entry.id);
+				const { setCurrentProjectId } = await import("../utils/projects-index.ts");
+				await setCurrentProjectId(entry.id);
 			}
 		}
 	} catch (err) {

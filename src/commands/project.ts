@@ -1,11 +1,11 @@
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
 import {
-	readWorkspacesIndex,
-	setCurrentWorkspaceId,
+	readProjectsIndex,
+	setCurrentProjectId,
 	withRegistryLock,
-	writeWorkspacesIndex,
-} from "../utils/workspaces-index.ts";
+	writeProjectsIndex,
+} from "../utils/projects-index.ts";
 import { applyFixes, scanWorkspaces, type WorkspaceIssue } from "./workspace-doctor.ts";
 
 interface DoctorOptions {
@@ -48,10 +48,10 @@ function printReport(issues: WorkspaceIssue[], totalEntries: number): void {
 }
 
 async function doDoctor(opts: DoctorOptions): Promise<void> {
-	const index = await readWorkspacesIndex();
-	const issues = await scanWorkspaces(index.workspaces, index.current);
+	const index = await readProjectsIndex();
+	const issues = await scanWorkspaces(index.projects, index.current);
 
-	printReport(issues, index.workspaces.length);
+	printReport(issues, index.projects.length);
 
 	if (issues.length === 0) {
 		process.exit(0);
@@ -74,16 +74,16 @@ async function doDoctor(opts: DoctorOptions): Promise<void> {
 	}
 
 	await withRegistryLock(async () => {
-		const fresh = await readWorkspacesIndex();
-		const freshIssues = await scanWorkspaces(fresh.workspaces, fresh.current);
-		const fixed = applyFixes(fresh.workspaces, freshIssues, fresh.current);
+		const fresh = await readProjectsIndex();
+		const freshIssues = await scanWorkspaces(fresh.projects, fresh.current);
+		const fixed = applyFixes(fresh.projects, freshIssues, fresh.current);
 		const next = { ...fresh, workspaces: fixed.entries };
 		if (fixed.current === undefined) {
 			delete next.current;
 		} else {
 			next.current = fixed.current;
 		}
-		await writeWorkspacesIndex(next);
+		await writeProjectsIndex(next);
 	});
 
 	console.log(`Removed/repaired ${pluralIssues(issues.length)}.`);
@@ -100,7 +100,7 @@ export function registerProjectCommand(program: Command): void {
 		.action((opts: { plain?: boolean }) =>
 			runAction(async () => {
 				const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-				const index = await readWorkspacesIndex();
+				const index = await readProjectsIndex();
 				const projects = await scanGlobalStoreProjects();
 				if (opts.plain) {
 					console.log(
@@ -133,7 +133,7 @@ export function registerProjectCommand(program: Command): void {
 					console.error(`No project named "${name}".`);
 					process.exit(1);
 				}
-				await setCurrentWorkspaceId(match.id);
+				await setCurrentProjectId(match.id);
 				console.log(`Switched to project ${match.name}`);
 			}),
 		);

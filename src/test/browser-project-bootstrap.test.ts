@@ -2,25 +2,25 @@ import { describe, expect, it } from "bun:test";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	ensureWorkspacesFileExists,
+	ensureProjectsFileExists,
 	getMachineConfigDir,
-	getWorkspacesFilePath,
-	readWorkspacesIndex,
-	upsertWorkspaceEntry,
-	writeWorkspacesIndex,
-} from "../utils/workspaces-index.ts";
+	getProjectsFilePath,
+	readProjectsIndex,
+	upsertProjectEntry,
+	writeProjectsIndex,
+} from "../utils/projects-index.ts";
 
-describe("ensureWorkspacesFileExists", () => {
-	it("creates an empty workspaces.yml when missing", async () => {
+describe("ensureProjectsFileExists", () => {
+	it("creates an empty projects.yml when missing", async () => {
 		const base = join(process.cwd(), `tmp-ensure-ws-${Date.now()}`);
 		const prevMachine = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, ".config", "backlog.md");
 		try {
-			await ensureWorkspacesFileExists();
-			const content = await readFile(getWorkspacesFilePath(), "utf8");
-			expect(content).toContain("workspaces:");
-			const parsed = await readWorkspacesIndex();
-			expect(parsed.workspaces).toEqual([]);
+			await ensureProjectsFileExists();
+			const content = await readFile(getProjectsFilePath(), "utf8");
+			expect(content).toContain("projects:");
+			const parsed = await readProjectsIndex();
+			expect(parsed.projects).toEqual([]);
 		} finally {
 			if (prevMachine === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
@@ -37,10 +37,10 @@ describe("ensureWorkspacesFileExists", () => {
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, ".config", "backlog.md");
 		try {
 			await mkdir(process.env.BACKLOG_MACHINE_CONFIG_DIR, { recursive: true });
-			await writeWorkspacesIndex({ workspaces: [{ path: "/some/repo" }] });
-			await ensureWorkspacesFileExists();
-			const parsed = await readWorkspacesIndex();
-			expect(parsed.workspaces).toEqual([{ path: "/some/repo" }]);
+			await writeProjectsIndex({ projects: [{ path: "/some/repo" }] });
+			await ensureProjectsFileExists();
+			const parsed = await readProjectsIndex();
+			expect(parsed.projects).toEqual([{ path: "/some/repo" }]);
 		} finally {
 			if (prevMachine === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
@@ -78,22 +78,22 @@ describe("machine-config-dir override precedence", () => {
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, "config-from-env");
 		try {
 			await mkdir(overrideDir, { recursive: true });
-			await ensureWorkspacesFileExists(overrideDir);
-			await upsertWorkspaceEntry({ path: "/projects/alpha" }, overrideDir);
+			await ensureProjectsFileExists(overrideDir);
+			await upsertProjectEntry({ path: "/projects/alpha" }, overrideDir);
 
 			// File landed under the override, not the env path.
-			const overrideFile = await readFile(getWorkspacesFilePath(overrideDir), "utf8");
+			const overrideFile = await readFile(getProjectsFilePath(overrideDir), "utf8");
 			expect(overrideFile).toContain("/projects/alpha");
 
 			// Env path was never touched.
-			const envFilePath = getWorkspacesFilePath();
+			const envFilePath = getProjectsFilePath();
 			expect(readFile(envFilePath, "utf8")).rejects.toThrow();
 
 			// Read with override returns the entry; read without override goes to env path → empty.
-			const overrideRead = await readWorkspacesIndex(overrideDir);
-			expect(overrideRead.workspaces).toEqual([{ path: "/projects/alpha" }]);
-			const envRead = await readWorkspacesIndex();
-			expect(envRead.workspaces).toEqual([]);
+			const overrideRead = await readProjectsIndex(overrideDir);
+			expect(overrideRead.projects).toEqual([{ path: "/projects/alpha" }]);
+			const envRead = await readProjectsIndex();
+			expect(envRead.projects).toEqual([]);
 		} finally {
 			if (prev === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;

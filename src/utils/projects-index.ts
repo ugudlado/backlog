@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -10,7 +10,7 @@ import { findBacklogRoot } from "./find-backlog-root.ts";
  * In-process serialization for read-modify-write sequences against
  * workspaces.yml. Cross-process safety is provided by the atomic
  * write below (rename(2) is atomic on POSIX); this mutex prevents
- * the same Bun process from racing two `upsertWorkspaceEntry` calls
+ * the same Bun process from racing two `upsertProjectEntry` calls
  * against each other when the web server fields concurrent requests.
  *
  * Keyed by absolute file path so distinct `override` targets (used in
@@ -134,9 +134,11 @@ export async function withRegistryLock<T>(
 
 /** User-level machine config (BACK-462). */
 export const MACHINE_CONFIG_DIR_NAME = "backlog";
-export const WORKSPACES_FILE = "workspaces.yml";
+export const PROJECTS_FILE = "projects.yml";
+/** Legacy filename, migrated to PROJECTS_FILE on first access. */
+const LEGACY_PROJECTS_FILE = "workspaces.yml";
 
-export interface WorkspaceEntry {
+export interface ProjectEntry {
 	path: string;
 	/**
 	 * Optional override for where this workspace's `backlog/` data lives.
@@ -147,8 +149,8 @@ export interface WorkspaceEntry {
 	id?: string;
 }
 
-export interface WorkspacesIndex {
-	workspaces: WorkspaceEntry[];
+export interface ProjectsIndex {
+	projects: ProjectEntry[];
 	current?: string;
 }
 
@@ -169,11 +171,25 @@ export function getMachineConfigDir(override?: string): string {
 	return join(homedir(), ".config", MACHINE_CONFIG_DIR_NAME);
 }
 
-export function getWorkspacesFilePath(override?: string): string {
-	return join(getMachineConfigDir(override), WORKSPACES_FILE);
+export function getProjectsFilePath(override?: string): string {
+	const dir = getMachineConfigDir(override);
+	const target = join(dir, PROJECTS_FILE);
+	// One-time migration: if only the legacy workspaces.yml exists, rename it.
+	// This is a pointer/cache file, so a best-effort rename is safe.
+	if (!existsSync(target)) {
+		const legacy = join(dir, LEGACY_PROJECTS_FILE);
+		if (existsSync(legacy)) {
+			try {
+				renameSync(legacy, target);
+			} catch {
+				// If the rename fails, fall through; the file will be recreated.
+			}
+		}
+	}
+	return target;
 }
 
-function isWorkspaceEntry(value: unknown): value is WorkspaceEntry {
+function isProjectEntry(value: unknown): value is ProjectEntry {
 	if (!value || typeof value !== "object") {
 		return false;
 	}
@@ -182,14 +198,14 @@ function isWorkspaceEntry(value: unknown): value is WorkspaceEntry {
 }
 
 /**
- * Minimal YAML reader for workspaces.yml (list of path objects).
+ * Minimal YAML reader for projects.yml (list of path objects).
  * Legacy `type:` field is accepted but discarded (back-compat with pre-BACK-466 files).
  */
-export function parseWorkspacesYaml(content: string): WorkspacesIndex {
+export function parseProjectsYaml(content: string): ProjectsIndex {
 	const lines = content.split(/\r?\n/);
-	const workspaces: WorkspaceEntry[] = [];
+	const projects: ProjectEntry[] = [];
 	let inList = false;
-	let current: Partial<WorkspaceEntry> | null = null;
+	let current: Partial<ProjectEntry> | null = null;
 	let currentId: string | undefined;
 
 	for (const raw of lines) {
@@ -201,7 +217,9 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 			currentId = stripYamlQuotes(line.slice("current:".length).trim()) || undefined;
 			continue;
 		}
-		if (line.startsWith("workspaces:")) {
+		// Accept both the current `projects:` key and the legacy `workspaces:`
+		// key (files migrated from before the rename still carry the old key).
+		if (line.startsWith("projects:") || line.startsWith("workspaces:")) {
 			inList = true;
 			continue;
 		}
@@ -209,8 +227,8 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 			continue;
 		}
 		if (line.startsWith("- ")) {
-			if (isWorkspaceEntry(current)) {
-				workspaces.push(toEntry(current));
+			if (isProjectEntry(current)) {
+				projects.push(toEntry(current));
 			}
 			current = {};
 			const rest = line.slice(2).trim();
@@ -250,18 +268,18 @@ export function parseWorkspacesYaml(content: string): WorkspacesIndex {
 		}
 		// Legacy `type:` lines are intentionally ignored (back-compat).
 	}
-	if (isWorkspaceEntry(current)) {
-		workspaces.push(toEntry(current));
+	if (isProjectEntry(current)) {
+		projects.push(toEntry(current));
 	}
-	const out: WorkspacesIndex = { workspaces };
+	const out: ProjectsIndex = { projects };
 	if (currentId) {
 		out.current = currentId;
 	}
 	return out;
 }
 
-function toEntry(c: Partial<WorkspaceEntry>): WorkspaceEntry {
-	const e: WorkspaceEntry = { path: c.path as string };
+function toEntry(c: Partial<ProjectEntry>): ProjectEntry {
+	const e: ProjectEntry = { path: c.path as string };
 	if (c.data) {
 		e.data = c.data;
 	}
@@ -279,9 +297,9 @@ function stripYamlQuotes(s: string): string {
 }
 
 /**
- * Writes workspaces.yml with a stable, comment-header format.
+ * Writes projects.yml with a stable, comment-header format.
  */
-export function serializeWorkspacesYaml(index: WorkspacesIndex): string {
+export function serializeProjectsYaml(index: ProjectsIndex): string {
 	const header = `# Backlog.md workspace index (machine-wide)
 # path: project root. data: optional override for where backlog/ data lives
 # (absolute or relative to path; defaults to <path>/backlog when unset).
@@ -290,8 +308,8 @@ export function serializeWorkspacesYaml(index: WorkspacesIndex): string {
 	if (index.current) {
 		bodyLines.push(`current: ${quoteYamlPath(index.current)}`);
 	}
-	bodyLines.push("workspaces:");
-	for (const w of index.workspaces) {
+	bodyLines.push("projects:");
+	for (const w of index.projects) {
 		bodyLines.push(`  - path: ${quoteYamlPath(w.path)}`);
 		if (w.data) {
 			bodyLines.push(`    data: ${quoteYamlPath(w.data)}`);
@@ -310,37 +328,37 @@ function quoteYamlPath(p: string): string {
 	return p;
 }
 
-export async function readWorkspacesIndex(override?: string): Promise<WorkspacesIndex> {
-	const filePath = getWorkspacesFilePath(override);
+export async function readProjectsIndex(override?: string): Promise<ProjectsIndex> {
+	const filePath = getProjectsFilePath(override);
 	try {
 		const content = await readFile(filePath, "utf8");
-		return parseWorkspacesYaml(content);
+		return parseProjectsYaml(content);
 	} catch (e) {
 		const code = e && typeof e === "object" && "code" in e ? String((e as NodeJS.ErrnoException).code) : "";
 		if (code === "ENOENT") {
-			return { workspaces: [] };
+			return { projects: [] };
 		}
 		throw e;
 	}
 }
 
-export async function writeWorkspacesIndex(index: WorkspacesIndex, override?: string): Promise<void> {
+export async function writeProjectsIndex(index: ProjectsIndex, override?: string): Promise<void> {
 	const dir = getMachineConfigDir(override);
 	await mkdir(dir, { recursive: true });
-	const filePath = getWorkspacesFilePath(override);
+	const filePath = getProjectsFilePath(override);
 	// Atomic write: a kill mid-write leaves the tmp file behind but never a
-	// truncated workspaces.yml that the parser would silently treat as empty.
+	// truncated projects.yml that the parser would silently treat as empty.
 	const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-	await writeFile(tmpPath, serializeWorkspacesYaml(index), "utf8");
+	await writeFile(tmpPath, serializeProjectsYaml(index), "utf8");
 	await rename(tmpPath, filePath);
 }
 
 /**
- * Ensures `<machine-config-dir>/workspaces.yml` exists with an empty workspaces
+ * Ensures `<machine-config-dir>/projects.yml` exists with an empty projects
  * list when missing. Idempotent — keeps existing entries untouched.
  */
-export async function ensureWorkspacesFileExists(override?: string): Promise<void> {
-	const filePath = getWorkspacesFilePath(override);
+export async function ensureProjectsFileExists(override?: string): Promise<void> {
+	const filePath = getProjectsFilePath(override);
 	try {
 		await readFile(filePath, "utf8");
 		return;
@@ -350,7 +368,7 @@ export async function ensureWorkspacesFileExists(override?: string): Promise<voi
 			throw e;
 		}
 	}
-	await writeWorkspacesIndex({ workspaces: [] }, override);
+	await writeProjectsIndex({ projects: [] }, override);
 }
 
 export async function pathExistsAsDirectory(p: string): Promise<boolean> {
@@ -384,7 +402,7 @@ function backlogConfiguredAtProjectRoot(projectRoot: string): boolean {
  * for a data-overridden workspace). Without this, cwd matching would reject
  * every `data:` workspace because `<repo>/backlog` is intentionally absent.
  */
-function entryHasBacklogConfig(e: WorkspaceEntry): boolean {
+function entryHasBacklogConfig(e: ProjectEntry): boolean {
 	if (e.data) {
 		const dataDir = isAbsolute(e.data) ? e.data : resolve(toAbsoluteProjectRoot(e.path), e.data);
 		return existsSync(join(dataDir, "config.yml"));
@@ -392,8 +410,8 @@ function entryHasBacklogConfig(e: WorkspaceEntry): boolean {
 	return backlogConfiguredAtProjectRoot(toAbsoluteProjectRoot(e.path));
 }
 
-export function findWorkspacesMatchingCwd(cwd: string, entries: WorkspaceEntry[]): WorkspaceEntry[] {
-	const matches: WorkspaceEntry[] = [];
+export function findProjectsMatchingCwd(cwd: string, entries: ProjectEntry[]): ProjectEntry[] {
+	const matches: ProjectEntry[] = [];
 	const absCwd = normalize(resolve(cwd));
 	for (const e of entries) {
 		const root = toAbsoluteProjectRoot(e.path);
@@ -407,7 +425,7 @@ export function findWorkspacesMatchingCwd(cwd: string, entries: WorkspaceEntry[]
 /**
  * Match a path or short label to an index entry: absolute path, or unique basename / relative match.
  */
-export function resolveWorkspaceSelector(selector: string, entries: WorkspaceEntry[]): WorkspaceEntry | null {
+export function resolveProjectSelector(selector: string, entries: ProjectEntry[]): ProjectEntry | null {
 	const trimmed = selector.trim();
 	if (!trimmed) {
 		return null;
@@ -438,25 +456,25 @@ export function resolveWorkspaceSelector(selector: string, entries: WorkspaceEnt
 	return null;
 }
 
-export async function upsertWorkspaceEntry(entry: WorkspaceEntry, override?: string): Promise<void> {
-	const filePath = getWorkspacesFilePath(override);
+export async function upsertProjectEntry(entry: ProjectEntry, override?: string): Promise<void> {
+	const filePath = getProjectsFilePath(override);
 	await withRegistryLock(
 		async () => {
 			await withWriteLock(filePath, async () => {
-				const index = await readWorkspacesIndex(override);
+				const index = await readProjectsIndex(override);
 				const absPath = toAbsoluteProjectRoot(entry.path);
-				const existing = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
+				const existing = index.projects.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
 				// Preserve an existing `data:` override unless the caller explicitly
 				// sets one. Spread order alone would only do this by accident of the
 				// caller omitting `data` — make it intentional.
-				const merged: WorkspaceEntry = { ...existing, ...entry, path: absPath };
+				const merged: ProjectEntry = { ...existing, ...entry, path: absPath };
 				if (entry.data === undefined && existing?.data !== undefined) {
 					merged.data = existing.data;
 				}
-				const next = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
+				const next = index.projects.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
 				next.push(merged);
 				next.sort((a, b) => a.path.localeCompare(b.path));
-				await writeWorkspacesIndex({ ...index, workspaces: next }, override);
+				await writeProjectsIndex({ ...index, projects: next }, override);
 			});
 		},
 		{ machineConfigDir: override },
@@ -468,13 +486,13 @@ export async function upsertWorkspaceEntry(entry: WorkspaceEntry, override?: str
  * exist in the index — caller is responsible for ensuring the entry was
  * upserted first. Pass `null` to clear.
  */
-export async function setCurrentWorkspaceId(id: string | null, override?: string): Promise<void> {
-	const filePath = getWorkspacesFilePath(override);
+export async function setCurrentProjectId(id: string | null, override?: string): Promise<void> {
+	const filePath = getProjectsFilePath(override);
 	await withRegistryLock(
 		async () => {
 			await withWriteLock(filePath, async () => {
-				const index = await readWorkspacesIndex(override);
-				if (id !== null && !index.workspaces.some((e) => e.id === id)) {
+				const index = await readProjectsIndex(override);
+				if (id !== null && !index.projects.some((e) => e.id === id)) {
 					// Not a registry (local-mode) workspace — allow it only if it is a
 					// global-store project (discovered by scanning <globalStore>/*),
 					// which legitimately has no registry entry.
@@ -484,36 +502,36 @@ export async function setCurrentWorkspaceId(id: string | null, override?: string
 						throw new Error(`No workspace with id "${id}" in registry`);
 					}
 				}
-				const next: WorkspacesIndex = { ...index, workspaces: index.workspaces };
+				const next: ProjectsIndex = { ...index, projects: index.projects };
 				if (id) {
 					next.current = id;
 				} else {
 					delete next.current;
 				}
-				await writeWorkspacesIndex(next, override);
+				await writeProjectsIndex(next, override);
 			});
 		},
 		{ machineConfigDir: override },
 	);
 }
 
-export async function removeWorkspaceEntry(projectRoot: string, override?: string): Promise<boolean> {
-	const filePath = getWorkspacesFilePath(override);
+export async function removeProjectEntry(projectRoot: string, override?: string): Promise<boolean> {
+	const filePath = getProjectsFilePath(override);
 	return withRegistryLock(
 		async () => {
 			return withWriteLock(filePath, async () => {
-				const index = await readWorkspacesIndex(override);
+				const index = await readProjectsIndex(override);
 				const absPath = toAbsoluteProjectRoot(projectRoot);
-				const filtered = index.workspaces.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
-				if (filtered.length === index.workspaces.length) {
+				const filtered = index.projects.filter((e) => toAbsoluteProjectRoot(e.path) !== absPath);
+				if (filtered.length === index.projects.length) {
 					return false;
 				}
-				const removed = index.workspaces.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
-				const next: WorkspacesIndex = { ...index, workspaces: filtered };
+				const removed = index.projects.find((e) => toAbsoluteProjectRoot(e.path) === absPath);
+				const next: ProjectsIndex = { ...index, projects: filtered };
 				if (next.current && removed?.id && next.current === removed.id) {
 					delete next.current;
 				}
-				await writeWorkspacesIndex(next, override);
+				await writeProjectsIndex(next, override);
 				return true;
 			});
 		},
@@ -545,15 +563,15 @@ export type ResolveCliProjectRootResult =
  * Absolute → used as-is. Relative → resolved against the project root.
  * Unset → undefined (consumer falls back to `<projectRoot>/backlog`).
  */
-function resolveEntryDataDir(entry: WorkspaceEntry, projectRoot: string): string | undefined {
+function resolveEntryDataDir(entry: ProjectEntry, projectRoot: string): string | undefined {
 	if (!entry.data) {
 		return undefined;
 	}
 	return normalize(isAbsolute(entry.data) ? entry.data : resolve(projectRoot, entry.data));
 }
 
-function resolveRegisteredWorkspacesOnly(cwd: string, index: WorkspacesIndex): ResolveCliProjectRootResult {
-	const cwdMatches = findWorkspacesMatchingCwd(cwd, index.workspaces);
+function resolveRegisteredWorkspacesOnly(cwd: string, index: ProjectsIndex): ResolveCliProjectRootResult {
+	const cwdMatches = findProjectsMatchingCwd(cwd, index.projects);
 	if (cwdMatches.length > 1) {
 		return {
 			ok: false,
@@ -579,7 +597,7 @@ function resolveRegisteredWorkspacesOnly(cwd: string, index: WorkspacesIndex): R
  * `backlog browser` for registration/init.
  */
 export async function resolveBrowserProjectRoot(cwd: string): Promise<ResolveCliProjectRootResult> {
-	const index = await readWorkspacesIndex();
+	const index = await readProjectsIndex();
 	return resolveRegisteredWorkspacesOnly(cwd, index);
 }
 
@@ -590,7 +608,7 @@ export async function resolveBrowserProjectRoot(cwd: string): Promise<ResolveCli
  * (BACK-466 removed the `type: global` fallback along with the `--global` flag.)
  */
 export async function resolveCliProjectRoot(cwd: string, projectName?: string): Promise<ResolveCliProjectRootResult> {
-	const index = await readWorkspacesIndex();
+	const index = await readProjectsIndex();
 
 	// Global-store resolution (the primary model): an explicit `--project <name>`
 	// wins, else the `current` pointer. The slot is both project root and data

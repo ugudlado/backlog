@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
-import { readWorkspacesIndex, withRegistryLock } from "../utils/workspaces-index.ts";
+import { readProjectsIndex, withRegistryLock } from "../utils/projects-index.ts";
 
 const tmpRoot = (label: string) =>
 	join(process.cwd(), `tmp-registry-lock-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
@@ -51,10 +51,10 @@ describe("withRegistryLock cross-process serialisation", () => {
 		// Inline script: import workspaces-index, upsert N entries sequentially.
 		// Each child writes to the shared BACKLOG_MACHINE_CONFIG_DIR inherited from env.
 		const childScript = (ids: string[]) => `
-import { upsertWorkspaceEntry } from ${JSON.stringify(join(process.cwd(), "src/utils/workspaces-index.ts"))};
+import { upsertProjectEntry } from ${JSON.stringify(join(process.cwd(), "src/utils/projects-index.ts"))};
 const ids = ${JSON.stringify(ids)};
 for (const id of ids) {
-  await upsertWorkspaceEntry({ path: "/tmp/ws-" + id, id });
+  await upsertProjectEntry({ path: "/tmp/ws-" + id, id });
 }
 `;
 
@@ -82,8 +82,8 @@ for (const id of ids) {
 		}
 
 		// All 10 entries must survive — no lost updates.
-		const idx = await readWorkspacesIndex(machineConfigDir);
-		const ids = idx.workspaces.map((e) => e.id).sort();
+		const idx = await readProjectsIndex(machineConfigDir);
+		const ids = idx.projects.map((e) => e.id).sort();
 		const expected = [...childAIds, ...childBIds].sort();
 		expect(ids).toEqual(expected);
 	}, 30_000); // Allow up to 30 s for child process startup overhead.

@@ -338,10 +338,10 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
  * usage.
  */
 async function resolveServerProjectRoot(): Promise<string> {
-	const { readWorkspacesIndex, toAbsoluteProjectRoot } = await import("./utils/workspaces-index.ts");
+	const { readProjectsIndex, toAbsoluteProjectRoot } = await import("./utils/projects-index.ts");
 	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
 	const { isAbsolute, resolve: resolvePath } = await import("node:path");
-	const index = await readWorkspacesIndex();
+	const index = await readProjectsIndex();
 
 	// Resolve the chosen entry to its project root AND record its `data:`
 	// override so the server's FileSystem reads tasks/config from there
@@ -354,10 +354,10 @@ async function resolveServerProjectRoot(): Promise<string> {
 	};
 
 	if (index.current) {
-		const entry = index.workspaces.find((e) => e.id === index.current);
+		const entry = index.projects.find((e) => e.id === index.current);
 		if (entry) return pick(entry);
 	}
-	const first = index.workspaces[0];
+	const first = index.projects[0];
 	if (first) return pick(first);
 
 	// No registry entry. Global-store projects carry no registry path — they are
@@ -385,7 +385,7 @@ async function requireProjectRoot(): Promise<string> {
 		process.exit(1);
 	}
 
-	const { resolveCliProjectRoot } = await import("./utils/workspaces-index.ts");
+	const { resolveCliProjectRoot } = await import("./utils/projects-index.ts");
 	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
 	const { isSafeSlotName } = await import("./utils/backlog-directory.ts");
 	const projectName = program.opts().project as string | undefined;

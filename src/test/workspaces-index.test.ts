@@ -3,69 +3,69 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import {
-	parseWorkspacesYaml,
+	parseProjectsYaml,
 	resolveBrowserProjectRoot,
-	resolveWorkspaceSelector,
-	serializeWorkspacesYaml,
+	resolveProjectSelector,
+	serializeProjectsYaml,
 	toAbsoluteProjectRoot,
-	writeWorkspacesIndex,
-} from "../utils/workspaces-index.ts";
+	writeProjectsIndex,
+} from "../utils/projects-index.ts";
 
-describe("parseWorkspacesYaml / serializeWorkspacesYaml", () => {
+describe("parseProjectsYaml / serializeProjectsYaml", () => {
 	it("round-trips workspace entries", () => {
 		const original = {
-			workspaces: [{ path: "/tmp/a" }, { path: "/tmp/b space" }],
+			projects: [{ path: "/tmp/a" }, { path: "/tmp/b space" }],
 		};
-		const yaml = serializeWorkspacesYaml(original);
-		const parsed = parseWorkspacesYaml(yaml);
-		expect(parsed.workspaces).toEqual(original.workspaces);
+		const yaml = serializeProjectsYaml(original);
+		const parsed = parseProjectsYaml(yaml);
+		expect(parsed.projects).toEqual(original.projects);
 	});
 
 	it("round-trips the optional `current` pointer", () => {
 		const original = {
-			workspaces: [
+			projects: [
 				{ path: "/tmp/a", id: "abcd1234" },
 				{ path: "/tmp/b", id: "ef567890" },
 			],
 			current: "ef567890",
 		};
-		const yaml = serializeWorkspacesYaml(original);
+		const yaml = serializeProjectsYaml(original);
 		expect(yaml).toContain("current: ef567890");
-		const parsed = parseWorkspacesYaml(yaml);
+		const parsed = parseProjectsYaml(yaml);
 		expect(parsed.current).toBe("ef567890");
-		expect(parsed.workspaces).toEqual(original.workspaces);
+		expect(parsed.projects).toEqual(original.projects);
 	});
 
 	it("omits the `current` line when unset", () => {
-		const yaml = serializeWorkspacesYaml({ workspaces: [{ path: "/tmp/a" }] });
+		const yaml = serializeProjectsYaml({ projects: [{ path: "/tmp/a" }] });
 		expect(yaml).not.toContain("current:");
 	});
 
 	it("round-trips the optional `data:` override (absolute + relative)", () => {
 		const original = {
-			workspaces: [
+			projects: [
 				{ path: "/tmp/a", data: "/var/data/a" },
 				{ path: "/tmp/b", data: "subdir/backlog" },
 				{ path: "/tmp/c" },
 			],
 		};
-		const yaml = serializeWorkspacesYaml(original);
+		const yaml = serializeProjectsYaml(original);
 		expect(yaml).toContain("data: /var/data/a");
 		expect(yaml).toContain("data: subdir/backlog");
-		const parsed = parseWorkspacesYaml(yaml);
-		expect(parsed.workspaces).toEqual(original.workspaces);
+		const parsed = parseProjectsYaml(yaml);
+		expect(parsed.projects).toEqual(original.projects);
 	});
 
 	it("omits the entry `data:` line when unset", () => {
-		const yaml = serializeWorkspacesYaml({ workspaces: [{ path: "/tmp/a" }] });
+		const yaml = serializeProjectsYaml({ projects: [{ path: "/tmp/a" }] });
 		// Header comment legitimately mentions `data:`; assert no indented entry line.
 		expect(yaml).not.toContain("    data:");
 	});
 
 	it("parses `data:` alongside `id:` on an entry", () => {
 		const yaml = ["workspaces:", "  - path: /tmp/a", "    data: /var/data/a", "    id: abcd1234", ""].join("\n");
-		const parsed = parseWorkspacesYaml(yaml);
-		expect(parsed.workspaces).toEqual([{ path: "/tmp/a", data: "/var/data/a", id: "abcd1234" }]);
+		const parsed = parseProjectsYaml(yaml);
+		expect(parsed.projects).toEqual([{ path: "/tmp/a", data: "/var/data/a", id: "abcd1234" }]);
 	});
 
 	it("accepts and discards legacy `type:` lines (back-compat)", () => {
@@ -77,23 +77,23 @@ describe("parseWorkspacesYaml / serializeWorkspacesYaml", () => {
 			"    type: global",
 			"",
 		].join("\n");
-		const parsed = parseWorkspacesYaml(legacy);
-		expect(parsed.workspaces).toEqual([{ path: "/tmp/a" }, { path: "/tmp/b" }]);
-		const reserialized = serializeWorkspacesYaml(parsed);
+		const parsed = parseProjectsYaml(legacy);
+		expect(parsed.projects).toEqual([{ path: "/tmp/a" }, { path: "/tmp/b" }]);
+		const reserialized = serializeProjectsYaml(parsed);
 		expect(reserialized).not.toContain("type:");
 	});
 });
 
-describe("resolveWorkspaceSelector", () => {
+describe("resolveProjectSelector", () => {
 	const entries = [{ path: "/projects/foo" }, { path: "/other/bar" }];
 
 	it("matches absolute path", () => {
-		const hit = resolveWorkspaceSelector("/projects/foo", entries);
+		const hit = resolveProjectSelector("/projects/foo", entries);
 		expect(hit?.path).toBe("/projects/foo");
 	});
 
 	it("matches unique tail directory name", () => {
-		const hit = resolveWorkspaceSelector("foo", entries);
+		const hit = resolveProjectSelector("foo", entries);
 		expect(hit?.path).toBe("/projects/foo");
 	});
 });
@@ -119,8 +119,8 @@ describe("resolveBrowserProjectRoot", () => {
 		await mkdir(join(root, "backlog", "tasks"), { recursive: true });
 		await writeFile(join(root, "backlog", "config.yml"), "projectName: Reg\n");
 		try {
-			await writeWorkspacesIndex({
-				workspaces: [{ path: root }],
+			await writeProjectsIndex({
+				projects: [{ path: root }],
 			});
 			const sub = join(root, "apps", "web");
 			await mkdir(sub, { recursive: true });
