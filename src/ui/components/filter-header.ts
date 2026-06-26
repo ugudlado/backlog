@@ -25,6 +25,8 @@ export interface FilterHeaderOptions {
 	availableMilestones: string[];
 	initialFilters?: Partial<FilterState>;
 	visibleFilters?: FilterControlId[];
+	/** Optional prefix for the header border label, e.g. the active project name. */
+	title?: string;
 	onFilterChange: (filters: FilterState) => void;
 	onFilterPickerOpen: (filterId: Exclude<FilterControlId, "search">) => void;
 }
@@ -165,7 +167,7 @@ export class FilterHeader {
 			height: this.currentLayout.height,
 			border: { type: "line" },
 			style: { border: { fg: "cyan" } },
-			label: "\u00A0Filters\u00A0",
+			label: this.options.title ? `\u00A0${this.options.title} \u00B7 Filters\u00A0` : "\u00A0Filters\u00A0",
 		});
 
 		this.buildElements();

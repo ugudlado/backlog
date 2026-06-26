@@ -3,6 +3,8 @@ import type { BoxInterface } from "neo-neo-bblessed";
 import { box, scrollablebox } from "neo-neo-bblessed";
 import type { Core } from "../index.ts";
 import type { Sequence, Task } from "../types/index.ts";
+import type { GlobalStoreProject } from "../utils/global-store-scan.ts";
+import { pickProject } from "./project-switcher-picker.ts";
 import { createTaskPopup } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
 
@@ -14,7 +16,7 @@ import { createScreen } from "./tui.ts";
 export async function runSequencesView(
 	data: { unsequenced: Task[]; sequences: Sequence[] },
 	core?: Core,
-): Promise<void> {
+): Promise<GlobalStoreProject | null> {
 	// Build content string first so we can also support headless environments (CI/tests)
 	const lines: string[] = [];
 	if (data.unsequenced.length > 0) {
@@ -34,8 +36,15 @@ export async function runSequencesView(
 	const forceHeadless = process.env.BACKLOG_HEADLESS === "1" || process.env.CI === "1" || process.env.CI === "true";
 	if (output.isTTY === false || forceHeadless) {
 		console.log(lines.join("\n"));
-		return;
+		return null;
 	}
+
+	// Resolves when the view is torn down: with a project to switch to, or null
+	// on quit. The recursive reload (move) chains its own result through here.
+	let resolveView!: (value: GlobalStoreProject | null) => void;
+	const viewClosed = new Promise<GlobalStoreProject | null>((resolve) => {
+		resolveView = resolve;
+	});
 
 	const screen = createScreen({ smartCSR: true });
 
@@ -162,7 +171,7 @@ export async function runSequencesView(
 		height: 1,
 		tags: true,
 		style: { bg: "black", fg: "gray" },
-		content: " ↑/↓ navigate · Enter view · m move · q quit · Esc close popup/quit ",
+		content: " ↑/↓ navigate · Enter view · m move · w switch project · q quit · Esc close popup/quit",
 	});
 	screen.append(footer);
 
@@ -325,19 +334,34 @@ export async function runSequencesView(
 	}
 
 	container.focus();
-	screen.key(["q", "C-c"], () => screen.destroy());
+	screen.key(["q", "C-c"], () => {
+		screen.destroy();
+		resolveView(null);
+	});
+	// Project switch (guard against an open task popup / active move mode).
+	// Set popupOpen so the other global handlers don't fire under the picker.
+	screen.key(["w", "W"], async () => {
+		if (popupOpen || moveMode) return;
+		popupOpen = true;
+		const picked = await pickProject(screen);
+		popupOpen = false;
+		if (!picked) return;
+		screen.destroy();
+		resolveView(picked);
+	});
 	// Unified Esc: popup closes itself; else cancel move mode, else quit
 	screen.key(["escape"], () => {
 		if (popupOpen) return;
 		if (moveMode) {
 			moveMode = false;
-			footer.setContent(" ↑/↓ navigate · Enter view · m move · q quit · Esc close popup/quit ");
+			footer.setContent(" ↑/↓ navigate · Enter view · m move · w switch project · q quit · Esc close popup/quit");
 			hideDropZones();
 			refreshHighlight();
 			refreshMoveIndicators();
 			return;
 		}
 		screen.destroy();
+		resolveView(null);
 	});
 	screen.key(["up", "k"], () => move(-1));
 	screen.key(["down", "j"], () => move(1));
@@ -366,7 +390,9 @@ export async function runSequencesView(
 		}
 		// Update footer to indicate mode and overlays
 		footer.setContent(
-			moveMode ? moveFooterText() : " ↑/↓ navigate · Enter view · m move · q quit · Esc close popup/quit ",
+			moveMode
+				? moveFooterText()
+				: " ↑/↓ navigate · Enter view · m move · w switch project · q quit · Esc close popup/quit",
 		);
 		ensureDropZoneOverlays();
 		refreshHighlight();
@@ -421,10 +447,13 @@ export async function runSequencesView(
 		const { computeSequences: recompute } = await import("../core/sequences.ts");
 		const next = recompute(active);
 		screen.destroy();
-		await runSequencesView(next, core);
+		// Chain the reloaded view's outcome (e.g. a project switch) back to our caller.
+		resolveView(await runSequencesView(next, core));
 	});
 
 	refreshHighlight();
 	ensureDropZoneOverlays();
 	refreshMoveIndicators();
+
+	return viewClosed;
 }

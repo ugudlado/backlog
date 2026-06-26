@@ -2,13 +2,14 @@ import type { Core } from "../core/backlog.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { createLoadingScreen } from "../ui/loading.ts";
 import { renderOverviewTui } from "../ui/overview-tui.ts";
+import type { GlobalStoreProject } from "../utils/global-store-scan.ts";
 
 function formatTime(ms: number): string {
 	if (ms < 1000) return `${Math.round(ms)}ms`;
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export async function runOverviewCommand(core: Core): Promise<void> {
+export async function runOverviewCommand(core: Core): Promise<GlobalStoreProject | null> {
 	const startTime = performance.now();
 
 	// Load tasks with loading screen
@@ -33,7 +34,7 @@ export async function runOverviewCommand(core: Core): Promise<void> {
 		console.log(`\nPerformance summary: Total time ${totalTime}ms (stats calculation: ${statsTime}ms)`);
 
 		const config = await core.fs.loadConfig();
-		await renderOverviewTui(statistics, config?.projectName || "Project");
+		return await renderOverviewTui(statistics, config?.projectName || "Project");
 	} catch (error) {
 		loadingScreen?.close();
 		throw error;

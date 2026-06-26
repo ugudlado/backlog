@@ -7,7 +7,6 @@ import * as clack from "@clack/prompts";
 import { $, spawn } from "bun";
 import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
-import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { registerProjectCommand } from "./commands/project.ts";
@@ -405,8 +404,44 @@ async function requireProjectRoot(): Promise<string> {
 		}
 		process.exit(1);
 	}
+	// When the cwd is not a Backlog.md project, resolution falls back to the
+	// global `current` project. Surface which one so the user isn't surprised by
+	// data from an unrelated project (only when they didn't pass --project).
+	if (resolved.viaGlobalCurrent && !projectName) {
+		console.error(
+			`Using global project "${resolved.projectName}" (current directory is not a Backlog.md project). ` +
+				"Switch with `backlog project switch <name>` or pass `--project <name>`.",
+		);
+	}
 	setActiveWorkspaceDataDir(resolved.projectRoot, resolved.dataDir);
 	return resolved.projectRoot;
+}
+
+/**
+ * Run an interactive TUI that supports in-view project switching, reloading
+ * against the chosen project until the user quits.
+ *
+ * `run` receives a fresh `Core` for the active project and returns the project
+ * to switch to (or null to quit). The initial root comes from
+ * `requireProjectRoot()`; subsequent iterations are driven purely off the
+ * picked project's slot path, so the stale `--project`/cwd is never re-read.
+ */
+async function runWithProjectSwitch(
+	initialRoot: string,
+	run: (core: Core) => Promise<import("./utils/global-store-scan.ts").GlobalStoreProject | null>,
+): Promise<void> {
+	const { setActiveWorkspaceDataDir } = await import("./utils/active-workspace.ts");
+	const { setCurrentProjectId } = await import("./utils/projects-index.ts");
+	let root = initialRoot;
+	let switchTo: import("./utils/global-store-scan.ts").GlobalStoreProject | null = null;
+	do {
+		if (switchTo) {
+			setActiveWorkspaceDataDir(switchTo.slotPath, switchTo.slotPath);
+			await setCurrentProjectId(switchTo.id);
+			root = switchTo.slotPath;
+		}
+		switchTo = await run(new Core(root));
+	} while (switchTo);
 }
 
 // Windows color fix
@@ -994,11 +1029,7 @@ program
 				}
 
 				let advancedConfig: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
-				let advancedConfigured = false;
 				let installClaudeAgentSelection = false;
-				let installShellCompletionsSelection = false;
-				let completionInstallResult: CompletionInstallResult | null = null;
-				let completionInstallError: string | null = null;
 
 				if (isNonInteractive) {
 					advancedConfig = applyAdvancedOptionOverrides();
@@ -1022,15 +1053,6 @@ program
 						});
 						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
 						installClaudeAgentSelection = integrationMode === "cli" ? wizardResult.installClaudeAgent : false;
-						installShellCompletionsSelection = wizardResult.installShellCompletions;
-						if (wizardResult.installShellCompletions) {
-							try {
-								completionInstallResult = await installCompletion();
-							} catch (error) {
-								completionInstallError = error instanceof Error ? error.message : String(error);
-							}
-						}
-						advancedConfigured = true;
 					}
 				}
 				// Global-store projects live outside any git repo, so git integration
@@ -1091,27 +1113,6 @@ program
 				const bad = (value: string): string => colorize("31", value);
 				const muted = (value: string): string => colorize("2", value);
 				const boolValue = (value: boolean): string => (value ? good("true") : bad("false"));
-				const formatCompletionInstructions = (instructions: string): string =>
-					instructions
-						.split("\n")
-						.map((line) => {
-							const trimmed = line.trim();
-							if (!trimmed) {
-								return line;
-							}
-							if (/^(path=|autoload|source )/.test(trimmed)) {
-								return colorize("1;32", line);
-							}
-							if (
-								/^(To enable completions, ensure the directory is in your fpath\.|Add this to your ~\/\.zshrc:|Then restart your shell or run:)$/.test(
-									trimmed,
-								)
-							) {
-								return colorize("36", line);
-							}
-							return line;
-						})
-						.join("\n");
 				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
 				summaryLines.push(`${label("Store:")} ${muted(core.filesystem.backlogDir)}`);
 				// Global-store projects live outside git, so integration is always off.
@@ -1135,17 +1136,6 @@ program
 				} else {
 					summaryLines.push(`${label("AI integration:")} ${muted("skipped (configure later via `backlog init`)")}`);
 				}
-				let completionSummary: string;
-				if (completionInstallResult) {
-					completionSummary = `${good("installed")} to ${completionInstallResult.installPath}`;
-				} else if (installShellCompletionsSelection) {
-					completionSummary = `${bad("installation failed")} (${muted("see warning below")})`;
-				} else if (advancedConfigured) {
-					completionSummary = muted("skipped");
-				} else {
-					completionSummary = muted("not configured");
-				}
-				summaryLines.push(`${label("Shell completions:")} ${completionSummary}`);
 				summaryLines.push(label("Advanced settings:"));
 				summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
 				summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
@@ -1167,25 +1157,6 @@ program
 					}`,
 				);
 				clack.note(summaryLines.join("\n"), "Initialization Summary");
-
-				if (completionInstallResult) {
-					const instructions = completionInstallResult.instructions.trim();
-					clack.note(
-						[
-							`${label("Path:")} ${colorize("1", completionInstallResult.installPath)}`,
-							formatCompletionInstructions(instructions),
-						].join("\n\n"),
-						`Shell completions installed (${completionInstallResult.shell})`,
-					);
-				} else if (completionInstallError) {
-					const indentedError = completionInstallError
-						.split("\n")
-						.map((line) => `  ${line}`)
-						.join("\n");
-					console.warn(
-						`⚠️  Shell completion installation failed:\n${indentedError}\n  Run \`backlog completion install\` later to retry.\n`,
-					);
-				}
 
 				// Log init result
 				if (initResult.isReInitialization) {
@@ -1507,23 +1478,32 @@ program
 		const statusFilter = filters.status;
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
 
-		await runUnifiedView({
-			core,
-			initialView: "task-list",
-			selectedTask: firstTask,
-			tasks: interactiveTasks,
-			filter: {
-				title: query ? `Search: ${query}` : "Search",
-				filterDescription: buildSearchFilterDescription({
-					status: statusFilter,
-					priority: priorityFilter,
-					query: query ?? "",
-					modifiedFiles: modifiedFileFilters ?? [],
-				}),
-				status: statusFilter,
-				priority: priorityFilter,
-				searchQuery: query ?? "", // Pre-populate search with the query
-			},
+		// On a project switch we drop the (project-A-specific) search and show the
+		// new project's full task list.
+		let firstProject = true;
+		await runWithProjectSwitch(cwd, async (nextCore) => {
+			if (firstProject) {
+				firstProject = false;
+				return await runUnifiedView({
+					core: nextCore,
+					initialView: "task-list",
+					selectedTask: firstTask,
+					tasks: interactiveTasks,
+					filter: {
+						title: query ? `Search: ${query}` : "Search",
+						filterDescription: buildSearchFilterDescription({
+							status: statusFilter,
+							priority: priorityFilter,
+							query: query ?? "",
+							modifiedFiles: modifiedFileFilters ?? [],
+						}),
+						status: statusFilter,
+						priority: priorityFilter,
+						searchQuery: query ?? "", // Pre-populate search with the query
+					},
+				});
+			}
+			return await runUnifiedView({ core: nextCore, initialView: "task-list" });
 		});
 		cleanup();
 	});
@@ -1820,77 +1800,81 @@ taskCmd
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
-		await runUnifiedView({
-			core,
-			initialView: "task-list",
-			tasksLoader: async (updateProgress) => {
-				updateProgress("Loading configuration...");
-				const config = await core.filesystem.loadConfig();
+		// `core` is shadowed by the per-project instance so the loader reloads
+		// against whichever project is active after a switch.
+		await runWithProjectSwitch(cwd, async (core) =>
+			runUnifiedView({
+				core,
+				initialView: "task-list",
+				tasksLoader: async (updateProgress) => {
+					updateProgress("Loading configuration...");
+					const config = await core.filesystem.loadConfig();
 
-				// Use loadTasks with progress callback for consistent loading experience
-				// This populates the ContentStore, so subsequent queryTasks calls are fast
-				await core.loadTasks((msg) => {
-					updateProgress(msg);
-				});
+					// Use loadTasks with progress callback for consistent loading experience
+					// This populates the ContentStore, so subsequent queryTasks calls are fast
+					await core.loadTasks((msg) => {
+						updateProgress(msg);
+					});
 
-				// Now query with filters - this will use the already-populated ContentStore
-				updateProgress("Applying filters...");
-				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({
-						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
-					}),
-					parentId ? core.queryTasks() : Promise.resolve(undefined),
-				]);
-
-				if (parentId && allTasksForParentCheck) {
-					const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
-					if (!parentExists) {
-						throw new Error(`Parent task ${parentId} not found.`);
-					}
-				}
-
-				let sortedTasks = tasks;
-				if (options.sort) {
-					const validSortFields = ["priority", "id"];
-					const sortField = options.sort.toLowerCase();
-					if (!validSortFields.includes(sortField)) {
-						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
-					}
-					sortedTasks = sortTasks(tasks, sortField);
-				} else {
-					sortedTasks = sortTasks(tasks, "priority");
-				}
-
-				let filtered = sortedTasks;
-				if (parentId) {
-					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
-				}
-
-				if (options.milestone && filtered.length > 0) {
-					const [activeMilestones, archivedMilestones] = await Promise.all([
-						core.filesystem.listMilestones(),
-						core.filesystem.listArchivedMilestones(),
+					// Now query with filters - this will use the already-populated ContentStore
+					updateProgress("Applying filters...");
+					const [tasks, allTasksForParentCheck] = await Promise.all([
+						core.queryTasks({
+							filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+						}),
+						parentId ? core.queryTasks() : Promise.resolve(undefined),
 					]);
-					const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
-						...activeMilestones,
-						...archivedMilestones,
-					]);
-					const resolvedMilestone = resolveClosestMilestoneFilterValue(
-						options.milestone,
-						filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
-					);
-					if (resolvedMilestone) {
-						initialUnifiedFilter.milestone = resolvedMilestone;
-					}
-				}
 
-				return {
-					tasks: filtered,
-					statuses: config?.statuses || [],
-				};
-			},
-			filter: initialUnifiedFilter,
-		});
+					if (parentId && allTasksForParentCheck) {
+						const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
+						if (!parentExists) {
+							throw new Error(`Parent task ${parentId} not found.`);
+						}
+					}
+
+					let sortedTasks = tasks;
+					if (options.sort) {
+						const validSortFields = ["priority", "id"];
+						const sortField = options.sort.toLowerCase();
+						if (!validSortFields.includes(sortField)) {
+							throw new Error(`Invalid sort field: ${options.sort}. Valid values are: priority, id`);
+						}
+						sortedTasks = sortTasks(tasks, sortField);
+					} else {
+						sortedTasks = sortTasks(tasks, "priority");
+					}
+
+					let filtered = sortedTasks;
+					if (parentId) {
+						filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+					}
+
+					if (options.milestone && filtered.length > 0) {
+						const [activeMilestones, archivedMilestones] = await Promise.all([
+							core.filesystem.listMilestones(),
+							core.filesystem.listArchivedMilestones(),
+						]);
+						const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
+							...activeMilestones,
+							...archivedMilestones,
+						]);
+						const resolvedMilestone = resolveClosestMilestoneFilterValue(
+							options.milestone,
+							filtered.map((task) => resolveMilestoneFilterValue(task.milestone ?? "")),
+						);
+						if (resolvedMilestone) {
+							initialUnifiedFilter.milestone = resolvedMilestone;
+						}
+					}
+
+					return {
+						tasks: filtered,
+						statuses: config?.statuses || [],
+					};
+				},
+				filter: initialUnifiedFilter,
+			}),
+		);
 		cleanup();
 	});
 
@@ -2416,23 +2400,23 @@ taskCmd
 			return;
 		}
 
-		// Use unified view with detail focus and Tab switching support
+		// Use unified view with detail focus and Tab switching support.
+		// The first project shows the requested task; after a project switch we
+		// fall back to the new project's task list (the id has no counterpart).
 		const { runUnifiedView } = await import("./ui/unified-view.ts");
-		await runUnifiedView({
-			core,
-			initialView: "task-detail",
-			selectedTask: task,
-			tasks: allTasks,
+		let firstProject = true;
+		await runWithProjectSwitch(cwd, async (nextCore) => {
+			if (firstProject) {
+				firstProject = false;
+				return await runUnifiedView({
+					core: nextCore,
+					initialView: "task-detail",
+					selectedTask: task,
+					tasks: allTasks,
+				});
+			}
+			return await runUnifiedView({ core: nextCore, initialView: "task-list" });
 		});
-	});
-
-program
-	.command("draft")
-	.allowUnknownOption()
-	.allowExcessArguments()
-	.action(() => {
-		console.error("The 'draft' command has been removed. Use 'backlog task create' instead.");
-		process.exit(2);
 	});
 
 const milestoneCmd = program.command("milestone").aliases(["milestones"]);
@@ -2517,123 +2501,123 @@ function addBoardOptions(cmd: Command) {
 
 async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
 	const cwd = await requireProjectRoot();
-	const core = new Core(cwd);
-	const config = await core.filesystem.loadConfig();
-
-	const statuses = config?.statuses || [];
-
-	// Use unified view for Tab switching support
 	const { runUnifiedView } = await import("./ui/unified-view.ts");
-	await runUnifiedView({
-		core,
-		initialView: "kanban",
-		milestoneMode: options.milestones,
-		tasksLoader: async (updateProgress) => {
-			const [tasks, milestoneEntities, archivedMilestones] = await Promise.all([
-				core.loadTasks((msg) => {
-					updateProgress(msg);
-				}),
-				core.filesystem.listMilestones(),
-				core.filesystem.listArchivedMilestones(),
-			]);
-			const resolveMilestoneAlias = (value?: string): string => {
-				const normalized = (value ?? "").trim();
-				if (!normalized) {
-					return "";
-				}
-				const key = normalized.toLowerCase();
-				const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
-				const canonicalInputId = looksLikeMilestoneId
-					? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
-					: null;
-				const aliasKeys = new Set<string>([key]);
-				if (/^\d+$/.test(normalized)) {
-					const numericAlias = String(Number.parseInt(normalized, 10));
-					aliasKeys.add(numericAlias);
-					aliasKeys.add(`m-${numericAlias}`);
-				} else {
-					const idMatch = normalized.match(/^m-(\d+)$/i);
-					if (idMatch?.[1]) {
-						const numericAlias = String(Number.parseInt(idMatch[1], 10));
+	await runWithProjectSwitch(cwd, async (core) => {
+		const config = await core.filesystem.loadConfig();
+		const statuses = config?.statuses || [];
+
+		// Use unified view for Tab switching support
+		return await runUnifiedView({
+			core,
+			initialView: "kanban",
+			milestoneMode: options.milestones,
+			tasksLoader: async (updateProgress) => {
+				const [tasks, milestoneEntities, archivedMilestones] = await Promise.all([
+					core.loadTasks((msg) => {
+						updateProgress(msg);
+					}),
+					core.filesystem.listMilestones(),
+					core.filesystem.listArchivedMilestones(),
+				]);
+				const resolveMilestoneAlias = (value?: string): string => {
+					const normalized = (value ?? "").trim();
+					if (!normalized) {
+						return "";
+					}
+					const key = normalized.toLowerCase();
+					const looksLikeMilestoneId = /^\d+$/.test(normalized) || /^m-\d+$/i.test(normalized);
+					const canonicalInputId = looksLikeMilestoneId
+						? `m-${String(Number.parseInt(normalized.replace(/^m-/i, ""), 10))}`
+						: null;
+					const aliasKeys = new Set<string>([key]);
+					if (/^\d+$/.test(normalized)) {
+						const numericAlias = String(Number.parseInt(normalized, 10));
 						aliasKeys.add(numericAlias);
 						aliasKeys.add(`m-${numericAlias}`);
-					}
-				}
-				const idMatchesAlias = (milestoneId: string): boolean => {
-					const idKey = milestoneId.trim().toLowerCase();
-					if (aliasKeys.has(idKey)) {
-						return true;
-					}
-					const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
-					if (!idMatch?.[1]) {
-						return false;
-					}
-					const numericAlias = String(Number.parseInt(idMatch[1], 10));
-					return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
-				};
-				const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
-					const rawExactMatch = milestones.find((milestone) => milestone.id.trim().toLowerCase() === key);
-					if (rawExactMatch) {
-						return rawExactMatch;
-					}
-					if (canonicalInputId) {
-						const canonicalRawMatch = milestones.find(
-							(milestone) => milestone.id.trim().toLowerCase() === canonicalInputId,
-						);
-						if (canonicalRawMatch) {
-							return canonicalRawMatch;
+					} else {
+						const idMatch = normalized.match(/^m-(\d+)$/i);
+						if (idMatch?.[1]) {
+							const numericAlias = String(Number.parseInt(idMatch[1], 10));
+							aliasKeys.add(numericAlias);
+							aliasKeys.add(`m-${numericAlias}`);
 						}
 					}
-					return milestones.find((milestone) => idMatchesAlias(milestone.id));
-				};
+					const idMatchesAlias = (milestoneId: string): boolean => {
+						const idKey = milestoneId.trim().toLowerCase();
+						if (aliasKeys.has(idKey)) {
+							return true;
+						}
+						const idMatch = milestoneId.trim().match(/^m-(\d+)$/i);
+						if (!idMatch?.[1]) {
+							return false;
+						}
+						const numericAlias = String(Number.parseInt(idMatch[1], 10));
+						return aliasKeys.has(numericAlias) || aliasKeys.has(`m-${numericAlias}`);
+					};
+					const findIdMatch = (milestones: Milestone[]): Milestone | undefined => {
+						const rawExactMatch = milestones.find((milestone) => milestone.id.trim().toLowerCase() === key);
+						if (rawExactMatch) {
+							return rawExactMatch;
+						}
+						if (canonicalInputId) {
+							const canonicalRawMatch = milestones.find(
+								(milestone) => milestone.id.trim().toLowerCase() === canonicalInputId,
+							);
+							if (canonicalRawMatch) {
+								return canonicalRawMatch;
+							}
+						}
+						return milestones.find((milestone) => idMatchesAlias(milestone.id));
+					};
 
-				const activeIdMatch = findIdMatch(milestoneEntities);
-				if (activeIdMatch) {
-					return activeIdMatch.id;
-				}
-				if (looksLikeMilestoneId) {
+					const activeIdMatch = findIdMatch(milestoneEntities);
+					if (activeIdMatch) {
+						return activeIdMatch.id;
+					}
+					if (looksLikeMilestoneId) {
+						const archivedIdMatch = findIdMatch(archivedMilestones);
+						if (archivedIdMatch) {
+							return archivedIdMatch.id;
+						}
+					}
+					const activeTitleMatches = milestoneEntities.filter(
+						(milestone) => milestone.title.trim().toLowerCase() === key,
+					);
+					if (activeTitleMatches.length === 1) {
+						return activeTitleMatches[0]?.id ?? normalized;
+					}
+					if (activeTitleMatches.length > 1) {
+						return normalized;
+					}
 					const archivedIdMatch = findIdMatch(archivedMilestones);
 					if (archivedIdMatch) {
 						return archivedIdMatch.id;
 					}
-				}
-				const activeTitleMatches = milestoneEntities.filter(
-					(milestone) => milestone.title.trim().toLowerCase() === key,
-				);
-				if (activeTitleMatches.length === 1) {
-					return activeTitleMatches[0]?.id ?? normalized;
-				}
-				if (activeTitleMatches.length > 1) {
+					const archivedTitleMatches = archivedMilestones.filter(
+						(milestone) => milestone.title.trim().toLowerCase() === key,
+					);
+					if (archivedTitleMatches.length === 1) {
+						return archivedTitleMatches[0]?.id ?? normalized;
+					}
 					return normalized;
-				}
-				const archivedIdMatch = findIdMatch(archivedMilestones);
-				if (archivedIdMatch) {
-					return archivedIdMatch.id;
-				}
-				const archivedTitleMatches = archivedMilestones.filter(
-					(milestone) => milestone.title.trim().toLowerCase() === key,
-				);
-				if (archivedTitleMatches.length === 1) {
-					return archivedTitleMatches[0]?.id ?? normalized;
-				}
-				return normalized;
-			};
-			const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities));
-			const normalizedTasks =
-				archivedKeys.size > 0
-					? tasks.map((task) => {
-							const key = milestoneKey(resolveMilestoneAlias(task.milestone));
-							if (!key || !archivedKeys.has(key)) {
-								return task;
-							}
-							return { ...task, milestone: undefined };
-						})
-					: tasks;
-			return {
-				tasks: normalizedTasks.map((t) => ({ ...t, status: t.status || "" })),
-				statuses,
-			};
-		},
+				};
+				const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities));
+				const normalizedTasks =
+					archivedKeys.size > 0
+						? tasks.map((task) => {
+								const key = milestoneKey(resolveMilestoneAlias(task.milestone));
+								if (!key || !archivedKeys.has(key)) {
+									return task;
+								}
+								return { ...task, milestone: undefined };
+							})
+						: tasks;
+				return {
+					tasks: normalizedTasks.map((t) => ({ ...t, status: t.status || "" })),
+					statuses,
+				};
+			},
+		});
 	});
 }
 
@@ -2704,24 +2688,6 @@ boardCmd
 			loadingScreen?.close();
 			throw error;
 		}
-	});
-
-program
-	.command("doc")
-	.allowUnknownOption()
-	.allowExcessArguments()
-	.action(() => {
-		console.error("The 'doc' command has been removed.");
-		process.exit(2);
-	});
-
-program
-	.command("decision")
-	.allowUnknownOption()
-	.allowExcessArguments()
-	.action(() => {
-		console.error("The 'decision' command has been removed.");
-		process.exit(2);
 	});
 
 // Agents command group
@@ -2797,21 +2763,7 @@ const configCmd = program
 				process.exit(1);
 			}
 
-			const {
-				mergedConfig,
-				installClaudeAgent: shouldInstallClaude,
-				installShellCompletions: shouldInstallCompletions,
-			} = await configureAdvancedSettings(core);
-
-			let completionResult: CompletionInstallResult | null = null;
-			let completionError: string | null = null;
-			if (shouldInstallCompletions) {
-				try {
-					completionResult = await installCompletion();
-				} catch (error) {
-					completionError = error instanceof Error ? error.message : String(error);
-				}
-			}
+			const { mergedConfig, installClaudeAgent: shouldInstallClaude } = await configureAdvancedSettings(core);
 
 			console.log("\nAdvanced configuration updated.");
 			console.log(`  Check active branches: ${mergedConfig.checkActiveBranches ?? true}`);
@@ -2825,39 +2777,12 @@ const configCmd = program
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
-			if (completionResult) {
-				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
-			} else if (completionError) {
-				console.log("  Shell completions: installation failed (see warning below)");
-			} else {
-				console.log("  Shell completions: skipped");
-			}
 			if (mergedConfig.defaultEditor) {
 				console.log(`  Default editor: ${mergedConfig.defaultEditor}`);
 			}
 			if (shouldInstallClaude) {
 				await installClaudeAgent(cwd);
 				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
-			}
-			if (completionResult) {
-				const instructions = completionResult.instructions.trim();
-				console.log(
-					[
-						"",
-						`Shell completion script installed for ${completionResult.shell}.`,
-						`  Path: ${completionResult.installPath}`,
-						instructions,
-						"",
-					].join("\n"),
-				);
-			} else if (completionError) {
-				const indentedError = completionError
-					.split("\n")
-					.map((line) => `  ${line}`)
-					.join("\n");
-				console.warn(
-					`⚠️  Shell completion installation failed:\n${indentedError}\n  Run \`backlog completion install\` later to retry.\n`,
-				);
 			}
 			console.log("\nUse `backlog config list` to review all configuration values.");
 		} catch (err) {
@@ -2876,14 +2801,13 @@ sequenceCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const tasks = await core.queryTasks();
-		// Exclude tasks marked as Done from sequences (case-insensitive)
-		const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
-		const { unsequenced, sequences } = computeSequences(activeTasks);
-
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+
 		if (usePlainOutput) {
+			const core = new Core(cwd);
+			const tasks = await core.queryTasks();
+			const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+			const { unsequenced, sequences } = computeSequences(activeTasks);
 			if (unsequenced.length > 0) {
 				console.log("Unsequenced:");
 				for (const t of unsequenced) {
@@ -2903,7 +2827,13 @@ sequenceCmd
 
 		// Interactive default: TUI view (215.01 + 215.02 navigation/detail)
 		const { runSequencesView } = await import("./ui/sequences.ts");
-		await runSequencesView({ unsequenced, sequences }, core);
+		await runWithProjectSwitch(cwd, async (core) => {
+			const tasks = await core.queryTasks();
+			// Exclude tasks marked as Done from sequences (case-insensitive)
+			const activeTasks = tasks.filter((t) => (t.status || "").toLowerCase() !== "done");
+			const { unsequenced, sequences } = computeSequences(activeTasks);
+			return await runSequencesView({ unsequenced, sequences }, core);
+		});
 	});
 
 configCmd
@@ -3442,25 +3372,22 @@ program
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
-			const config = await core.filesystem.loadConfig();
-
-			if (!config) {
-				console.error("No backlog project found. Initialize one first with: backlog init");
-				process.exit(1);
-			}
 
 			// Import and run the overview command
 			const { runOverviewCommand } = await import("./commands/overview.ts");
-			await runOverviewCommand(core);
+			await runWithProjectSwitch(cwd, async (core) => {
+				const config = await core.filesystem.loadConfig();
+				if (!config) {
+					console.error("No backlog project found. Initialize one first with: backlog init");
+					process.exit(1);
+				}
+				return await runOverviewCommand(core);
+			});
 		} catch (err) {
 			console.error("Failed to display project overview", err);
 			process.exitCode = 1;
 		}
 	});
-
-// Completion command group
-registerCompletionCommand(program);
 
 // MCP command group
 registerMcpCommand(program);

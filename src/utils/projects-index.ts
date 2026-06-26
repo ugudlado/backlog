@@ -554,7 +554,7 @@ export async function autoRegisterDiscoveredRepo(projectRoot: string): Promise<v
 }
 
 export type ResolveCliProjectRootResult =
-	| { ok: true; projectRoot: string; dataDir?: string }
+	| { ok: true; projectRoot: string; dataDir?: string; projectName?: string; viaGlobalCurrent?: boolean }
 	| { ok: false; kind: "not_found" }
 	| { ok: false; kind: "ambiguous"; paths: string[] };
 
@@ -625,7 +625,13 @@ export async function resolveCliProjectRoot(cwd: string, projectName?: string): 
 	if (scanned.length > 0) {
 		const slot = scanned.find((p) => p.id === index.current) ?? scanned[0];
 		if (slot) {
-			return { ok: true, projectRoot: slot.slotPath, dataDir: slot.slotPath };
+			return {
+				ok: true,
+				projectRoot: slot.slotPath,
+				dataDir: slot.slotPath,
+				projectName: slot.name,
+				viaGlobalCurrent: true,
+			};
 		}
 	}
 

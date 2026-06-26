@@ -32,6 +32,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { pickProject } from "./project-switcher-picker.ts";
 import { formatStatusWithIcon, getStatusColor } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 
@@ -176,6 +177,7 @@ export async function viewTaskEnhanced(
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskChange?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
+		onProjectSwitch?: (picked: import("../utils/global-store-scan.ts").GlobalStoreProject) => void | Promise<void>;
 		onFilterChange?: (filters: {
 			searchQuery: string;
 			statusFilter: string;
@@ -1016,11 +1018,11 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[W]{/} Switch Project | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
 			content =
-				" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[s/p/i/l]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[s/p/i/l]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[W]{/} Switch Project | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		}
 
 		setHelpBarContent(content);
@@ -1261,6 +1263,21 @@ export async function viewTaskEnhanced(
 				screen.destroy();
 				await options.onTabPress?.();
 			}
+		});
+	}
+
+	// Project switch (mirror the Tab guard so it never fires while typing/filtering)
+	if (options.onProjectSwitch) {
+		screen.key(["w", "W"], async () => {
+			if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
+			// Guard so the viewer's other global key handlers don't fire under the popup.
+			const picked = await runWithModalGuard(() => pickProject(screen));
+			if (!picked) return;
+			await options.onProjectSwitch?.(picked);
+			searchService?.dispose();
+			contentStore?.dispose();
+			filterHeader.destroy();
+			screen.destroy();
 		});
 	}
 

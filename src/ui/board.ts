@@ -18,6 +18,7 @@ import { createFilterHeader, type FilterHeader, type FilterState } from "./compo
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
+import { pickProject } from "./project-switcher-picker.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import {
 	createTaskPopup,
@@ -144,7 +145,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[W]{/} Switch Project | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -185,6 +186,7 @@ export async function renderBoardTui(
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
+		onProjectSwitch?: (picked: import("../utils/global-store-scan.ts").GlobalStoreProject) => void | Promise<void>;
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
 		filters?: {
 			searchQuery: string;
@@ -202,6 +204,7 @@ export async function renderBoardTui(
 		}) => void;
 		milestoneMode?: boolean;
 		milestoneEntities?: Milestone[];
+		projectName?: string;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -220,7 +223,9 @@ export async function renderBoardTui(
 	}
 
 	await new Promise<void>((resolve) => {
-		const screen = createScreen({ title: "Backlog Board" });
+		const screen = createScreen({
+			title: options?.projectName ? `${options.projectName} - Board` : "Backlog Board",
+		});
 		const container = box({
 			parent: screen,
 			width: "100%",
@@ -690,6 +695,7 @@ export async function renderBoardTui(
 			statuses: [],
 			availableLabels: configuredLabels,
 			availableMilestones,
+			title: options?.projectName,
 			visibleFilters: ["search", "priority", "milestone", "labels"],
 			initialFilters: {
 				search: sharedFilters.searchQuery,
@@ -1274,6 +1280,19 @@ export async function renderBoardTui(
 				resolve();
 			}
 		});
+
+		if (options?.onProjectSwitch) {
+			screen.key(["w", "W"], async () => {
+				if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+				// Guard so the board's other global key handlers don't fire under the popup.
+				const picked = await runWithModalGuard(() => pickProject(screen));
+				if (!picked) return;
+				clearFooterTimer();
+				screen.destroy();
+				await options.onProjectSwitch?.(picked);
+				resolve();
+			});
+		}
 
 		screen.key(["?"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;

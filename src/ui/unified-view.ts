@@ -2,17 +2,62 @@
  * Unified view manager that handles Tab switching between task views and kanban board
  */
 
+import { box } from "neo-neo-bblessed";
 import type { Core } from "../core/backlog.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
+import type { GlobalStoreProject } from "../utils/global-store-scan.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { pickProject } from "./project-switcher-picker.ts";
 import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
+import { createScreen } from "./tui.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
+
+/**
+ * Minimal interactive screen shown when the active project has no tasks. Keeps
+ * the project switcher reachable so the user can switch away from an empty
+ * project instead of being dropped back to the shell.
+ */
+function renderEmptyProjectScreen(message: string): Promise<GlobalStoreProject | null> {
+	if (!process.stdout.isTTY) {
+		console.log(message);
+		return Promise.resolve(null);
+	}
+	return new Promise<GlobalStoreProject | null>((resolve) => {
+		const screen = createScreen({ title: "Backlog" });
+		box({
+			parent: screen,
+			top: "center",
+			left: "center",
+			width: "shrink",
+			height: "shrink",
+			content: `{center}${message}\n\nPress w to switch project · q or Esc to exit{/center}`,
+			tags: true,
+			style: { fg: "gray" },
+		});
+		let switching = false;
+		screen.key(["escape", "q", "C-c"], () => {
+			if (switching) return;
+			screen.destroy();
+			resolve(null);
+		});
+		screen.key(["w", "W"], async () => {
+			if (switching) return;
+			switching = true;
+			const picked = await pickProject(screen);
+			switching = false;
+			if (!picked) return;
+			screen.destroy();
+			resolve(picked);
+		});
+		screen.render();
+	});
+}
 
 export interface UnifiedViewOptions {
 	core: Core;
@@ -165,12 +210,17 @@ export async function loadTasksForUnifiedView(
 	}
 }
 
-type ViewResult = "switch" | "exit";
+type ViewResult = "switch" | "exit" | "switch-project";
 
 /**
- * Main unified view controller that handles Tab switching between views
+ * Main unified view controller that handles Tab switching between views.
+ *
+ * Returns the project to switch to when the user picks one via the project
+ * switcher (caller reloads against it), or null on a normal quit.
  */
-export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
+export async function runUnifiedView(options: UnifiedViewOptions): Promise<GlobalStoreProject | null> {
+	// Project chosen via the in-view switcher; threaded up through onProjectSwitch.
+	let pickedProject: GlobalStoreProject | null = null;
 	try {
 		const { tasks: loadedTasks, statuses: loadedStatuses } = await loadTasksForUnifiedView(options.core, {
 			tasks: options.tasks,
@@ -181,11 +231,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {
 			if (options.filter?.parentTaskId) {
-				console.log(`No child tasks found for parent task ${options.filter.parentTaskId}.`);
-			} else {
-				console.log("No tasks found.");
+				return renderEmptyProjectScreen(`No child tasks found for parent task ${options.filter.parentTaskId}.`);
 			}
-			return;
+			const projectName = (await options.core.filesystem.loadConfig())?.projectName;
+			return renderEmptyProjectScreen(projectName ? `No tasks in "${projectName}".` : "No tasks found.");
 		}
 		const initialConfig = await options.core.filesystem.loadConfig();
 		let configuredLabels = initialConfig?.labels ?? [];
@@ -268,7 +317,6 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				emitBoardUpdate();
 			},
 		});
-		process.on("exit", () => watcher.stop());
 
 		const configWatcher = watchConfig(options.core, {
 			onConfigChanged: (config) => {
@@ -278,7 +326,15 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			},
 		});
 
-		process.on("exit", () => configWatcher.stop());
+		// One named handler (not two anonymous ones per call) so the CLI's
+		// project-switch loop, which calls runUnifiedView repeatedly, does not
+		// accumulate exit listeners and trip Node's MaxListeners warning. Removed
+		// on teardown below alongside the explicit stops.
+		const stopWatchersOnExit = () => {
+			watcher.stop();
+			configWatcher.stop();
+		};
+		process.on("exit", stopWatchersOnExit);
 
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
@@ -311,6 +367,11 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					result = "switch";
 				};
 
+				const onProjectSwitch = (picked: GlobalStoreProject) => {
+					pickedProject = picked;
+					result = "switch-project";
+				};
+
 				// Determine initial focus based on where we're coming from
 				// - If we have a search query on initial load, focus search
 				// - If currentView is task-detail, focus detail
@@ -338,6 +399,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentFilters = mergeUnifiedViewFilters(currentFilters, filters);
 					},
 					onTabPress,
+					onProjectSwitch,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
@@ -367,11 +429,17 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					result = "switch";
 				};
 
+				const onProjectSwitch = (picked: GlobalStoreProject) => {
+					pickedProject = picked;
+					result = "switch-project";
+				};
+
 				renderBoardTui(kanbanTasks, statuses, layout, maxColumnWidth, {
 					onTaskSelect: (task) => {
 						selectedTask = task;
 					},
 					onTabPress,
+					onProjectSwitch,
 					filters: createKanbanSharedFilters(currentFilters),
 					availableLabels: getBoardAvailableLabels(),
 					availableMilestones: getBoardAvailableMilestones(),
@@ -390,6 +458,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					},
 					milestoneMode: options.milestoneMode,
 					milestoneEntities,
+					projectName: config?.projectName,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
@@ -434,10 +503,18 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						break;
 				}
 			} else {
-				// User pressed q/Esc, exit the loop
+				// User pressed q/Esc, or picked a project to switch to — exit the loop.
 				isRunning = false;
 			}
 		}
+
+		// Stop watchers explicitly so a project switch does not stack a stale
+		// watcher pointing at the previous project's directory, and drop the exit
+		// listener so repeated switches don't accumulate them. (The exit handler
+		// itself never fires on a switch — only on real process exit.)
+		stopWatchersOnExit();
+		process.off("exit", stopWatchersOnExit);
+		return pickedProject;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
 		process.exit(1);

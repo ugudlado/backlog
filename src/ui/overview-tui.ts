@@ -1,19 +1,27 @@
 import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
+import type { GlobalStoreProject } from "../utils/global-store-scan.ts";
+import { pickProject } from "./project-switcher-picker.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 
 /**
- * Render the project overview in an interactive TUI
+ * Render the project overview in an interactive TUI.
+ *
+ * Returns the project to switch to when the user picks one via the project
+ * switcher, or null on a normal quit.
  */
-export async function renderOverviewTui(statistics: TaskStatistics, projectName: string): Promise<void> {
+export async function renderOverviewTui(
+	statistics: TaskStatistics,
+	projectName: string,
+): Promise<GlobalStoreProject | null> {
 	// If not in TTY, fall back to plain text output
 	if (!process.stdout.isTTY) {
 		renderPlainTextOverview(statistics, projectName);
-		return;
+		return null;
 	}
 
-	return new Promise<void>((resolve) => {
+	return new Promise<GlobalStoreProject | null>((resolve) => {
 		const screen = createScreen({ title: `${projectName} - Overview` });
 
 		// Main container
@@ -195,7 +203,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 			left: 0,
 			width: "100%",
 			height: 3,
-			content: "{center}Press q or Esc to exit{/center}",
+			content: "{center}Press w to switch project · q or Esc to exit{/center}",
 			tags: true,
 			style: {
 				fg: "gray",
@@ -205,10 +213,25 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		// Focus on status box for scrolling
 		statusBox.focus();
 
+		// Guard so quit / a second switch don't fire while the picker is open.
+		let switching = false;
+
 		// Exit handlers
 		screen.key(["escape", "q", "C-c"], () => {
+			if (switching) return;
 			screen.destroy();
-			resolve();
+			resolve(null);
+		});
+
+		// Project switch
+		screen.key(["w", "W"], async () => {
+			if (switching) return;
+			switching = true;
+			const picked = await pickProject(screen);
+			switching = false;
+			if (!picked) return;
+			screen.destroy();
+			resolve(picked);
 		});
 
 		screen.render();
