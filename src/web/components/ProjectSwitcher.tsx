@@ -1,24 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiClient, type WorkspacesResponse } from "../lib/api";
+import { apiClient, type ProjectsResponse } from "../lib/api";
 
 function pathBasename(p: string): string {
 	const parts = p.split(/[/\\]/).filter(Boolean);
 	return parts[parts.length - 1] ?? p;
 }
 
-export interface WorkspaceSwitcherProps {
-	onWorkspaceSwitched: () => Promise<void>;
+export interface ProjectSwitcherProps {
+	onProjectSwitched: () => Promise<void>;
 }
 
-const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitched }) => {
+const ProjectSwitcher: React.FC<ProjectSwitcherProps> = ({ onProjectSwitched }) => {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const [data, setData] = useState<WorkspacesResponse | null>(null);
+	const [data, setData] = useState<ProjectsResponse | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	// Full-screen overlay shown from the moment a switch is initiated until the
-	// page reloads onto the new workspace (covers the otherwise blank gap).
+	// page reloads onto the new project (covers the otherwise blank gap).
 	const [switching, setSwitching] = useState(false);
 	const [addPath, setAddPath] = useState("");
 	const [switchAfterAdd, setSwitchAfterAdd] = useState(false);
@@ -27,9 +27,9 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 	const load = useCallback(async () => {
 		try {
 			setLoadError(null);
-			setData(await apiClient.fetchWorkspaces());
+			setData(await apiClient.fetchProjects());
 		} catch (e) {
-			setLoadError(e instanceof Error ? e.message : "Failed to load workspaces");
+			setLoadError(e instanceof Error ? e.message : "Failed to load projects");
 		}
 	}, []);
 
@@ -56,56 +56,56 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 		return () => document.removeEventListener("mousedown", onDoc);
 	}, [open]);
 
-	const sortedWorkspaces = useMemo(
-		() => (data ? [...data.workspaces].sort((a, b) => a.path.localeCompare(b.path)) : []),
+	const sortedProjects = useMemo(
+		() => (data ? [...data.projects].sort((a, b) => a.path.localeCompare(b.path)) : []),
 		[data],
 	);
 
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) {
-			return sortedWorkspaces;
+			return sortedProjects;
 		}
-		return sortedWorkspaces.filter((w) => {
+		return sortedProjects.filter((w) => {
 			const base = pathBasename(w.path).toLowerCase();
 			return w.path.toLowerCase().includes(q) || base.includes(q);
 		});
-	}, [sortedWorkspaces, query]);
+	}, [sortedProjects, query]);
 
-	const currentWorkspace = useMemo(
-		() => data?.workspaces.find((w) => w.id === data.currentId) ?? null,
+	const currentProject = useMemo(
+		() => data?.projects.find((w) => w.id === data.currentId) ?? null,
 		[data],
 	);
-	const summaryLabel = currentWorkspace ? pathBasename(currentWorkspace.path) : "Select workspace";
+	const summaryLabel = currentProject ? pathBasename(currentProject.path) : "Select project";
 
 	const handlePick = async (id: string) => {
 		try {
 			setBusy(true);
 			setSwitching(true);
 			setActionError(null);
-			await apiClient.setCurrentWorkspace(id);
+			await apiClient.setCurrentProject(id);
 			setOpen(false);
 			setQuery("");
-			await onWorkspaceSwitched();
+			await onProjectSwitched();
 			await load();
 		} catch (e) {
 			setSwitching(false);
-			setActionError(e instanceof Error ? e.message : "Could not switch workspace");
+			setActionError(e instanceof Error ? e.message : "Could not switch project");
 		} finally {
 			setBusy(false);
 		}
 	};
 
 	const handleRemove = async (id: string, displayPath: string) => {
-		if (!window.confirm(`Remove this workspace from the registry?\n\n${displayPath}\n\nThe project files on disk are not deleted.`)) {
+		if (!window.confirm(`Remove this project from the registry?\n\n${displayPath}\n\nThe project files on disk are not deleted.`)) {
 			return;
 		}
 		try {
 			setBusy(true);
 			setActionError(null);
-			setData(await apiClient.deleteWorkspace(id));
+			setData(await apiClient.deleteProject(id));
 		} catch (e) {
-			setActionError(e instanceof Error ? e.message : "Could not remove workspace");
+			setActionError(e instanceof Error ? e.message : "Could not remove project");
 		} finally {
 			setBusy(false);
 		}
@@ -125,10 +125,10 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 			setData(updated);
 			if (switchAfterAdd && updated.addedId) {
 				setSwitching(true);
-				await apiClient.setCurrentWorkspace(updated.addedId);
+				await apiClient.setCurrentProject(updated.addedId);
 				setOpen(false);
 				setQuery("");
-				await onWorkspaceSwitched();
+				await onProjectSwitched();
 				await load();
 			}
 		} catch (e) {
@@ -149,7 +149,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 				>
 					<div className="flex flex-col items-center gap-3">
 						<div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400" />
-						<div className="text-lg text-gray-600 dark:text-gray-300">Switching workspace…</div>
+						<div className="text-lg text-gray-600 dark:text-gray-300">Switching project…</div>
 					</div>
 				</div>
 			)}
@@ -172,7 +172,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 					<div className="p-2 border-b border-gray-100 dark:border-gray-800">
 						<input
 							type="search"
-							placeholder="Search path…"
+							placeholder="Search projects…"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
 							className="w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100"
@@ -183,7 +183,7 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 							{loadError ?? actionError}
 						</div>
 					)}
-					<ul className="max-h-56 overflow-y-auto py-1" role="listbox" aria-label="Workspaces">
+					<ul className="max-h-56 overflow-y-auto py-1" role="listbox" aria-label="Projects">
 						{filtered.length === 0 ? (
 							<li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No matches.</li>
 						) : (
@@ -261,4 +261,4 @@ const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onWorkspaceSwitch
 	);
 };
 
-export default WorkspaceSwitcher;
+export default ProjectSwitcher;

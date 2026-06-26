@@ -1,13 +1,13 @@
 import React from "react";
 import ThemeToggle from "./ThemeToggle";
-import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import ProjectSwitcher from "./ProjectSwitcher";
 
 interface NavigationProps {
 	projectName: string;
-	onWorkspaceSwitched?: () => Promise<void>;
+	onProjectSwitched?: () => Promise<void>;
 }
 
-const Navigation: React.FC<NavigationProps> = ({projectName, onWorkspaceSwitched}) => {
+const Navigation: React.FC<NavigationProps> = ({projectName, onProjectSwitched}) => {
 	return (
 		<nav className="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-colors duration-200">
 			<div className="flex items-center justify-between gap-3">
@@ -24,9 +24,9 @@ const Navigation: React.FC<NavigationProps> = ({projectName, onWorkspaceSwitched
 					</a>
 				</div>
 				<div className="flex items-center gap-2 sm:gap-3 shrink-0">
-					<WorkspaceSwitcher
-						onWorkspaceSwitched={
-							onWorkspaceSwitched ??
+					<ProjectSwitcher
+						onProjectSwitched={
+							onProjectSwitched ??
 							(async () => {
 								window.location.reload();
 							})

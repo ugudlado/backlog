@@ -345,17 +345,15 @@ export class BacklogServer {
 					"/api/sequences/move": {
 						POST: this.guard((req) => this.handleMoveSequence(req)),
 					},
-					"/api/workspaces": {
-						GET: this.guard(() => this.handleListWorkspaces()),
-						POST: this.guard((req) => this.handleAddWorkspace(req)),
+					"/api/projects": {
+						GET: this.guard(() => this.handleListProjects()),
+						POST: this.guard((req) => this.handleCreateProject(req)),
 					},
-					"/api/workspaces/:id": {
+					"/api/projects/:id": {
 						PATCH: this.guard((req: Request & { params: { id: string } }) =>
-							this.handlePatchWorkspace(req, req.params.id),
+							this.handlePatchProject(req, req.params.id),
 						),
-						DELETE: this.guard((req: Request & { params: { id: string } }) =>
-							this.handleDeleteWorkspace(req.params.id),
-						),
+						DELETE: this.guard((req: Request & { params: { id: string } }) => this.handleDeleteProject(req.params.id)),
 					},
 					// Serve files placed under backlog/assets at /assets/<relative-path>
 					"/assets/*": {
@@ -1564,8 +1562,8 @@ export class BacklogServer {
 		}
 	}
 
-	private async listWorkspacesPayload(): Promise<{
-		workspaces: Array<{ id: string; path: string }>;
+	private async listProjectsPayload(): Promise<{
+		projects: Array<{ id: string; path: string }>;
 		currentId: string | null;
 	}> {
 		const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
@@ -1575,32 +1573,28 @@ export class BacklogServer {
 		const withIds = entries.filter((e): e is { path: string; id: string } => Boolean(e.id));
 		const persisted = (await readWorkspacesIndex()).current;
 
-		// Global-store projects are discovered by scanning <globalStore>/* — they
-		// need no registry path. Merge them with registry (local-mode) workspaces,
-		// preferring the scan when ids collide so a re-init'd global project does
-		// not appear twice.
+		// Global-store projects are discovered by scanning <globalStore>/*. Merge
+		// them with registry (local-mode fallback) entries, preferring the scan
+		// when ids collide so a re-init'd project does not appear twice.
 		const scanned = await scanGlobalStoreProjects();
 		const all = new Map<string, string>(withIds.map((e) => [e.id, toAbsoluteProjectRoot(e.path)]));
 		for (const p of scanned) all.set(p.id, p.slotPath);
 
-		const workspaces = [...all.entries()].map(([id, path]) => ({ id, path }));
+		const projects = [...all.entries()].map(([id, path]) => ({ id, path }));
 		const persistedHit = persisted && all.has(persisted) ? persisted : undefined;
 		const currentPath = toAbsoluteProjectRoot(this.core.filesystem.rootDir);
-		const memoryHit = workspaces.find((w) => toAbsoluteProjectRoot(w.path) === currentPath)?.id;
+		const memoryHit = projects.find((p) => toAbsoluteProjectRoot(p.path) === currentPath)?.id;
 		return {
-			workspaces,
-			// The workspace the server actually rendered wins over the persisted
-			// `current:` pointer. Persisted can drift from what's on screen (cwd
-			// resolution / external switches rewrite it without reloading the
-			// server), and trusting it made the dropdown highlight jump to a
-			// different workspace the moment it was opened.
+			projects,
+			// The project the server actually rendered wins over the persisted
+			// `current:` pointer, which can drift from what's on screen.
 			currentId: memoryHit ?? persistedHit ?? null,
 		};
 	}
 
-	private async handleListWorkspaces(): Promise<Response> {
+	private async handleListProjects(): Promise<Response> {
 		try {
-			return Response.json(await this.listWorkspacesPayload());
+			return Response.json(await this.listProjectsPayload());
 		} catch (error) {
 			console.error("Error listing workspaces:", error);
 			const message = error instanceof Error ? error.message : "Unknown error";
@@ -1649,11 +1643,11 @@ export class BacklogServer {
 		const { setCurrentWorkspaceId } = await import("../utils/workspaces-index.ts");
 		const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);
 		if (created) await setCurrentWorkspaceId(created.id);
-		const payload = await this.listWorkspacesPayload();
+		const payload = await this.listProjectsPayload();
 		return Response.json({ ...payload, addedId: created?.id ?? null });
 	}
 
-	private async handleAddWorkspace(req: Request): Promise<Response> {
+	private async handleCreateProject(req: Request): Promise<Response> {
 		const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 		const name = typeof body.name === "string" ? body.name.trim() : "";
 		if (!name) {
@@ -1662,7 +1656,7 @@ export class BacklogServer {
 		return await this.createGlobalProject(name);
 	}
 
-	private async handlePatchWorkspace(req: Request, id: string): Promise<Response> {
+	private async handlePatchProject(req: Request, id: string): Promise<Response> {
 		try {
 			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 			if (body.current !== true) {
@@ -1692,14 +1686,14 @@ export class BacklogServer {
 					const { findGlobalStoreProject } = await import("../utils/global-store-scan.ts");
 					const slot = await findGlobalStoreProject(id);
 					if (!slot) {
-						return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+						return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
 					}
 					targetPath = slot.slotPath;
 					resolvedData = slot.slotPath;
 				}
 
 				if (!(await pathExistsAsDirectory(targetPath))) {
-					return Response.json({ error: `Workspace path no longer exists: ${targetPath}` }, { status: 410 });
+					return Response.json({ error: `Project path no longer exists: ${targetPath}` }, { status: 410 });
 				}
 				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) !== targetPath) {
 					// Record the target's `data:` override BEFORE reinitializing the
@@ -1733,18 +1727,18 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleDeleteWorkspace(id: string): Promise<Response> {
+	private async handleDeleteProject(id: string): Promise<Response> {
 		try {
 			return await this.withWorkspaceMutation(async () => {
 				const { readWorkspacesWithIds } = await import("../utils/workspace-registration.ts");
 				const entries = await readWorkspacesWithIds();
 				const target = entries.find((e) => e.id === id);
 				if (!target) {
-					return Response.json({ error: `No workspace with id "${id}"` }, { status: 404 });
+					return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
 				}
 				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) === toAbsoluteProjectRoot(target.path)) {
 					return Response.json(
-						{ error: "Cannot remove the workspace that is currently active. Switch to another workspace first." },
+						{ error: "Cannot remove the active project. Switch to another project first." },
 						{ status: 409 },
 					);
 				}
@@ -1752,7 +1746,7 @@ export class BacklogServer {
 				if (!removed) {
 					return Response.json({ error: "Workspace entry not found in index" }, { status: 404 });
 				}
-				return Response.json(await this.listWorkspacesPayload());
+				return Response.json(await this.listProjectsPayload());
 			});
 		} catch (error) {
 			console.error("Error deleting workspace:", error);

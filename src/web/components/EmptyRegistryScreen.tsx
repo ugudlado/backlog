@@ -22,7 +22,7 @@ const EmptyRegistryScreen: React.FC<EmptyRegistryScreenProps> = ({ onWorkspaceAd
 		try {
 			const updated = await apiClient.createProject(trimmed);
 			if (updated.addedId) {
-				await apiClient.setCurrentWorkspace(updated.addedId);
+				await apiClient.setCurrentProject(updated.addedId);
 			}
 			setName("");
 			await onWorkspaceAdded();

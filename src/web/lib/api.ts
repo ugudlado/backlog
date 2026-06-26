@@ -27,18 +27,18 @@ export interface InitializationStatus {
 	rootConfigPath?: string | null;
 }
 
-export interface Workspace {
+export interface Project {
 	id: string;
 	path: string;
 }
 
-export interface WorkspacesResponse {
-	workspaces: Workspace[];
+export interface ProjectsResponse {
+	projects: Project[];
 	currentId: string | null;
 }
 
-export interface AddWorkspaceResponse extends WorkspacesResponse {
-	/** Id minted (or matched) for the path the caller just added; null if the server couldn't resolve it. */
+export interface CreateProjectResponse extends ProjectsResponse {
+	/** Id of the project just created; null if the server couldn't resolve it. */
 	addedId: string | null;
 }
 
@@ -468,27 +468,27 @@ export class ApiClient {
 		return this.fetchJson<InitializationStatus>(`${API_BASE}/status`);
 	}
 
-	async fetchWorkspaces(): Promise<WorkspacesResponse> {
-		return this.fetchJson<WorkspacesResponse>(`${API_BASE}/workspaces`);
+	async fetchProjects(): Promise<ProjectsResponse> {
+		return this.fetchJson<ProjectsResponse>(`${API_BASE}/projects`);
 	}
 
 	/** Create a new global-store project by name. */
-	async createProject(name: string): Promise<AddWorkspaceResponse> {
-		return this.fetchJson<AddWorkspaceResponse>(`${API_BASE}/workspaces`, {
+	async createProject(name: string): Promise<CreateProjectResponse> {
+		return this.fetchJson<CreateProjectResponse>(`${API_BASE}/projects`, {
 			method: "POST",
 			body: JSON.stringify({ name }),
 		});
 	}
 
-	async setCurrentWorkspace(id: string): Promise<{ ok: boolean }> {
-		return this.fetchJson<{ ok: boolean }>(`${API_BASE}/workspaces/${encodeURIComponent(id)}`, {
+	async setCurrentProject(id: string): Promise<{ ok: boolean }> {
+		return this.fetchJson<{ ok: boolean }>(`${API_BASE}/projects/${encodeURIComponent(id)}`, {
 			method: "PATCH",
 			body: JSON.stringify({ current: true }),
 		});
 	}
 
-	async deleteWorkspace(id: string): Promise<WorkspacesResponse> {
-		return this.fetchJson<WorkspacesResponse>(`${API_BASE}/workspaces/${encodeURIComponent(id)}`, {
+	async deleteProject(id: string): Promise<ProjectsResponse> {
+		return this.fetchJson<ProjectsResponse>(`${API_BASE}/projects/${encodeURIComponent(id)}`, {
 			method: "DELETE",
 		});
 	}
