@@ -73,7 +73,6 @@ describe("ContentStore", () => {
 			labels: ["remote"],
 			dependencies: [],
 			rawContent: "## Description\nRemote content",
-			source: "remote",
 		};
 
 		let loaderCalls = 0;

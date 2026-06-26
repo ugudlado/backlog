@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BacklogConfig } from "../types/index.ts";
 import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Editor utilities", () => {
 	let originalEditor: string | undefined;
+	let originalVisual: string | undefined;
 
 	beforeEach(() => {
-		// Save original EDITOR env var
+		// Save original EDITOR/VISUAL env vars
 		originalEditor = process.env.EDITOR;
+		originalVisual = process.env.VISUAL;
 	});
 
 	afterEach(() => {
@@ -20,72 +21,37 @@ describe("Editor utilities", () => {
 		} else {
 			delete process.env.EDITOR;
 		}
+		// Restore original VISUAL env var
+		if (originalVisual !== undefined) {
+			process.env.VISUAL = originalVisual;
+		} else {
+			delete process.env.VISUAL;
+		}
 	});
 
 	describe("resolveEditor", () => {
-		it("should prioritize EDITOR environment variable over config defaultEditor", () => {
+		it("should prioritize EDITOR environment variable over VISUAL", () => {
 			process.env.EDITOR = "vim";
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "code",
-			};
+			process.env.VISUAL = "code";
 
-			const editor = resolveEditor(config);
+			const editor = resolveEditor();
 			expect(editor).toBe("vim");
 		});
 
-		it("should use config defaultEditor when EDITOR environment variable is not set", () => {
+		it("should use VISUAL when EDITOR is not set", () => {
 			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "code",
-			};
+			process.env.VISUAL = "code";
 
-			const editor = resolveEditor(config);
+			const editor = resolveEditor();
 			expect(editor).toBe("code");
 		});
 
-		it("should use EDITOR environment variable when config has no defaultEditor", () => {
-			process.env.EDITOR = "vim";
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-			};
-
-			const editor = resolveEditor(config);
-			expect(editor).toBe("vim");
-		});
-
-		it("should use platform default when neither config nor env var is set", () => {
+		it("should use platform default when neither EDITOR nor VISUAL is set", () => {
 			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-			};
+			delete process.env.VISUAL;
 
-			const editor = resolveEditor(config);
+			const editor = resolveEditor();
 			// Should return a platform-specific default
-			expect(editor).toBeTruthy();
-			expect(typeof editor).toBe("string");
-		});
-
-		it("should return platform default when config is null", () => {
-			delete process.env.EDITOR;
-			const editor = resolveEditor(null);
 			expect(editor).toBeTruthy();
 			expect(typeof editor).toBe("string");
 		});
@@ -133,42 +99,22 @@ describe("Editor utilities", () => {
 
 		it("should open file with echo command for testing", async () => {
 			// Use echo as a safe test command that exists on all platforms
-			// Clear EDITOR env var so config.defaultEditor is used
-			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "echo",
-			};
+			process.env.EDITOR = "echo";
 
-			const success = await openInEditor(testFile, config);
+			const success = await openInEditor(testFile);
 			expect(success).toBe(true);
 		});
 
 		it("should handle editor command failure gracefully", async () => {
-			// Clear EDITOR env var so config.defaultEditor is used
-			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "definitely-not-a-real-editor",
-			};
+			process.env.EDITOR = "definitely-not-a-real-editor";
 
-			const success = await openInEditor(testFile, config);
+			const success = await openInEditor(testFile);
 			expect(success).toBe(false);
 		});
 
 		it("should wait for editor to complete before returning", async () => {
 			// Create a simple Node.js script that delays then exits
 			// This works cross-platform without needing shell/batch scripts
-			// Clear EDITOR env var so config.defaultEditor is used
-			delete process.env.EDITOR;
 			const scriptPath = join(TEST_DIR, "test-editor.js");
 			const scriptContent = `
 				setTimeout(() => {
@@ -177,17 +123,10 @@ describe("Editor utilities", () => {
 			`;
 			await Bun.write(scriptPath, scriptContent);
 
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: `node ${scriptPath}`,
-			};
+			process.env.EDITOR = `node ${scriptPath}`;
 
 			const startTime = Date.now();
-			const success = await openInEditor(testFile, config);
+			const success = await openInEditor(testFile);
 			const endTime = Date.now();
 
 			expect(success).toBe(true);
@@ -198,18 +137,9 @@ describe("Editor utilities", () => {
 		it("should handle commands with arguments by splitting on spaces", async () => {
 			// Test that editors with flags work correctly (like "nvim -c 'set noshowmode'")
 			// Use echo with an argument as a simple test that exits immediately
-			// Clear EDITOR env var so config.defaultEditor is used
-			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "echo test-argument",
-			};
+			process.env.EDITOR = "echo test-argument";
 
-			const success = await openInEditor(testFile, config);
+			const success = await openInEditor(testFile);
 			expect(success).toBe(true);
 		});
 	});

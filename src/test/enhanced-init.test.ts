@@ -36,7 +36,6 @@ describe("Enhanced init command", () => {
 		const modifiedConfig: BacklogConfig = {
 			...initialConfig,
 			projectName: initialConfig?.projectName ?? "Test Project",
-			defaultEditor: "vim",
 			defaultPort: 8080,
 		};
 		await core.filesystem.saveConfig(modifiedConfig);
@@ -45,7 +44,6 @@ describe("Enhanced init command", () => {
 		const existingConfig = await core.filesystem.loadConfig();
 		expect(existingConfig).toBeTruthy();
 		expect(existingConfig?.projectName).toBe("Test Project");
-		expect(existingConfig?.defaultEditor).toBe("vim");
 		expect(existingConfig?.defaultPort).toBe(8080);
 
 		// Verify backlog structure exists
@@ -69,30 +67,6 @@ describe("Enhanced init command", () => {
 		expect(config?.projectName).toBe("New Project");
 		expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Review", "Verify", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
-	});
-
-	test("should handle editor configuration in init flow", async () => {
-		const core = new Core(tmpDir);
-
-		// Test that editor can be set and saved
-		const configWithEditor = {
-			projectName: "Editor Test Project",
-			statuses: ["To Do", "In Progress", "Done"],
-			labels: [],
-			milestones: [],
-			defaultStatus: "To Do",
-			dateFormat: "yyyy-mm-dd",
-			backlogDirectory: "backlog",
-			remoteOperations: true,
-			defaultEditor: "code --wait",
-		};
-
-		await core.filesystem.ensureBacklogStructure();
-		await core.filesystem.saveConfig(configWithEditor);
-
-		// Verify editor was saved
-		const loadedConfig = await core.filesystem.loadConfig();
-		expect(loadedConfig?.defaultEditor).toBe("code --wait");
 	});
 
 	test("should handle config with missing fields by filling defaults", async () => {
@@ -215,90 +189,6 @@ describe("Enhanced init command", () => {
 
 		loaded = await core.filesystem.loadConfig();
 		expect(loaded?.definitionOfDone).toEqual([]);
-	});
-
-	test("should handle zero-padding configuration in init flow", async () => {
-		const core = new Core(tmpDir);
-
-		// Test config with zero-padding enabled
-		const configWithPadding = {
-			projectName: "Padded Project",
-			statuses: ["To Do", "In Progress", "Done"],
-			labels: [],
-			milestones: [],
-			defaultStatus: "To Do",
-			dateFormat: "yyyy-mm-dd",
-			backlogDirectory: "backlog",
-			remoteOperations: true,
-			zeroPaddedIds: 3,
-		};
-
-		await core.filesystem.ensureBacklogStructure();
-		await core.filesystem.saveConfig(configWithPadding);
-
-		// Verify zero-padding was saved
-		const loadedConfig = await core.filesystem.loadConfig();
-		expect(loadedConfig?.zeroPaddedIds).toBe(3);
-
-		// Test that zero-padding config is available for ID generation
-		// (ID generation happens in CLI, not in Core.createTask)
-		expect(loadedConfig?.zeroPaddedIds).toBe(3);
-	});
-
-	test("should handle zero-padding disabled configuration", async () => {
-		const core = new Core(tmpDir);
-
-		// Test config with zero-padding disabled
-		const configWithoutPadding = {
-			projectName: "Non-Padded Project",
-			statuses: ["To Do", "In Progress", "Done"],
-			labels: [],
-			milestones: [],
-			defaultStatus: "To Do",
-			dateFormat: "yyyy-mm-dd",
-			backlogDirectory: "backlog",
-			remoteOperations: true,
-			zeroPaddedIds: 0,
-		};
-
-		await core.filesystem.ensureBacklogStructure();
-		await core.filesystem.saveConfig(configWithoutPadding);
-
-		// Verify zero-padding was saved as disabled
-		const loadedConfig = await core.filesystem.loadConfig();
-		expect(loadedConfig?.zeroPaddedIds).toBe(0);
-
-		// Test that zero-padding is properly disabled
-		// (ID generation happens in CLI, not in Core.createTask)
-		expect(loadedConfig?.zeroPaddedIds).toBe(0);
-	});
-
-	test("should preserve existing zero-padding config during re-initialization", async () => {
-		const core = new Core(tmpDir);
-
-		// Create initial config with padding
-		const initialConfig = {
-			projectName: "Test Project",
-			statuses: ["To Do", "In Progress", "Done"],
-			labels: [],
-			milestones: [],
-			defaultStatus: "To Do",
-			dateFormat: "yyyy-mm-dd",
-			backlogDirectory: "backlog",
-			zeroPaddedIds: 4,
-		};
-
-		await core.filesystem.ensureBacklogStructure();
-		await core.filesystem.saveConfig(initialConfig);
-
-		// Simulate re-initialization by loading existing config
-		const existingConfig = await core.filesystem.loadConfig();
-		expect(existingConfig).toBeTruthy();
-		expect(existingConfig?.zeroPaddedIds).toBe(4);
-
-		// Verify the padding config is preserved
-		// (ID generation happens in CLI, not in Core.createTask)
-		expect(existingConfig?.zeroPaddedIds).toBe(4);
 	});
 
 	test("should create default task prefix when not specified", async () => {

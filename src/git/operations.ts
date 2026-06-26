@@ -1,44 +1,24 @@
 import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
-import type { BacklogConfig } from "../types/index.ts";
 
 type GitPathContext = {
 	repoRoot: string;
 	relativePath: string;
 };
 
-type GitConfigLoader = () => Promise<BacklogConfig | null>;
-
 export class GitOperations {
 	private projectRoot: string;
-	private config: BacklogConfig | null = null;
-	private readonly configLoader?: GitConfigLoader;
+	private readonly isGlobalStore?: () => boolean;
 
-	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
+	constructor(projectRoot: string, isGlobalStore?: () => boolean) {
 		this.projectRoot = projectRoot;
-		this.config = config;
-		this.configLoader = configLoader;
-	}
-
-	setConfig(config: BacklogConfig | null): void {
-		this.config = config;
-	}
-
-	private async loadConfigIfNeeded(): Promise<void> {
-		if (this.config || !this.configLoader) {
-			return;
-		}
-		try {
-			this.config = await this.configLoader();
-		} catch {
-			this.config = null;
-		}
+		this.isGlobalStore = isGlobalStore;
 	}
 
 	async isRepository(cwd = this.projectRoot): Promise<boolean> {
-		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		// Global-store projects live outside any code repo, so git is never used.
+		if (this.isGlobalStore?.()) {
 			return false;
 		}
 		return await isGitRepository(cwd);
@@ -71,9 +51,6 @@ export class GitOperations {
 	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
 		const args = ["commit", "-m", commitMessage];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
 		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
 			return;
@@ -86,9 +63,6 @@ export class GitOperations {
 			return;
 		}
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
@@ -125,9 +99,6 @@ export class GitOperations {
 		}
 
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
 		args.push("--", ...uniqueRelativePaths);
 		await this.execGit(args, { cwd: resolvedRepoRoot });
 	}
@@ -177,9 +148,6 @@ export class GitOperations {
 		}
 
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
@@ -225,13 +193,6 @@ export class GitOperations {
 		return status.trim() === "";
 	}
 
-	async getCurrentBranch(): Promise<string> {
-		if (!(await this.isRepository())) {
-			return "";
-		}
-		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
-		return stdout.trim();
-	}
 	async hasUncommittedChanges(): Promise<boolean> {
 		const status = await this.getStatus();
 		return status.trim() !== "";
@@ -245,64 +206,6 @@ export class GitOperations {
 		return stdout.trim();
 	}
 
-	async fetch(remote = "origin"): Promise<void> {
-		// Check if remote operations are disabled
-		if (this.config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.warn("Remote operations are disabled in config. Skipping fetch.");
-			}
-			return;
-		}
-
-		// Preflight: skip if repository has no remotes configured
-		const hasRemotes = await this.hasAnyRemote();
-		if (!hasRemotes) {
-			// No remotes configured; silently skip fetch. A consolidated warning is shown during init if applicable.
-			return;
-		}
-
-		try {
-			// Use --prune to remove dead refs and reduce later scans
-			await this.execGit(["fetch", remote, "--prune", "--quiet"]);
-		} catch (error) {
-			// Check if this is a network-related error
-			if (this.isNetworkError(error)) {
-				// Don't show console warnings - let the calling code handle user messaging
-				if (process.env.DEBUG) {
-					console.warn(`Network error details: ${error}`);
-				}
-				return;
-			}
-			// Re-throw non-network errors
-			throw error;
-		}
-	}
-
-	private isNetworkError(error: unknown): boolean {
-		if (typeof error === "string") {
-			return this.containsNetworkErrorPattern(error);
-		}
-		if (error instanceof Error) {
-			return this.containsNetworkErrorPattern(error.message);
-		}
-		return false;
-	}
-
-	private containsNetworkErrorPattern(message: string): boolean {
-		const networkErrorPatterns = [
-			"could not resolve host",
-			"connection refused",
-			"network is unreachable",
-			"timeout",
-			"no route to host",
-			"connection timed out",
-			"temporary failure in name resolution",
-			"operation timed out",
-		];
-
-		const lowerMessage = message.toLowerCase();
-		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
-	}
 	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
@@ -376,139 +279,6 @@ export class GitOperations {
 		return repoRoot === this.projectRoot ? null : repoRoot;
 	}
 
-	async listRemoteBranches(remote = "origin"): Promise<string[]> {
-		try {
-			// Fast-path: if no remotes, return empty
-			if (!(await this.hasAnyRemote())) return [];
-			const { stdout } = await this.execGit(["branch", "-r", "--format=%(refname:short)"], { readOnly: true });
-			return stdout
-				.split("\n")
-				.map((l) => l.trim())
-				.filter(Boolean)
-				.filter((branch) => branch.startsWith(`${remote}/`))
-				.map((branch) => branch.substring(`${remote}/`.length));
-		} catch {
-			// If remote doesn't exist or other error, return empty array
-			return [];
-		}
-	}
-
-	/**
-	 * List remote branches that have been active within the specified days
-	 * Much faster than listRemoteBranches for filtering old branches
-	 */
-	async listRecentRemoteBranches(daysAgo: number, remote = "origin"): Promise<string[]> {
-		try {
-			// Fast-path: if no remotes, return empty
-			if (!(await this.hasAnyRemote())) return [];
-			const { stdout } = await this.execGit(
-				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", `refs/remotes/${remote}`],
-				{ readOnly: true },
-			);
-			const since = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
-			return (
-				stdout
-					.split("\n")
-					.map((l) => l.trim())
-					.filter(Boolean)
-					.map((line) => {
-						const [ref, iso] = line.split("|");
-						return { ref, t: Date.parse(iso || "") };
-					})
-					.filter((x) => Number.isFinite(x.t) && x.t >= since && x.ref)
-					.map((x) => x.ref?.replace(`${remote}/`, ""))
-					// Filter out invalid/ambiguous entries that would normalize to empty or "origin"
-					.filter((b): b is string => Boolean(b))
-					.filter((b) => b !== "HEAD" && b !== remote && b !== `${remote}`)
-			);
-		} catch {
-			return [];
-		}
-	}
-
-	async listRecentBranches(daysAgo: number): Promise<string[]> {
-		if (!(await this.isRepository())) {
-			return [];
-		}
-		try {
-			// Get all branches with their last commit date
-			// Using for-each-ref which is more efficient than multiple branch commands
-			const since = new Date();
-			since.setDate(since.getDate() - daysAgo);
-
-			// Build refs to check based on remoteOperations config
-			const refs = ["refs/heads"];
-			if (this.config?.remoteOperations !== false) {
-				refs.push("refs/remotes/origin");
-			}
-
-			// Get local and remote branches with commit dates
-			const { stdout } = await this.execGit(
-				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", ...refs],
-				{ readOnly: true },
-			);
-
-			const recentBranches: string[] = [];
-			const lines = stdout.split("\n").filter(Boolean);
-
-			for (const line of lines) {
-				const [branch, dateStr] = line.split("|");
-				if (!branch || !dateStr) continue;
-
-				const commitDate = new Date(dateStr);
-				if (commitDate >= since) {
-					// Keep the full branch name including origin/ prefix
-					// This allows cross-branch checking to distinguish local vs remote
-					if (!recentBranches.includes(branch)) {
-						recentBranches.push(branch);
-					}
-				}
-			}
-
-			return recentBranches;
-		} catch {
-			// Fallback to all branches if the command fails
-			return this.listAllBranches();
-		}
-	}
-
-	async listLocalBranches(): Promise<string[]> {
-		if (!(await this.isRepository())) {
-			return [];
-		}
-		try {
-			const { stdout } = await this.execGit(["branch", "--format=%(refname:short)"], { readOnly: true });
-			return stdout
-				.split("\n")
-				.map((l) => l.trim())
-				.filter(Boolean);
-		} catch {
-			return [];
-		}
-	}
-
-	async listAllBranches(_remote = "origin"): Promise<string[]> {
-		if (!(await this.isRepository())) {
-			return [];
-		}
-		try {
-			// Use -a flag only if remote operations are enabled
-			const branchArgs =
-				this.config?.remoteOperations === false
-					? ["branch", "--format=%(refname:short)"]
-					: ["branch", "-a", "--format=%(refname:short)"];
-
-			const { stdout } = await this.execGit(branchArgs, { readOnly: true });
-			return stdout
-				.split("\n")
-				.map((l) => l.trim())
-				.filter(Boolean)
-				.filter((b) => !b.includes("HEAD"));
-		} catch {
-			return [];
-		}
-	}
-
 	/**
 	 * Returns true if the current repository has any remotes configured
 	 */
@@ -542,85 +312,6 @@ export class GitOperations {
 		} catch {
 			return false;
 		}
-	}
-
-	async listFilesInTree(ref: string, path: string): Promise<string[]> {
-		if (!(await this.isRepository())) {
-			return [];
-		}
-		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
-		return stdout.split("\0").filter(Boolean);
-	}
-	async showFile(ref: string, filePath: string): Promise<string> {
-		if (!(await this.isRepository())) {
-			return "";
-		}
-		const { stdout } = await this.execGit(["show", `${ref}:${filePath}`], { readOnly: true });
-		return stdout;
-	}
-	/**
-	 * Build a map of file -> last modified date for all files in a directory in one git log pass
-	 * Much more efficient than individual getFileLastModifiedTime calls
-	 * Returns a Map of filePath -> Date
-	 */
-	async getBranchLastModifiedMap(ref: string, dir: string, sinceDays?: number): Promise<Map<string, Date>> {
-		const out = new Map<string, Date>();
-		if (!(await this.isRepository())) {
-			return out;
-		}
-
-		try {
-			// Build args with optional --since filter
-			const args = [
-				"log",
-				"--pretty=format:%ct%x00", // Unix timestamp + NUL for bulletproof parsing
-				"--name-only",
-				"-z", // Null-delimited for safety
-			];
-
-			if (sinceDays) {
-				args.push(`--since=${sinceDays}.days`);
-			}
-
-			args.push(ref, "--", dir);
-
-			// Null-delimited to be safe with filenames
-			const { stdout } = await this.execGit(args, { readOnly: true });
-
-			// Parse null-delimited output
-			// Format is: timestamp\0 file1\0 file2\0 ... timestamp\0 file1\0 ...
-			const parts = stdout.split("\0").filter(Boolean);
-			let i = 0;
-
-			while (i < parts.length) {
-				const timestampStr = parts[i]?.trim();
-				if (timestampStr && /^\d+$/.test(timestampStr)) {
-					// This is a timestamp, files follow until next timestamp
-					const epoch = Number(timestampStr);
-					const date = new Date(epoch * 1000);
-					i++;
-
-					// Process files until we hit another timestamp or end
-					// Check if next part looks like a timestamp (digits only)
-					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]?.trim() || "")) {
-						const file = parts[i]?.trim();
-						// First time we see a file is its last modification
-						if (file && !out.has(file)) {
-							out.set(file, date);
-						}
-						i++;
-					}
-				} else {
-					// Skip unexpected content
-					i++;
-				}
-			}
-		} catch (error) {
-			// If the command fails, return empty map
-			console.error(`Failed to get branch last modified map for ${ref}:${dir}`, error);
-		}
-
-		return out;
 	}
 
 	async getFileLastModifiedBranch(filePath: string): Promise<string | null> {
@@ -714,8 +405,8 @@ export class GitOperations {
 	}
 
 	private async resolveRepoRoot(startDir: string): Promise<string | null> {
-		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		// Global-store projects live outside any code repo, so git is never used.
+		if (this.isGlobalStore?.()) {
 			return null;
 		}
 		try {

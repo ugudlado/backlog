@@ -43,12 +43,6 @@ describe("atomic task creation", () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-atomic-create-"));
 		const core = new Core(testDir);
 		await initializeTestProject(core, "Atomic Create Test", false);
-
-		const config = await core.fs.loadConfig();
-		if (config) {
-			config.checkActiveBranches = false;
-			await core.fs.saveConfig(config);
-		}
 	});
 
 	afterEach(async () => {

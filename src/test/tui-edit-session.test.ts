@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
-import type { BacklogConfig, Task } from "../types/index.ts";
+import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 function createMockScreen(): Parameters<Core["editTaskInTui"]>[1] {
@@ -37,16 +37,8 @@ describe("Core.editTaskInTui", () => {
 	let originalEditor: string | undefined;
 	const screen = createMockScreen();
 
-	const setEditor = async (editorCommand: string) => {
-		const config = await core.filesystem.loadConfig();
-		if (!config) {
-			throw new Error("Expected config to be initialized");
-		}
-		const updated: BacklogConfig = {
-			...config,
-			defaultEditor: editorCommand,
-		};
-		await core.filesystem.saveConfig(updated);
+	const setEditor = (editorCommand: string) => {
+		process.env.EDITOR = editorCommand;
 	};
 
 	const createEditorScript = async (name: string, source: string): Promise<string> => {
@@ -89,7 +81,7 @@ describe("Core.editTaskInTui", () => {
 
 	it("returns unchanged result when editor makes no file modifications", async () => {
 		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
-		await setEditor(`node ${noopScript}`);
+		setEditor(`node ${noopScript}`);
 
 		const result = await core.editTaskInTui(taskId, screen);
 		expect(result.changed).toBe(false);
@@ -110,7 +102,7 @@ if (filePath) {
 process.exit(0);
 `,
 		);
-		await setEditor(`node ${editScript}`);
+		setEditor(`node ${editScript}`);
 
 		const result = await core.editTaskInTui(taskId, screen);
 		expect(result.changed).toBe(true);
@@ -125,7 +117,7 @@ process.exit(0);
 
 	it("returns editor_failed without mutating metadata when editor exits non-zero", async () => {
 		const failScript = await createEditorScript("fail-editor.js", "process.exit(2);\n");
-		await setEditor(`node ${failScript}`);
+		setEditor(`node ${failScript}`);
 
 		const beforeContent = await core.getTaskContent(taskId);
 		const result = await core.editTaskInTui(taskId, screen);

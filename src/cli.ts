@@ -311,12 +311,6 @@ async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<
  */
 function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partial<BacklogConfig> {
 	return {
-		checkActiveBranches: existingConfig?.checkActiveBranches ?? true,
-		remoteOperations: existingConfig?.remoteOperations ?? true,
-		activeBranchDays: existingConfig?.activeBranchDays ?? 30,
-		bypassGitHooks: existingConfig?.bypassGitHooks ?? false,
-		zeroPaddedIds: existingConfig?.zeroPaddedIds,
-		defaultEditor: existingConfig?.defaultEditor,
 		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
 		defaultPort: existingConfig?.defaultPort ?? 6420,
 		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
@@ -725,11 +719,6 @@ program
 				const defaultAdvancedConfig = getDefaultAdvancedConfig(existingConfig);
 				const applyAdvancedOptionOverrides = (): Partial<BacklogConfig> => ({
 					...defaultAdvancedConfig,
-					defaultEditor:
-						existingConfig?.defaultEditor ||
-						process.env.EDITOR ||
-						process.env.VISUAL ||
-						defaultAdvancedConfig.defaultEditor,
 				});
 
 				const integrationOption = options.integrationMode
@@ -1055,14 +1044,6 @@ program
 						installClaudeAgentSelection = integrationMode === "cli" ? wizardResult.installClaudeAgent : false;
 					}
 				}
-				// Global-store projects live outside any git repo, so git integration
-				// (branch checks, remote ops, hooks) does not apply.
-				advancedConfig = {
-					...advancedConfig,
-					checkActiveBranches: false,
-					remoteOperations: false,
-					bypassGitHooks: false,
-				};
 				// Point the filesystem at the global-store slot, keyed by project name
 				// (so a repo can be named independently of its directory). Validate the
 				// name is a safe single path component — without this, `init "../x"`
@@ -1087,19 +1068,12 @@ program
 					agentInstructions: agentFiles,
 					installClaudeAgent: installClaudeAgentSelection,
 					advancedConfig: {
-						checkActiveBranches: advancedConfig.checkActiveBranches,
-						remoteOperations: advancedConfig.remoteOperations,
-						activeBranchDays: advancedConfig.activeBranchDays,
-						bypassGitHooks: advancedConfig.bypassGitHooks,
-						zeroPaddedIds: advancedConfig.zeroPaddedIds,
-						defaultEditor: advancedConfig.defaultEditor,
 						definitionOfDone: advancedConfig.definitionOfDone,
 						defaultPort: advancedConfig.defaultPort,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
 						taskPrefix: taskPrefix || undefined,
 					},
 					existingConfig,
-					filesystemOnly: true,
 				});
 
 				const config = initResult.config;
@@ -1137,20 +1111,8 @@ program
 					summaryLines.push(`${label("AI integration:")} ${muted("skipped (configure later via `backlog init`)")}`);
 				}
 				summaryLines.push(label("Advanced settings:"));
-				summaryLines.push(`  ${label("Check active branches:")} ${boolValue(Boolean(config.checkActiveBranches))}`);
-				summaryLines.push(`  ${label("Remote operations:")} ${boolValue(Boolean(config.remoteOperations))}`);
-				summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
-				summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
-				summaryLines.push(
-					`  ${label("Zero-padded IDs:")} ${
-						config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
-					}`,
-				);
 				summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
 				summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
-				if (config.defaultEditor) {
-					summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
-				}
 				summaryLines.push(
 					`  ${label("Definition of Done defaults:")} ${
 						(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
@@ -1177,25 +1139,6 @@ program
 				// Log Claude agent result from shared init
 				if (integrationMode === "cli" && initResult.mcpResults?.claudeAgent) {
 					clack.log.info(`Claude Code Backlog.md agent ${initResult.mcpResults.claudeAgent}`);
-				}
-
-				// Final warning if remote operations were enabled but no git remotes are configured
-				try {
-					if (config.remoteOperations) {
-						// Ensure git ops are ready (config not strictly required for this check)
-						const hasRemotes = await core.gitOps.hasAnyRemote();
-						if (!hasRemotes) {
-							console.warn(
-								[
-									"Warning: remoteOperations is enabled but no git remotes are configured.",
-									"Remote features will be skipped until a remote is added (e.g., 'git remote add origin <url>')",
-									"or disable remoteOperations via 'backlog config set remoteOperations false'.",
-								].join(" "),
-							);
-						}
-					}
-				} catch {
-					// Ignore failures in final advisory warning
 				}
 			} catch (err) {
 				console.error("Failed to initialize project", err);
@@ -2766,20 +2709,9 @@ const configCmd = program
 			const { mergedConfig, installClaudeAgent: shouldInstallClaude } = await configureAdvancedSettings(core);
 
 			console.log("\nAdvanced configuration updated.");
-			console.log(`  Check active branches: ${mergedConfig.checkActiveBranches ?? true}`);
-			console.log(`  Remote operations: ${mergedConfig.remoteOperations ?? true}`);
-			console.log(
-				`  Zero-padded IDs: ${
-					typeof mergedConfig.zeroPaddedIds === "number" ? `${mergedConfig.zeroPaddedIds} digits` : "disabled"
-				}`,
-			);
 			console.log(`  Web UI port: ${mergedConfig.defaultPort ?? 6420}`);
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
-			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
-			if (mergedConfig.defaultEditor) {
-				console.log(`  Default editor: ${mergedConfig.defaultEditor}`);
-			}
 			if (shouldInstallClaude) {
 				await installClaudeAgent(cwd);
 				console.log("✓ Claude Code Backlog.md agent installed to .claude/agents/");
@@ -2852,14 +2784,6 @@ configCmd
 
 			// Handle specific config keys
 			switch (key) {
-				case "defaultEditor":
-					if (config.defaultEditor) {
-						console.log(config.defaultEditor);
-					} else {
-						console.log("defaultEditor is not set");
-						process.exit(1);
-					}
-					break;
 				case "projectName":
 					console.log(config.projectName);
 					break;
@@ -2892,28 +2816,10 @@ configCmd
 				case "autoOpenBrowser":
 					console.log(config.autoOpenBrowser?.toString() || "");
 					break;
-				case "remoteOperations":
-					console.log(config.remoteOperations?.toString() || "");
-					break;
-				case "filesystemOnly":
-					console.log(config.filesystemOnly?.toString() || "false");
-					break;
-				case "bypassGitHooks":
-					console.log(config.bypassGitHooks?.toString() || "");
-					break;
-				case "zeroPaddedIds":
-					console.log(config.zeroPaddedIds?.toString() || "(disabled)");
-					break;
-				case "checkActiveBranches":
-					console.log(config.checkActiveBranches?.toString() || "true");
-					break;
-				case "activeBranchDays":
-					console.log(config.activeBranchDays?.toString() || "30");
-					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, remoteOperations, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser",
 					);
 					process.exit(1);
 			}
@@ -2939,18 +2845,6 @@ configCmd
 
 			// Handle specific config keys
 			switch (key) {
-				case "defaultEditor": {
-					// Validate that the editor command exists
-					const { isEditorAvailable } = await import("./utils/editor.ts");
-					const isAvailable = await isEditorAvailable(value);
-					if (!isAvailable) {
-						console.error(`Editor command not found: ${value}`);
-						console.error("Please ensure the editor is installed and available in your PATH");
-						process.exit(1);
-					}
-					config.defaultEditor = value;
-					break;
-				}
 				case "projectName":
 					config.projectName = value;
 					break;
@@ -2990,76 +2884,6 @@ configCmd
 					config.defaultPort = port;
 					break;
 				}
-				case "remoteOperations": {
-					const boolValue = value.toLowerCase();
-					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
-						config.remoteOperations = true;
-					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
-						config.remoteOperations = false;
-					} else {
-						console.error("remoteOperations must be true or false");
-						process.exit(1);
-					}
-					break;
-				}
-				case "filesystemOnly": {
-					const boolValue = value.toLowerCase();
-					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
-						config.filesystemOnly = true;
-						config.checkActiveBranches = false;
-						config.remoteOperations = false;
-						config.bypassGitHooks = false;
-					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
-						config.filesystemOnly = false;
-					} else {
-						console.error("filesystemOnly must be true or false");
-						process.exit(1);
-					}
-					break;
-				}
-				case "bypassGitHooks": {
-					const boolValue = value.toLowerCase();
-					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
-						config.bypassGitHooks = true;
-					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
-						config.bypassGitHooks = false;
-					} else {
-						console.error("bypassGitHooks must be true or false");
-						process.exit(1);
-					}
-					break;
-				}
-				case "zeroPaddedIds": {
-					const padding = Number.parseInt(value, 10);
-					if (Number.isNaN(padding) || padding < 0) {
-						console.error("zeroPaddedIds must be a non-negative number.");
-						process.exit(1);
-					}
-					// Set to undefined if 0 to remove it from config
-					config.zeroPaddedIds = padding > 0 ? padding : undefined;
-					break;
-				}
-				case "checkActiveBranches": {
-					const boolValue = value.toLowerCase();
-					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
-						config.checkActiveBranches = true;
-					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
-						config.checkActiveBranches = false;
-					} else {
-						console.error("checkActiveBranches must be true or false");
-						process.exit(1);
-					}
-					break;
-				}
-				case "activeBranchDays": {
-					const days = Number.parseInt(value, 10);
-					if (Number.isNaN(days) || days < 0) {
-						console.error("activeBranchDays must be a non-negative number.");
-						process.exit(1);
-					}
-					config.activeBranchDays = days;
-					break;
-				}
 				case "statuses":
 				case "labels":
 				case "milestones":
@@ -3095,7 +2919,7 @@ configCmd
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort, remoteOperations, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, defaultPort",
 					);
 					process.exit(1);
 			}
@@ -3124,7 +2948,6 @@ configCmd
 
 			console.log("Configuration:");
 			console.log(`  projectName: ${config.projectName}`);
-			console.log(`  defaultEditor: ${config.defaultEditor || "(not set)"}`);
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
@@ -3135,13 +2958,7 @@ configCmd
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
-			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
-			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
-			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
-			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
-			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
-			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 			// Machine-level config (read-only via CLI, edit ~/.config/backlog/config.yml directly)
 			const { readMachineConfig } = await import("./utils/machine-config.ts");
 			const machine = readMachineConfig();
@@ -3167,7 +2984,6 @@ program
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);
 			}
-			core.gitOps.setConfig(config);
 
 			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
 			const terminalStatus = getTerminalStatus(statuses);

@@ -6,7 +6,6 @@ import type { BacklogConfig } from "../types/index.ts";
 export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 	const defaultConfig: BacklogConfig = {
 		projectName: "Untitled Project",
-		defaultEditor: "",
 		defaultStatus: "",
 		statuses: ["To Do", "In Progress", "Done"],
 		labels: [],
@@ -14,10 +13,6 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		maxColumnWidth: 80,
 		autoOpenBrowser: true,
 		defaultPort: 6420,
-		remoteOperations: true,
-		bypassGitHooks: false,
-		checkActiveBranches: true,
-		activeBranchDays: 30,
 	};
 
 	// Merge provided config with defaults, ensuring all fields exist
@@ -47,7 +42,6 @@ export function needsMigration(config: Partial<BacklogConfig>): boolean {
 		{ field: "statuses", hasDefault: true },
 		{ field: "defaultPort", hasDefault: true },
 		{ field: "autoOpenBrowser", hasDefault: true },
-		{ field: "remoteOperations", hasDefault: true },
 	];
 
 	return expectedFieldsWithDefaults.some(({ field }) => {

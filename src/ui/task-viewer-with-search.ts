@@ -1038,8 +1038,7 @@ export async function viewTaskEnhanced(
 		try {
 			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
 			if (result.reason === "read_only") {
-				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
-				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				showTransientHelp(" {red-fg}Task is read-only.{/}");
 				return;
 			}
 			if (result.reason === "editor_failed") {
@@ -1109,12 +1108,6 @@ export async function viewTaskEnhanced(
 	};
 
 	const applyTaskLifecycleShortcut = async (task: Task, action: "complete" | "archive") => {
-		if (task.branch) {
-			const verb = action === "complete" ? "complete" : "archive";
-			showTransientHelp(` {red-fg}Cannot ${verb} task from branch "${task.branch}".{/}`);
-			return;
-		}
-
 		const confirmed = await runWithModalGuard(() =>
 			openConfirmPopup({
 				screen,

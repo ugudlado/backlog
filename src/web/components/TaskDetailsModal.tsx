@@ -64,7 +64,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
-  const isFromOtherBranch = Boolean(task?.branch);
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -477,7 +476,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const handleToggleCriterion = async (index: number, checked: boolean) => {
     if (!task) return; // Can't toggle in create mode
-    if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
     // Optimistic update
     const next = (criteria || []).map((c) => (c.index === index ? { ...c, checked } : c));
     setCriteria(next);
@@ -493,7 +491,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const handleToggleDefinitionOfDone = async (index: number, checked: boolean) => {
     if (!task) return; // Can't toggle in create mode
-    if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
     const next = (definitionOfDone || []).map((c) => (c.index === index ? { ...c, checked } : c));
     setDefinitionOfDone(next);
     try {
@@ -509,9 +506,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleInlineMetaUpdate = async (updates: InlineMetaUpdatePayload) => {
-    // Don't allow updates for cross-branch tasks
-    if (isFromOtherBranch) return;
-
     // Optimistic UI
     if (updates.status !== undefined) setStatus(String(updates.status));
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
@@ -578,7 +572,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       disableEscapeClose={mode === "edit" || mode === "create"}
       actions={
         <div className="flex items-center gap-2">
-		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		          {isDoneStatus && mode === "preview" && !isCreateMode && (
 		            <button
 		              onClick={handleComplete}
 		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
@@ -587,7 +581,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		              Mark as completed
 		            </button>
 		          )}
-		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
+		          {mode === "preview" && !isCreateMode ? (
 		            <button
 		              onClick={() => setMode("edit")}
 		              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
@@ -629,18 +623,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
     >
       {error && (
         <div className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
-      )}
-
-      {/* Cross-branch task indicator */}
-      {isFromOtherBranch && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
-          <svg className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          <div className="flex-1">
-            <span className="font-medium">Read-only:</span> This task exists in the <span className="font-semibold">{task?.branch}</span> branch. Switch to that branch to edit it.
-          </div>
-        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -707,53 +689,49 @@ export const TaskDetailsModal: React.FC<Props> = ({
                           </code>
                         )}
                       </span>
-                      {!isFromOtherBranch && (
-                        <button
-                          onClick={() => {
-                            const newRefs = references.filter((_, i) => i !== idx);
-                            handleInlineMetaUpdate({ references: newRefs });
-                          }}
-                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
-                          title="Remove reference"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          const newRefs = references.filter((_, i) => i !== idx);
+                          handleInlineMetaUpdate({ references: newRefs });
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                        title="Remove reference"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">No references</p>
               )}
-              {!isFromOtherBranch && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const input = e.currentTarget.elements.namedItem("newRef") as HTMLInputElement;
-                    const value = input.value.trim();
-                    if (value && !references.includes(value)) {
-                      handleInlineMetaUpdate({ references: [...references, value] });
-                      input.value = "";
-                    }
-                  }}
-                  className="flex gap-2"
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const input = e.currentTarget.elements.namedItem("newRef") as HTMLInputElement;
+                  const value = input.value.trim();
+                  if (value && !references.includes(value)) {
+                    handleInlineMetaUpdate({ references: [...references, value] });
+                    input.value = "";
+                  }
+                }}
+                className="flex gap-2"
+              >
+                <input
+                  name="newRef"
+                  type="text"
+                  placeholder="URL or file path..."
+                  className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                 >
-                  <input
-                    name="newRef"
-                    type="text"
-                    placeholder="URL or file path..."
-                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                  >
-                    Add
-                  </button>
-                </form>
-              )}
+                  Add
+                </button>
+              </form>
             </div>
           </div>
 
@@ -959,8 +937,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     e.currentTarget.blur();
                   }
                 }}
-                disabled={isFromOtherBranch}
-                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
               />
             </div>
           )}
@@ -968,7 +945,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Status */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Status" />
-            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch} />
+            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} />
           </div>
 
           {/* Assignee */}
@@ -980,7 +957,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
               value={assignee}
               onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
               placeholder="Type name and press Enter"
-              disabled={isFromOtherBranch}
             />
           </div>
 
@@ -993,7 +969,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
               value={labels}
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
               placeholder="Type label and press Enter or comma"
-              disabled={isFromOtherBranch}
             />
           </div>
 
@@ -1001,10 +976,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Priority" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className="w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
-              disabled={isFromOtherBranch}
             >
               <option value="">No Priority</option>
               <option value="low">Low</option>
@@ -1017,14 +991,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Milestone" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className="w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
               value={milestoneSelectionValue}
 				onChange={(e) => {
 					const value = e.target.value;
 					setMilestone(value);
 					handleInlineMetaUpdate({ milestone: value.trim().length > 0 ? value : null });
 				}}
-              disabled={isFromOtherBranch}
             >
               <option value="">No milestone</option>
               {!hasMilestoneSelection && milestoneSelectionValue ? (
@@ -1047,12 +1020,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
               availableTasks={availableTasks}
               currentTaskId={task?.id}
               label=""
-              disabled={isFromOtherBranch}
             />
           </div>
 
           {/* Archive button at bottom of sidebar */}
-		          {task && onArchive && !isFromOtherBranch && (
+		          {task && onArchive && (
 		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
 		              <button
 		                onClick={handleArchive}

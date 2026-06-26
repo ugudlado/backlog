@@ -1,6 +1,5 @@
 import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
-import { isEditorAvailable, resolveEditor } from "../utils/editor.ts";
 
 interface PromptChoice {
 	title: string;
@@ -201,151 +200,10 @@ export async function runAdvancedConfigWizard({
 	const onCancel = () => handlePromptCancel(cancelMessage);
 	const config = existingConfig ?? null;
 
-	let checkActiveBranches = config?.checkActiveBranches ?? true;
-	let remoteOperations = config?.remoteOperations ?? true;
-	let activeBranchDays = config?.activeBranchDays ?? 30;
-	let bypassGitHooks = config?.bypassGitHooks ?? false;
-	let zeroPaddedIds = config?.zeroPaddedIds;
-	let defaultEditor: string | undefined =
-		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
 	let installClaudeAgent = false;
-
-	const crossBranchPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "checkActiveBranches",
-			message: "Check task states across active branches?",
-			hint: "Ensures accurate task tracking across branches (may impact performance on large repos)",
-			initial: checkActiveBranches,
-		},
-		{ onCancel },
-	);
-	checkActiveBranches = Boolean(crossBranchPrompt.checkActiveBranches ?? true);
-
-	if (checkActiveBranches) {
-		const remotePrompt = await promptImpl(
-			{
-				type: "confirm",
-				name: "remoteOperations",
-				message: "Check task states in remote branches?",
-				hint: "Required for accessing tasks from feature branches on remote repos",
-				initial: remoteOperations,
-			},
-			{ onCancel },
-		);
-		remoteOperations = Boolean(remotePrompt.remoteOperations ?? remoteOperations);
-
-		const daysPrompt = await promptImpl(
-			{
-				type: "number",
-				name: "activeBranchDays",
-				message: "How many days should a branch be considered active?",
-				hint: "Lower values improve performance (default: 30 days)",
-				initial: activeBranchDays,
-				min: 1,
-				max: 365,
-			},
-			{ onCancel },
-		);
-		if (typeof daysPrompt.activeBranchDays === "number" && !Number.isNaN(daysPrompt.activeBranchDays)) {
-			activeBranchDays = daysPrompt.activeBranchDays;
-		}
-	} else {
-		remoteOperations = false;
-	}
-
-	const gitHooksPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "bypassGitHooks",
-			message: "Bypass git hooks when committing?",
-			hint: "Use --no-verify flag to skip pre-commit hooks",
-			initial: bypassGitHooks,
-		},
-		{ onCancel },
-	);
-	bypassGitHooks = Boolean(gitHooksPrompt.bypassGitHooks ?? bypassGitHooks);
-
-	while (true) {
-		const zeroPaddingPrompt = await promptImpl(
-			{
-				type: "confirm",
-				name: "enableZeroPadding",
-				message: "Enable zero-padded IDs for consistent formatting?",
-				hint: "Example: task-001, doc-001 instead of task-1, doc-1",
-				initial: (zeroPaddedIds ?? 0) > 0,
-			},
-			{ onCancel },
-		);
-
-		const enableZeroPadding = Boolean(zeroPaddingPrompt.enableZeroPadding);
-		if (!enableZeroPadding) {
-			zeroPaddedIds = undefined;
-			break;
-		}
-
-		let goBackToZeroPaddingPrompt = false;
-		const paddingPrompt = await promptImpl(
-			{
-				type: "number",
-				name: "paddingWidth",
-				message: "Number of digits for zero-padding:",
-				hint: "e.g., 3 creates task-001; 4 creates task-0001",
-				initial: zeroPaddedIds ?? 3,
-				min: 1,
-				max: 10,
-			},
-			{
-				onCancel: () => {
-					goBackToZeroPaddingPrompt = true;
-				},
-			},
-		);
-
-		if (goBackToZeroPaddingPrompt) {
-			continue;
-		}
-
-		if (typeof paddingPrompt?.paddingWidth === "number" && !Number.isNaN(paddingPrompt.paddingWidth)) {
-			zeroPaddedIds = paddingPrompt.paddingWidth;
-			break;
-		}
-	}
-
-	const editorPrompt = await promptImpl(
-		{
-			type: "text",
-			name: "editor",
-			message: "Default editor command (leave blank to use system default):",
-			hint: "e.g., 'code --wait', 'vim', 'nano'",
-			initial: defaultEditor ?? "",
-		},
-		{ onCancel },
-	);
-
-	let editorResult = String(editorPrompt.editor ?? "").trim();
-	if (editorResult.length > 0) {
-		const isAvailable = await isEditorAvailable(editorResult);
-		if (!isAvailable) {
-			console.warn(`Warning: Editor command '${editorResult}' not found in PATH`);
-			const confirmAnyway = await promptImpl(
-				{
-					type: "confirm",
-					name: "confirm",
-					message: "Editor not found. Set it anyway?",
-					initial: false,
-				},
-				{ onCancel },
-			);
-			if (!confirmAnyway?.confirm) {
-				editorResult = "";
-			}
-		}
-	}
-	defaultEditor = editorResult.length > 0 ? editorResult : undefined;
 
 	while (true) {
 		const preview = renderDefinitionOfDonePreview(definitionOfDone);
@@ -602,12 +460,6 @@ export async function runAdvancedConfigWizard({
 
 	return {
 		config: {
-			checkActiveBranches,
-			remoteOperations,
-			activeBranchDays,
-			bypassGitHooks,
-			zeroPaddedIds,
-			defaultEditor,
 			definitionOfDone,
 			defaultPort,
 			autoOpenBrowser,

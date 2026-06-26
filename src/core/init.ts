@@ -75,7 +75,6 @@ export async function createGlobalProject(name: string, taskPrefix?: string): Pr
 	await initializeProject(core, {
 		projectName: name,
 		integrationMode: "none",
-		filesystemOnly: true,
 		...(taskPrefix ? { advancedConfig: { taskPrefix } } : {}),
 	});
 
@@ -101,14 +100,7 @@ export interface InitializeProjectOptions {
 	mcpClients?: McpClient[];
 	agentInstructions?: AgentInstructionFile[];
 	installClaudeAgent?: boolean;
-	filesystemOnly?: boolean;
 	advancedConfig?: {
-		checkActiveBranches?: boolean;
-		remoteOperations?: boolean;
-		activeBranchDays?: number;
-		bypassGitHooks?: boolean;
-		zeroPaddedIds?: number;
-		defaultEditor?: string;
 		definitionOfDone?: string[];
 		defaultPort?: number;
 		autoOpenBrowser?: boolean;
@@ -163,7 +155,6 @@ export async function initializeProject(
 		installClaudeAgent: installClaudeAgentFlag = false,
 		advancedConfig = {},
 		existingConfig,
-		filesystemOnly = false,
 	} = options;
 
 	const isReInitialization = !!existingConfig;
@@ -186,17 +177,7 @@ export async function initializeProject(
 		core.filesystem.invalidateConfigCache();
 	}
 
-	const effectiveFilesystemOnly = filesystemOnly || existingConfig?.filesystemOnly === true;
-	const normalizedAdvancedConfig = effectiveFilesystemOnly
-		? {
-				...advancedConfig,
-				checkActiveBranches: false,
-				remoteOperations: false,
-				bypassGitHooks: false,
-			}
-		: advancedConfig;
-	const hasDefaultEditorOverride = Object.hasOwn(normalizedAdvancedConfig, "defaultEditor");
-	const hasZeroPaddedIdsOverride = Object.hasOwn(normalizedAdvancedConfig, "zeroPaddedIds");
+	const normalizedAdvancedConfig = advancedConfig;
 	const hasDefinitionOfDoneOverride = Object.hasOwn(normalizedAdvancedConfig, "definitionOfDone");
 
 	// Build config, preserving existing values for re-initialization.
@@ -209,17 +190,8 @@ export async function initializeProject(
 		defaultStatus: "To Do",
 		dateFormat: "yyyy-mm-dd",
 		maxColumnWidth: 20,
-		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
-		remoteOperations:
-			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
-		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
-		checkActiveBranches:
-			normalizedAdvancedConfig.checkActiveBranches ?? existingConfig?.checkActiveBranches ?? d.checkActiveBranches,
-		activeBranchDays:
-			normalizedAdvancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
 		defaultPort: normalizedAdvancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
 		autoOpenBrowser: normalizedAdvancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
-		taskResolutionStrategy: existingConfig?.taskResolutionStrategy || "most_recent",
 		// Preserve existing prefixes on re-init, or use custom prefix if provided during first init
 		prefixes: existingConfig?.prefixes || {
 			task: normalizedAdvancedConfig.taskPrefix || "task",
@@ -229,41 +201,16 @@ export async function initializeProject(
 		...baseConfig,
 		...(existingConfig ?? {}),
 		projectName,
-		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
-		remoteOperations:
-			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
-		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
-		checkActiveBranches:
-			normalizedAdvancedConfig.checkActiveBranches ?? existingConfig?.checkActiveBranches ?? d.checkActiveBranches,
-		activeBranchDays:
-			normalizedAdvancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
 		defaultPort: normalizedAdvancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
 		autoOpenBrowser: normalizedAdvancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
 		prefixes: existingConfig?.prefixes || {
 			task: normalizedAdvancedConfig.taskPrefix || "task",
 		},
-		...(hasDefaultEditorOverride && normalizedAdvancedConfig.defaultEditor
-			? { defaultEditor: normalizedAdvancedConfig.defaultEditor }
-			: {}),
-		...(hasZeroPaddedIdsOverride &&
-		typeof normalizedAdvancedConfig.zeroPaddedIds === "number" &&
-		normalizedAdvancedConfig.zeroPaddedIds > 0
-			? { zeroPaddedIds: normalizedAdvancedConfig.zeroPaddedIds }
-			: {}),
 		...(hasDefinitionOfDoneOverride && Array.isArray(normalizedAdvancedConfig.definitionOfDone)
 			? { definitionOfDone: [...normalizedAdvancedConfig.definitionOfDone] }
 			: {}),
 	};
 	// Preserve all non-init-managed fields, but allow init-managed optional fields to be explicitly cleared.
-	if (hasDefaultEditorOverride && !normalizedAdvancedConfig.defaultEditor) {
-		delete config.defaultEditor;
-	}
-	if (
-		hasZeroPaddedIdsOverride &&
-		!(typeof normalizedAdvancedConfig.zeroPaddedIds === "number" && normalizedAdvancedConfig.zeroPaddedIds > 0)
-	) {
-		delete config.zeroPaddedIds;
-	}
 	if (hasDefinitionOfDoneOverride && !Array.isArray(normalizedAdvancedConfig.definitionOfDone)) {
 		delete config.definitionOfDone;
 	}

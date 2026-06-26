@@ -111,26 +111,6 @@ describe("Task ID Generation with Archives", () => {
 		expect(newSubtask.task.id).toBe("TASK-1.1");
 	});
 
-	it("should work with zero-padded IDs and reuse archived IDs", async () => {
-		// Update config to use zero-padded IDs
-		const config = await core.fs.loadConfig();
-		if (config) {
-			config.zeroPaddedIds = 3;
-			await core.fs.saveConfig(config);
-		}
-
-		// Create and archive tasks with padding
-		await core.createTaskFromInput({ title: "Task 1" });
-		const task1 = await core.getTask("task-001");
-		expect(task1?.id).toBe("TASK-001");
-
-		await core.archiveTask("task-001");
-
-		// Create new task - should reuse archived ID (TASK-001)
-		const result = await core.createTaskFromInput({ title: "Task 2" });
-		expect(result.task.id).toBe("TASK-001");
-	});
-
 	it("should detect existing subtasks with different casing (legacy data)", async () => {
 		// Create parent task via Core (will be uppercase TASK-1)
 		await core.createTaskFromInput({ title: "Parent Task" });

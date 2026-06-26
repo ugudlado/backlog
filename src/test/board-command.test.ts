@@ -23,13 +23,6 @@ describe("Board command integration", () => {
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Test Board Project");
 
-		// Disable remote operations for tests to prevent background git fetches
-		const config = await core.filesystem.loadConfig();
-		if (config) {
-			config.remoteOperations = false;
-			await core.filesystem.saveConfig(config);
-		}
-
 		// Create some test tasks
 		const tasksDir = core.filesystem.tasksDir;
 		await writeFile(
@@ -193,22 +186,6 @@ This is another test task for board testing.`,
 				// Always cleanup in finally block
 				viewSwitcher.cleanup();
 			}
-		});
-	});
-
-	describe("Cross-branch task resolution", () => {
-		it("should handle getLatestTaskStatesForIds with proper parameters", async () => {
-			// Test the function that was missing the filesystem parameter
-			const { getLatestTaskStatesForIds } = await import("../core/cross-branch-tasks.ts");
-
-			const tasks = await core.filesystem.listTasks();
-			const taskIds = tasks.map((t) => t.id);
-
-			// This should not throw "fs is not defined"
-			await expect(async () => {
-				const result = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds);
-				expect(result).toBeInstanceOf(Map);
-			}).not.toThrow();
 		});
 	});
 });

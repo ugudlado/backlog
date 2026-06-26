@@ -3,9 +3,7 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core, isGitRepository } from "../index.ts";
-import { parseTask } from "../markdown/parser.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
-import type { Task } from "../types/index.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createTestGlobalStore, createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -349,42 +347,6 @@ describe("CLI Integration", () => {
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Create Command Test", true);
-		});
-
-		it("should accept dependencies from other active branches", async () => {
-			const core = new Core(TEST_DIR);
-
-			const remoteDir = join(TEST_DIR, "remote.git");
-			await $`git init --bare -b main ${remoteDir}`.quiet();
-			await $`git remote add origin ${remoteDir}`.cwd(TEST_DIR).quiet();
-			await $`git push -u origin main`.cwd(TEST_DIR).quiet();
-
-			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
-			await core.createTask({
-				id: "task-1",
-				title: "Cross-branch dependency target",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-09",
-				labels: [],
-				dependencies: [],
-				rawContent: "Created on feature branch",
-			});
-			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
-			await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
-			await $`git checkout main`.cwd(TEST_DIR).quiet();
-			await core.gitOps.fetch();
-
-			const visibleTasks = await core.queryTasks();
-			expect(visibleTasks.some((task) => task.id === "TASK-1")).toBe(true);
-
-			const output = await $`bun ${CLI_PATH} task create "Depends on feature task" --depends-on task-1`
-				.cwd(TEST_DIR)
-				.text();
-			const createdTask = await core.filesystem.loadTask("task-2");
-
-			expect(output).toContain("Created task TASK-2");
-			expect(createdTask?.dependencies).toEqual(["TASK-1"]);
 		});
 	});
 
@@ -1107,66 +1069,6 @@ describe("CLI Integration", () => {
 			expect(board).toContain("To Do");
 			expect(board).toContain("TASK-1");
 			expect(board).toContain("Shortcut Task");
-		});
-
-		it("should merge task status from remote branches", async () => {
-			const core = new Core(TEST_DIR);
-
-			const task = {
-				id: "task-1",
-				title: "Remote Task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-09",
-				labels: [],
-				dependencies: [],
-				rawContent: "from remote",
-			} as Task;
-
-			await core.createTask(task);
-
-			// set up remote repository
-			const remoteDir = join(TEST_DIR, "remote.git");
-			await $`git init --bare -b main ${remoteDir}`.quiet();
-			await $`git remote add origin ${remoteDir}`.cwd(TEST_DIR).quiet();
-			await $`git push -u origin main`.cwd(TEST_DIR).quiet();
-
-			// create branch with updated status
-			await $`git checkout -b feature`.cwd(TEST_DIR).quiet();
-			await core.updateTaskFromInput("task-1", { status: "Done" });
-			await $`git push -u origin feature`.cwd(TEST_DIR).quiet();
-
-			// Update remote-tracking branches to ensure they are recognized
-			await $`git remote update origin --prune`.cwd(TEST_DIR).quiet();
-
-			// switch back to main where status is still To Do
-			await $`git checkout main`.cwd(TEST_DIR).quiet();
-
-			await core.gitOps.fetch();
-			const branches = await core.gitOps.listRemoteBranches();
-			const config = await core.filesystem.loadConfig();
-			const statuses = config?.statuses || [];
-
-			const localTasks = await core.filesystem.listTasks();
-			const tasksById = new Map(localTasks.map((t) => [t.id, t]));
-
-			for (const branch of branches) {
-				const ref = `origin/${branch}`;
-				const files = await core.gitOps.listFilesInTree(ref, "backlog/tasks");
-				for (const file of files) {
-					const content = await core.gitOps.showFile(ref, file);
-					const remoteTask = parseTask(content);
-					const existing = tasksById.get(remoteTask.id);
-					const currentIdx = existing ? statuses.indexOf(existing.status) : -1;
-					const newIdx = statuses.indexOf(remoteTask.status);
-					if (!existing || newIdx > currentIdx || currentIdx === -1 || newIdx === currentIdx) {
-						tasksById.set(remoteTask.id, remoteTask);
-					}
-				}
-			}
-
-			const final = tasksById.get("TASK-1"); // IDs normalized to uppercase
-			expect(final?.status).toBe("Done");
 		});
 
 		it("should default to view when no subcommand is provided", async () => {

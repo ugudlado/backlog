@@ -98,7 +98,7 @@ describe("initializeProject — global-store creation", () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 		const { core, slotPath } = makeGlobalCore("Alpha");
-		await initializeProject(core, makeInitOptions({ projectName: "Alpha", filesystemOnly: true }));
+		await initializeProject(core, makeInitOptions({ projectName: "Alpha" }));
 
 		expect(await dirExists(slotPath)).toBe(true);
 		expect(await dirExists(join(slotPath, "tasks"))).toBe(true);
@@ -111,7 +111,7 @@ describe("initializeProject — global-store creation", () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 		const { core } = makeGlobalCore("Beta");
-		await initializeProject(core, makeInitOptions({ projectName: "Beta", filesystemOnly: true }));
+		await initializeProject(core, makeInitOptions({ projectName: "Beta" }));
 
 		// The code repo is left completely untouched.
 		const status = await $`git -C ${repoDir} status --porcelain`.text();

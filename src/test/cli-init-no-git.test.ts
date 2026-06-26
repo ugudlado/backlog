@@ -83,42 +83,11 @@ describe("CLI init without Git", () => {
 		const config = await core.filesystem.loadConfig();
 
 		expect(config?.projectName).toBe("Filesystem Project");
-		expect(config?.checkActiveBranches).toBe(false);
-		expect(config?.remoteOperations).toBe(false);
-		expect(config?.bypassGitHooks).toBe(false);
-		expect(config?.filesystemOnly).toBe(true);
 		expect(result.stdout.toString()).toContain("Git integration: disabled (filesystem-only)");
-	});
-
-	test("shared init enforces Git-disabled config when filesystemOnly is requested", async () => {
-		const core = new Core(TEST_DIR);
-
-		await initializeProject(core, {
-			projectName: "Core Filesystem Project",
-			integrationMode: "none",
-			filesystemOnly: true,
-			advancedConfig: {
-				checkActiveBranches: true,
-				remoteOperations: true,
-				bypassGitHooks: true,
-			},
-		});
-
-		const config = await core.filesystem.loadConfig();
-
-		expect(config?.checkActiveBranches).toBe(false);
-		expect(config?.remoteOperations).toBe(false);
-		expect(config?.bypassGitHooks).toBe(false);
-		expect(config?.filesystemOnly).toBe(true);
-		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
 	});
 
 	test("local task and milestone flows work without Git", async () => {
 		const core = await initFilesystemOnlyProject();
-
-		expect(await core.gitOps.listAllBranches()).toEqual([]);
-		expect(await core.gitOps.listRecentBranches(30)).toEqual([]);
-		expect(await core.gitOps.hasAnyRemote()).toBe(false);
 
 		const taskResult = await $`bun ${CLI_PATH} task create "No Git Task" --plain`.cwd(TEST_DIR).quiet();
 		expect(taskResult.exitCode).toBe(0);
@@ -141,7 +110,6 @@ describe("CLI init without Git", () => {
 		await initializeProject(core, {
 			projectName: "Structure Test",
 			integrationMode: "none",
-			filesystemOnly: true,
 		});
 
 		const backlogDir = join(TEST_DIR, "backlog");
@@ -174,10 +142,7 @@ describe("CLI init without Git", () => {
 		await $`git commit -m "add stale backlog ids"`.cwd(TEST_DIR).quiet();
 		await $`git checkout main`.cwd(TEST_DIR).quiet();
 
-		const core = await initFilesystemOnlyProject("Nested No Git Project");
-
-		expect(await core.gitOps.listAllBranches()).toEqual([]);
-		expect(await core.gitOps.listRecentBranches(30)).toEqual([]);
+		await initFilesystemOnlyProject("Nested No Git Project");
 
 		const taskResult = await $`bun ${CLI_PATH} task create "Fresh Task" --plain`.cwd(TEST_DIR).quiet();
 		expect(taskResult.exitCode).toBe(0);

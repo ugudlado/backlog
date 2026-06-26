@@ -23,13 +23,6 @@ describe("CLI Board Integration", () => {
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Test CLI Board Project");
 
-		// Disable remote operations for tests to prevent background git fetches
-		const config = await core.filesystem.loadConfig();
-		if (config) {
-			config.remoteOperations = false;
-			await core.filesystem.saveConfig(config);
-		}
-
 		// Create test tasks
 		const tasksDir = core.filesystem.tasksDir;
 		await writeFile(
@@ -82,20 +75,6 @@ Test task for board CLI integration.`,
 		const tasksById = new Map(localTasks.map((t) => [t.id, { ...t, source: "local" as const }]));
 		expect(tasksById.size).toBe(1);
 		expect(tasksById.get("TASK-1")?.title).toBe("Board Test Task");
-	});
-
-	it("should properly handle cross-branch task resolution", async () => {
-		// Test the function that was missing filesystem parameter
-		const { getLatestTaskStatesForIds } = await import("../core/cross-branch-tasks.ts");
-
-		const tasks = await core.filesystem.listTasks();
-		const taskIds = tasks.map((t) => t.id);
-
-		// This should not throw "fs is not defined" or parameter errors
-		const result = await getLatestTaskStatesForIds(core.gitOps, core.filesystem, taskIds);
-
-		expect(result).toBeInstanceOf(Map);
-		// The result may be empty in test environment without branches, but it shouldn't crash
 	});
 
 	it("should create ViewSwitcher with kanban view successfully", async () => {

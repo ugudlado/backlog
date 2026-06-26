@@ -48,12 +48,11 @@ export interface Task {
 	subtasks?: string[];
 	subtaskSummaries?: Array<{ id: string; title: string }>;
 	priority?: "high" | "medium" | "low";
-	branch?: string;
 	ordinal?: number;
 	filePath?: string;
 	// Metadata fields
 	lastModified?: Date;
-	source?: "local" | "remote" | "completed" | "local-branch";
+	source?: "local" | "completed";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }
@@ -232,18 +231,9 @@ export interface BacklogConfig {
 	defaultStatus?: string;
 	dateFormat: string;
 	maxColumnWidth?: number;
-	taskResolutionStrategy?: "most_recent" | "most_progressed";
-	defaultEditor?: string;
 	autoOpenBrowser?: boolean;
 	defaultPort?: number;
-	remoteOperations?: boolean;
-	/** Disable all Git integration for filesystem-only projects. */
-	filesystemOnly?: boolean;
-	zeroPaddedIds?: number;
 	includeDateTimeInDates?: boolean; // Whether to include time in new dates
-	bypassGitHooks?: boolean;
-	checkActiveBranches?: boolean; // Check task states across active branches (default: true)
-	activeBranchDays?: number; // How many days a branch is considered active (default: 30)
 	/** Project-relative backlog folder when config is stored at project root in backlog.config.yml. */
 	backlogDirectory?: string;
 	/** Global callback command to run on any task status change. Supports $TASK_ID, $OLD_STATUS, $NEW_STATUS, $TASK_TITLE variables. */

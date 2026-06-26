@@ -36,12 +36,6 @@ describe("Config commands", () => {
 
 	it("configureAdvancedSettings keeps defaults when no changes requested", async () => {
 		const promptStub = createPromptStub([
-			{ checkActiveBranches: true },
-			{ remoteOperations: true },
-			{ activeBranchDays: 30 },
-			{ bypassGitHooks: false },
-			{ enableZeroPadding: false },
-			{ editor: "" },
 			{ definitionOfDoneAction: "done" },
 			{ configureWebUI: false },
 			{ installClaudeAgent: false },
@@ -52,12 +46,6 @@ describe("Config commands", () => {
 		});
 
 		expect(installClaudeAgent).toBe(false);
-		expect(mergedConfig.checkActiveBranches).toBe(true);
-		expect(mergedConfig.remoteOperations).toBe(true);
-		expect(mergedConfig.activeBranchDays).toBe(30);
-		expect(mergedConfig.bypassGitHooks).toBe(false);
-		expect(mergedConfig.zeroPaddedIds).toBeUndefined();
-		expect(mergedConfig.defaultEditor).toBeUndefined();
 		expect(mergedConfig.definitionOfDone).toEqual([]);
 		expect(mergedConfig.defaultPort).toBe(6420);
 		expect(mergedConfig.autoOpenBrowser).toBe(true);
@@ -70,13 +58,6 @@ describe("Config commands", () => {
 
 	it("configureAdvancedSettings applies wizard selections", async () => {
 		const promptStub = createPromptStub([
-			{ checkActiveBranches: true },
-			{ remoteOperations: false },
-			{ activeBranchDays: 14 },
-			{ bypassGitHooks: true },
-			{ enableZeroPadding: true },
-			{ paddingWidth: 4 },
-			{ editor: "echo" },
 			{ definitionOfDoneAction: "add" },
 			{ definitionOfDoneItem: "Ship release notes" },
 			{ definitionOfDoneAction: "done" },
@@ -90,33 +71,18 @@ describe("Config commands", () => {
 		});
 
 		expect(installClaudeAgent).toBe(true);
-		expect(mergedConfig.checkActiveBranches).toBe(true);
-		expect(mergedConfig.remoteOperations).toBe(false);
-		expect(mergedConfig.activeBranchDays).toBe(14);
-		expect(mergedConfig.bypassGitHooks).toBe(true);
-		expect(mergedConfig.zeroPaddedIds).toBe(4);
-		expect(mergedConfig.defaultEditor).toBe("echo");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(mergedConfig.defaultPort).toBe(7007);
 		expect(mergedConfig.autoOpenBrowser).toBe(false);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
-		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
-		expect(reloadedConfig?.defaultEditor).toBe("echo");
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
-		expect(reloadedConfig?.bypassGitHooks).toBe(true);
 	});
 
 	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
 		const promptStub = createPromptStub([
-			{ checkActiveBranches: true },
-			{ remoteOperations: true },
-			{ activeBranchDays: 30 },
-			{ bypassGitHooks: false },
-			{ enableZeroPadding: false },
-			{ editor: "" },
 			{ definitionOfDoneAction: "add" },
 			{ definitionOfDoneItem: "  First item  " },
 			{ definitionOfDoneAction: "add" },
@@ -169,65 +135,5 @@ describe("Config commands", () => {
 		} catch {
 			// Ignore cleanup errors - the unique directory names prevent conflicts
 		}
-	});
-
-	it("should save and load defaultEditor config", async () => {
-		// Load initial config
-		const config = await core.filesystem.loadConfig();
-		expect(config).toBeTruthy();
-		expect(config?.defaultEditor).toBeUndefined();
-
-		// Set defaultEditor
-		if (config) {
-			config.defaultEditor = "nano";
-			await core.filesystem.saveConfig(config);
-		}
-
-		// Reload config and verify it was saved
-		const reloadedConfig = await core.filesystem.loadConfig();
-		expect(reloadedConfig).toBeTruthy();
-		expect(reloadedConfig?.defaultEditor).toBe("nano");
-	});
-
-	it("should handle config with and without defaultEditor", async () => {
-		// Initially undefined
-		let config = await core.filesystem.loadConfig();
-		expect(config?.defaultEditor).toBeUndefined();
-
-		// Set to a value
-		if (config) {
-			config.defaultEditor = "vi";
-			await core.filesystem.saveConfig(config);
-		}
-
-		config = await core.filesystem.loadConfig();
-		expect(config?.defaultEditor).toBe("vi");
-
-		// Clear the value
-		if (config) {
-			config.defaultEditor = undefined;
-			await core.filesystem.saveConfig(config);
-		}
-
-		config = await core.filesystem.loadConfig();
-		expect(config?.defaultEditor).toBeUndefined();
-	});
-
-	it("should preserve other config values when setting defaultEditor", async () => {
-		let config = await core.filesystem.loadConfig();
-		const originalProjectName = config?.projectName;
-		const originalStatuses = config ? [...config.statuses] : [];
-
-		// Set defaultEditor
-		if (config) {
-			config.defaultEditor = "code";
-			await core.filesystem.saveConfig(config);
-		}
-
-		// Reload and verify other values are preserved
-		config = await core.filesystem.loadConfig();
-		expect(config?.defaultEditor).toBe("code");
-		expect(config?.projectName).toBe(originalProjectName ?? "");
-		expect(config?.statuses).toEqual(originalStatuses);
 	});
 });

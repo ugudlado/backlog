@@ -994,8 +994,7 @@ export async function renderBoardTui(
 				const core = new Core(process.cwd(), { enableWatchers: true });
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
-					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
-					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
+					showTransientFooter(" {red-fg}Cannot edit task.{/}");
 					return;
 				}
 				if (result.reason === "editor_failed") {
@@ -1070,11 +1069,6 @@ export async function renderBoardTui(
 			});
 
 			contentArea.key(["c", "C"], async () => {
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
-					return;
-				}
-
 				const confirmed = await runWithModalGuard(() =>
 					openConfirmPopup({
 						screen,
@@ -1106,11 +1100,6 @@ export async function renderBoardTui(
 			});
 
 			contentArea.key(["a", "A"], async () => {
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
-					return;
-				}
-
 				const confirmed = await runWithModalGuard(() =>
 					openConfirmPopup({
 						screen,
@@ -1232,12 +1221,6 @@ export async function renderBoardTui(
 				const task = column.tasks[taskIndex];
 				if (!task) return;
 
-				// Prevent move mode for cross-branch tasks
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
-					return;
-				}
-
 				// Enter move mode - store original position for cancel
 				moveOp = {
 					taskId: task.id,
@@ -1323,11 +1306,6 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 
-			if (task.branch) {
-				showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
-				return;
-			}
-
 			const confirmed = await runWithModalGuard(() =>
 				openConfirmPopup({
 					screen,
@@ -1363,11 +1341,6 @@ export async function renderBoardTui(
 			const idx = column.list.selected ?? 0;
 			const task = column.tasks[idx];
 			if (!task) return;
-
-			if (task.branch) {
-				showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
-				return;
-			}
 
 			const confirmed = await runWithModalGuard(() =>
 				openConfirmPopup({

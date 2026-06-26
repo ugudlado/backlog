@@ -191,26 +191,6 @@ const Settings: React.FC = () => {
 						<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Workflow Settings</h2>
 						<div className="space-y-4">
 							<div>
-								<label className="flex items-center justify-between">
-									<div>
-										<span className="text-sm font-medium text-gray-700 dark:text-gray-300">Remote Operations</span>
-										<p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-											Fetch tasks information from remote branches
-										</p>
-									</div>
-									<div className="relative inline-flex items-center cursor-pointer">
-										<input
-											type="checkbox"
-											checked={config.remoteOperations}
-											onChange={(e) => handleInputChange('remoteOperations', e.target.checked)}
-											className="sr-only peer"
-										/>
-										<div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-circle peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-circle after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-									</div>
-								</label>
-							</div>
-
-							<div>
 								<label htmlFor="defaultStatus" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
 									Default Status
 								</label>
@@ -226,23 +206,6 @@ const Settings: React.FC = () => {
 								</select>
 								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
 									Default status for new tasks
-								</p>
-							</div>
-
-							<div>
-								<label htmlFor="defaultEditor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									Default Editor
-								</label>
-								<input
-									id="defaultEditor"
-									type="text"
-									value={config.defaultEditor}
-									onChange={(e) => handleInputChange('defaultEditor', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-									placeholder="e.g., vim, nano, code"
-								/>
-								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-									Editor command to use for editing tasks (overrides EDITOR environment variable)
 								</p>
 							</div>
 						</div>
@@ -357,42 +320,6 @@ const Settings: React.FC = () => {
 								/>
 								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
 									Maximum width for text columns in CLI output
-								</p>
-							</div>
-
-							<div>
-								<label htmlFor="taskResolutionStrategy" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									Task Resolution Strategy
-								</label>
-								<select
-									id="taskResolutionStrategy"
-									value={config.taskResolutionStrategy}
-									onChange={(e) => handleInputChange('taskResolutionStrategy', e.target.value as 'most_recent' | 'most_progressed')}
-									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-								>
-									<option value="most_recent">Most Recent</option>
-									<option value="most_progressed">Most Progressed</option>
-								</select>
-								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-									Strategy for resolving conflicts when tasks exist in multiple branches
-								</p>
-							</div>
-
-							<div>
-								<label htmlFor="zeroPaddedIds" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									Zero-Padded IDs
-								</label>
-								<input
-									id="zeroPaddedIds"
-									type="number"
-									min="0"
-									max="10"
-									value={config.zeroPaddedIds || 0}
-									onChange={(e) => handleInputChange('zeroPaddedIds', parseInt(e.target.value) || 0)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-								/>
-								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-									Number of digits for ID padding (0 = disabled, 3 = task-001, 4 = task-0001)
 								</p>
 							</div>
 

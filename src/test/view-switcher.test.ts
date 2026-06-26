@@ -21,13 +21,6 @@ describe("View Switcher", () => {
 
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Test View Switcher Project");
-
-		// Disable remote operations for tests to prevent background git fetches
-		const config = await core.filesystem.loadConfig();
-		if (config) {
-			config.remoteOperations = false;
-			await core.filesystem.saveConfig(config);
-		}
 	});
 
 	afterEach(async () => {

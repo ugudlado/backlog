@@ -44,7 +44,6 @@ describe("BacklogServer cleanup endpoints", () => {
 			labels: [],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
-			remoteOperations: false,
 		});
 
 		const oldDate = new Date();

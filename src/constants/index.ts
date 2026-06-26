@@ -52,13 +52,6 @@ export const WRAP_LIMIT = 72;
  * Shared between CLI and browser wizard to ensure consistent defaults.
  */
 export const DEFAULT_INIT_CONFIG = {
-	checkActiveBranches: true,
-	remoteOperations: true,
-	activeBranchDays: 30,
-	bypassGitHooks: false,
-	filesystemOnly: false,
-	zeroPaddedIds: undefined as number | undefined,
-	defaultEditor: undefined as string | undefined,
 	defaultPort: 6420,
 	autoOpenBrowser: true,
 } as const;

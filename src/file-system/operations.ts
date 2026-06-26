@@ -1,5 +1,5 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
@@ -8,6 +8,7 @@ import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { readMachineConfig } from "../utils/machine-config.ts";
 import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -142,9 +143,18 @@ export class FileSystem {
 		this.globalStoreSlot = true;
 	}
 
-	/** True when this FS was pointed at a global-store slot. */
+	/**
+	 * True when this FS targets a global-store slot — either set explicitly via
+	 * setGlobalStoreSlot (init/create), or inferred from path geometry when the
+	 * project root lives under the machine's global store (resolve path). Global
+	 * store projects live outside any code repo, so git integration is skipped.
+	 */
 	isGlobalStoreSlot(): boolean {
-		return this.globalStoreSlot;
+		if (this.globalStoreSlot) return true;
+		const { globalStore } = readMachineConfig();
+		if (!globalStore) return false;
+		const rel = relative(globalStore, this.projectRoot);
+		return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 	}
 
 	setConfigLocation(configSource: BacklogConfigSource): void {
@@ -1068,33 +1078,11 @@ ${description || `Milestone: ${title}`}`,
 				case "max_column_width":
 					config.maxColumnWidth = Number.parseInt(value, 10);
 					break;
-				case "default_editor":
-					config.defaultEditor = value.replace(/["']/g, "");
-					break;
 				case "auto_open_browser":
 					config.autoOpenBrowser = value.toLowerCase() === "true";
 					break;
 				case "default_port":
 					config.defaultPort = Number.parseInt(value, 10);
-					break;
-				case "remote_operations":
-					config.remoteOperations = value.toLowerCase() === "true";
-					break;
-				case "filesystem_only":
-				case "filesystemOnly":
-					config.filesystemOnly = value.toLowerCase() === "true";
-					break;
-				case "zero_padded_ids":
-					config.zeroPaddedIds = Number.parseInt(value, 10);
-					break;
-				case "bypass_git_hooks":
-					config.bypassGitHooks = value.toLowerCase() === "true";
-					break;
-				case "check_active_branches":
-					config.checkActiveBranches = value.toLowerCase() === "true";
-					break;
-				case "active_branch_days":
-					config.activeBranchDays = Number.parseInt(value, 10);
 					break;
 				case "onStatusChange":
 				case "on_status_change":
@@ -1126,15 +1114,8 @@ ${description || `Milestone: ${title}`}`,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
 			maxColumnWidth: config.maxColumnWidth,
-			defaultEditor: config.defaultEditor,
 			autoOpenBrowser: config.autoOpenBrowser,
 			defaultPort: config.defaultPort,
-			remoteOperations: config.remoteOperations,
-			filesystemOnly: config.filesystemOnly,
-			zeroPaddedIds: config.zeroPaddedIds,
-			bypassGitHooks: config.bypassGitHooks,
-			checkActiveBranches: config.checkActiveBranches,
-			activeBranchDays: config.activeBranchDays,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
@@ -1157,17 +1138,8 @@ ${description || `Milestone: ${title}`}`,
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
-			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
-			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
-			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
-			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
-			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
-			...(typeof config.checkActiveBranches === "boolean"
-				? [`check_active_branches: ${config.checkActiveBranches}`]
-				: []),
-			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),

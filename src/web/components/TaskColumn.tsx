@@ -40,7 +40,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [contextMenu, setContextMenu] = React.useState<{ taskId: string; x: number; y: number } | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
-  const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
+  const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1;
 
   React.useEffect(() => {
     if (!showMenu) return;
@@ -274,7 +274,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             key={task.id}
             className="relative"
             onContextMenu={(e) => {
-              if (!onTaskReorder || task.branch) return;
+              if (!onTaskReorder) return;
               e.preventDefault();
               setContextMenu({ taskId: task.id, x: e.clientX, y: e.clientY });
             }}

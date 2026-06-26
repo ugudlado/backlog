@@ -118,9 +118,6 @@ setTimeout(() => {
 
 	const updatedConfig: BacklogConfig = {
 		...config,
-		remoteOperations: false,
-		checkActiveBranches: false,
-		defaultEditor: `node ${editorScriptPath}`,
 	};
 	await core.filesystem.saveConfig(updatedConfig);
 

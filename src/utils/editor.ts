@@ -1,6 +1,5 @@
 import { platform } from "node:os";
 import { $ } from "bun";
-import type { BacklogConfig } from "../types/index.ts";
 
 /**
  * Get the default editor based on the operating system
@@ -22,23 +21,11 @@ function getPlatformDefaultEditor(): string {
 }
 
 /**
- * Resolve the editor command based on configuration, environment, and platform defaults
- * Priority: EDITOR env var -> config.defaultEditor -> platform default
+ * Resolve the editor command based on environment and platform defaults
+ * Priority: EDITOR env var -> VISUAL env var -> platform default
  */
-export function resolveEditor(config?: BacklogConfig | null): string {
-	// First check environment variable
-	const editorEnv = process.env.EDITOR;
-	if (editorEnv) {
-		return editorEnv;
-	}
-
-	// Then check config
-	if (config?.defaultEditor) {
-		return config.defaultEditor;
-	}
-
-	// Finally use platform default
-	return getPlatformDefaultEditor();
+export function resolveEditor(): string {
+	return process.env.EDITOR || process.env.VISUAL || getPlatformDefaultEditor();
 }
 
 /**
@@ -76,8 +63,8 @@ export async function isEditorAvailable(editor: string): Promise<boolean> {
 /**
  * Open a file in the editor
  */
-export async function openInEditor(filePath: string, config?: BacklogConfig | null): Promise<boolean> {
-	const editor = resolveEditor(config);
+export async function openInEditor(filePath: string): Promise<boolean> {
+	const editor = resolveEditor();
 
 	try {
 		// Split the editor command in case it has arguments

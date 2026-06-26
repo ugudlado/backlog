@@ -33,7 +33,6 @@ describe("BacklogServer asset serving", () => {
 			labels: [],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
-			remoteOperations: false,
 		});
 
 		// create backlog/assets and nested dirs
