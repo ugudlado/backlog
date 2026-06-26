@@ -222,30 +222,28 @@ describe("addAgentInstructions", () => {
 	});
 });
 
-describe("agent-guidelines.md workspace registry section", () => {
-	it("guideline file documents the registry, doctor command, and CLI commands", async () => {
+describe("agent-guidelines.md projects section", () => {
+	it("guideline file documents the global store and project CLI commands", async () => {
 		const path = join(__dirname, "../guidelines/agent-guidelines.md");
 		const content = await Bun.file(path).text();
 
 		// Section heading + key surfaces.
-		expect(content).toContain("## Workspace Registry");
-		expect(content).toContain("workspaces.yml");
-		expect(content).toContain("backlog workspace doctor");
-		expect(content).toContain("backlog workspace list");
-		expect(content).toContain("backlog workspace switch");
+		expect(content).toContain("## Projects");
+		expect(content).toContain("global store");
+		expect(content).toContain("backlog project list");
+		expect(content).toContain("backlog project switch");
 	});
 
-	it("addAgentInstructions emits the registry section into CLAUDE.md and AGENTS.md", async () => {
-		const dir = createUniqueTestDir("test-agent-instructions-registry");
+	it("addAgentInstructions emits the projects section into CLAUDE.md and AGENTS.md", async () => {
+		const dir = createUniqueTestDir("test-agent-instructions-projects");
 		await mkdir(dir, { recursive: true });
 		try {
 			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
-				expect(text).toContain("## Workspace Registry");
-				expect(text).toContain("backlog workspace list");
-				expect(text).toContain("backlog workspace switch");
-				expect(text).toContain("backlog workspace doctor");
+				expect(text).toContain("## Projects");
+				expect(text).toContain("backlog project list");
+				expect(text).toContain("backlog project switch");
 			}
 		} finally {
 			await safeCleanup(dir);
@@ -295,7 +293,7 @@ describe("agent-guidelines.md workspace decision tree (FR-2)", () => {
 		const content = await Bun.file(path).text();
 
 		// Decision-tree marker phrase (FR-2)
-		expect(content).toContain("How do I find the right project?");
+		expect(content).toContain("How do I target the right project?");
 	});
 });
 
@@ -327,20 +325,18 @@ describe("agent-guidelines.md agents-update mention (FR-3)", () => {
 // These assertions FAIL until T-4 adds the content to mcp/overview.md (FR-4, AC-3).
 
 describe("mcp/overview.md fork capabilities", () => {
-	it("overview source mentions the workspace registry", async () => {
+	it("overview source mentions the global store", async () => {
 		const path = join(__dirname, "../guidelines/mcp/overview.md");
 		const content = await Bun.file(path).text();
 
-		// Must reference workspaces.yml (the registry backing file)
-		expect(content).toContain("workspaces.yml");
+		expect(content).toContain("global store");
 	});
 
-	it("overview source mentions the backlog workspace command family", async () => {
+	it("overview source mentions the backlog project command family", async () => {
 		const path = join(__dirname, "../guidelines/mcp/overview.md");
 		const content = await Bun.file(path).text();
 
-		// Must reference backlog workspace list --plain for registry discovery
-		expect(content).toContain("backlog workspace list --plain");
+		expect(content).toContain("backlog project list");
 	});
 
 	it("overview source mentions the persistent server surface (backlog server or backlog service)", async () => {

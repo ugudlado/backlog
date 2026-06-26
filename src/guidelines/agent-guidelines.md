@@ -234,7 +234,7 @@ backlog task edit 42 --remove-ac 2 --remove-ac 4    # Remove multiple ACs (proce
 
 ### Definition of Done checklist (per-task)
 
-Definition of Done items are a second checklist in each task. Defaults come from `definition_of_done` in the project config file (`backlog/config.yml`, `.backlog/config.yml`, or `backlog.config.yml`) or from Web UI Settings, and can be disabled per task.
+Definition of Done items are a second checklist in each task. Defaults come from `definition_of_done` in the project config file (`config.yml` inside the project's global-store slot) or from Web UI Settings, and can be disabled per task.
 
 **Managing Definition of Done via CLI:**
 
@@ -683,83 +683,71 @@ Tasks may include images for screenshots, diagrams, or visual references. Local 
 
 ---
 
-## Workspace Registry
+## Projects
 
-Backlog.md keeps a machine-wide registry of every project you've initialised at
-`~/.config/backlog.md/workspaces.yml` (override via `BACKLOG_MACHINE_CONFIG_DIR`).
-Each entry pairs a workspace `id` with the absolute project path; one entry can be
-flagged as the `current` workspace, which is what the long-running `backlog
-browser` / `backlog server` and the MCP server fall back to when no project is
-detected from the working directory.
+Backlog.md stores every project in a configured **global store** — set
+`globalStore` in `~/.config/backlog/config.yml` (override the config dir via
+`BACKLOG_MACHINE_CONFIG_DIR`). Each project is one slot directory at
+`<globalStore>/<name>/` (a flat `config.yml` + `tasks/`), keyed by name and
+discovered by scanning the store. Projects are **not** tied to repos; a machine
+file `~/.config/backlog/projects.yml` records only the `current` pointer (the
+project the long-running `backlog server` / MCP server fall back to). Never edit
+it by hand.
 
-The registry is shared mutable state — multiple CLI invocations and the daemon
-can write it concurrently — so all read-modify-write goes through a cross-process
-lock. You should never edit `workspaces.yml` by hand.
+Create a project with `backlog init <name>` or `backlog project create <name>`.
 
-### `backlog workspace doctor`
+### `backlog project list`
 
-Use `backlog workspace doctor` to scan the registry for drift. It reports five
-categories of issue per entry:
-
-- `missing-path` — the recorded path no longer exists on disk
-- `not-git-repo` — the path exists but isn't a git checkout
-- `no-backlog-dir` — the repo has no `backlog/` directory
-- `duplicate-path` — two or more entries share the same path
-- `stale-current-pointer` — `current` points at an id that's no longer in the registry
-
-Pass `--fix` to repair (prunes broken/duplicate entries, clears stale pointers).
-The command prompts before writing; pass `--yes` to skip the prompt in scripted
-contexts. Exit code is `0` when healthy, `1` when issues remain.
-
-### `backlog workspace list`
-
-Use `backlog workspace list` to enumerate every entry in the registry.
-The default output prints one line per workspace with a `*` prefix on the
-current entry:
+Enumerate every project in the global store. The default output prints one line
+per project with a `*` prefix on the current one:
 
 ```
-* ws-a   /Users/you/projects/alpha
-  ws-b   /Users/you/projects/beta
+* alpha   alpha
+  beta    beta
 ```
 
-Pass `--plain` to get a single line of stable JSON suitable for scripting:
+Pass `--plain` for stable JSON suitable for scripting:
 
 ```
-backlog workspace list --plain
+backlog project list --plain
 ```
 
 Output shape:
 
 ```json
-{"current": "<id|null>", "workspaces": [{"id": "<string|null>", "path": "<string>"}]}
+{"current": "<id|null>", "projects": [{"id": "<string>", "name": "<string>"}]}
 ```
 
-Agents should `JSON.parse` stdout to discover which projects are registered
-and which is currently active. When the registry is empty the output is
-`{"current": null, "workspaces": []}`. Exit code is always `0` for `list`.
+When there are no projects the output is `{"current": null, "projects": []}`.
+Exit code is always `0` for `list`.
 
-### `backlog workspace switch`
+### `backlog project switch`
 
-Use `backlog workspace switch <id>` to update the machine-wide current pointer:
+Set the current project by name (or id):
 
 ```
-backlog workspace switch ws-b
-# stdout: Switched to workspace ws-b
+backlog project switch beta
+# stdout: Switched to project beta
 # exit: 0
 ```
 
-On success the command prints `Switched to workspace <id>` to stdout and
-exits `0`. If the id is not registered the command writes
-`No workspace with id "<id>" in registry` to stderr and exits `1`. Exit code
-is the authoritative signal; agents that suppress stdout can rely on it.
+If the name is not found the command writes `No project named "<name>".` to
+stderr and exits `1`.
 
-### How do I find the right project?
+### `backlog project delete`
 
-1. **Check working directory**: Backlog.md auto-detects the project from `cwd` when a `backlog/` directory is present. Run `backlog task list --plain` — if it returns results, you're already in the right project.
-2. **Consult the registry**: If the project is not detected from `cwd`, run `backlog workspace list --plain` to see all registered projects. Parse the JSON output to find the correct `id`, then run `backlog workspace switch <id>`.
-3. **No registry entry**: If the target project is absent from the registry, `cd` into the project root and run `backlog init` (or `backlog workspace add .`) to register it, then switch to it.
+Archive a project (soft delete): its slot is moved to `<globalStore>/.archive/`
+so it drops out of listings but the task data is preserved and recoverable. It
+does not destroy data.
 
-The registry file lives at `~/.config/backlog.md/workspaces.yml` (see `workspaces.yml` above). Never edit it by hand.
+### How do I target the right project?
+
+1. **Current project**: most commands act on the current project. Run
+   `backlog task list --plain` — if it returns the expected tasks, you're set.
+2. **Switch or override**: `backlog project list --plain` to see all projects,
+   then either `backlog project switch <name>` to change the current one, or
+   pass `--project <name>` to a single command.
+3. **No project yet**: create one with `backlog init <name>`.
 
 ---
 

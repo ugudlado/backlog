@@ -52,12 +52,15 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 
 ### Multi-project & persistent server
 
-Backlog.md keeps a workspace registry at `~/.config/backlog.md/workspaces.yml`.
-Use `backlog workspace list --plain` (CLI) to see registered projects and
-`backlog workspace switch <id>` to set the current one. The web UI runs in
-the foreground via `backlog server`, or as a macOS launchd daemon via
-`backlog service start`. See the in-repo CLAUDE.md/AGENTS.md (generated
-from agent-guidelines.md) for the full command reference.
+Backlog.md stores every project in a configured global store (`globalStore` in
+`~/.config/backlog/config.yml`), one slot per project keyed by name. Use
+`backlog project list` (CLI) to see all projects and `backlog project switch
+<name>` to set the current one; pass `--project <name>` to a command to target
+a specific project. Create a project with `backlog init <name>` or `backlog
+project create <name>`. The web UI runs in the foreground via `backlog server`,
+or as a macOS launchd daemon via `backlog service start`. See the in-repo
+CLAUDE.md/AGENTS.md (generated from agent-guidelines.md) for the full command
+reference.
 
 ### MCP Tools Quick Reference
 

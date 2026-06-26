@@ -47,11 +47,12 @@
 bun i -g backlog.md
 # or: npm i -g backlog.md
 
-# Initialize in any Git repo
-backlog init "My Awesome Project"
+# Configure the global store once (where all projects live)
+mkdir -p ~/.config/backlog
+echo 'globalStore: ~/.config/backlog/projects' > ~/.config/backlog/config.yml
 
-# Or initialize without Git for local/non-code projects
-backlog init "Personal Planning" --no-git
+# Create a project (you can run this from anywhere)
+backlog init "My Awesome Project"
 ```
 
 The init wizard will ask how you want to connect AI tools:
@@ -59,7 +60,7 @@ The init wizard will ask how you want to connect AI tools:
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
 - **Skip** — no AI setup; use Backlog.md purely as a task manager.
 
-Backlog data is stored in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml`. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`). Git is optional: `backlog init --no-git` creates a filesystem-only project and disables cross-branch checks, remote operations, and auto-commit.
+Every project is stored as a slot in the configured **global store** (`globalStore` in `~/.config/backlog/config.yml`) — one directory per project, keyed by name, not tied to any repo. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`). List and switch projects with `backlog project list` / `backlog project switch <name>`, or target one per command with `--project <name>`.
 
 ---
 
@@ -146,7 +147,7 @@ backlog service stop               # stop, leave plist on disk
 backlog service uninstall          # stop and remove plist
 ```
 
-The service serves whichever project is the current one in `~/.config/backlog.md/workspaces.yml`. Switch projects from the workspace switcher in the web UI; the selection survives restarts.
+The service serves the current project (recorded in `~/.config/backlog/projects.yml`). Switch projects from the project switcher in the web UI; the selection survives restarts.
 
 Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog.md as a Service](SERVICE.md).
 
@@ -253,9 +254,7 @@ Full help: `backlog --help`
 Backlog.md merges the following layers (highest → lowest):
 
 1. CLI flags
-2. Project config file:
-   - `backlog.config.yml` when present
-   - otherwise `backlog/config.yml` or `.backlog/config.yml`
+2. Project config file (`config.yml` inside the project's global-store slot)
 3. Built‑ins
 
 ### Interactive wizard (`backlog config`)
@@ -275,7 +274,7 @@ Skipping the wizard (answering "No" during init) applies the safe defaults that 
 - `defaultEditor` unset (falls back to your environment).
 - `defaultPort=6420`, `autoOpenBrowser=true`.
 
-For filesystem-only projects, run `backlog init --no-git`. Backlog.md will not run `git init`, and the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
+Projects live in the global store, not in a Git repo, so they are filesystem-only by default: `checkActiveBranches`, `remoteOperations`, and auto-commit are off, and no `git init` is run. CLI, Web, and MCP workflows never depend on a Git repository.
 
 Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 

@@ -13,19 +13,24 @@ as the task management system.
 
 ## Quick rules
 
-- The CLI is the interface. Never edit `backlog/tasks/*.md` files directly —
-  always go through `backlog task ...` commands.
+- The CLI is the interface. Never edit task `.md` files directly — always go
+  through `backlog task ...` commands.
+- Projects live in a configured **global store** (`globalStore` in
+  `~/.config/backlog/config.yml`), one slot per project keyed by name. Create
+  with `backlog init <name>` or `backlog project create <name>`.
 - If the repo has CLAUDE.md or AGENTS.md, read those first; they contain the
   full backlog.md command reference.
 - If they are missing, run `backlog agents --update-instructions` (or
-  `backlog init` for a fresh repo) to install them.
-- For multi-project setups, use `backlog workspace list --plain`.
+  `backlog init <name>` for a fresh project) to install them.
+- Select the project to act on: `backlog project list`, `backlog project switch
+  <name>`, or `--project <name>` per command. Without it, commands use the
+  current project.
 - The web UI runs in the foreground via `backlog server`, or as a background
   service: `backlog service start` on macOS (launchd), or the systemd recipe on
   Linux. See SERVICE.md in the backlog.md repo for the full Linux/Windows setup
   and the `scripts/service-{linux,macos}.sh` helpers.
-- A running server can init+register a repo without shell access:
-  `POST /api/workspaces {"path": "/abs/path"}` (auto-inits if no `backlog/`).
+- A running server can create a project without shell access:
+  `POST /api/projects {"name": "My Project"}`.
 
 ## When to invoke
 
