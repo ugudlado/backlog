@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -14,7 +14,6 @@ import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { getVersion } from "../utils/version.ts";
-import { registerWorkspaceAtPath, WorkspaceRegistrationError } from "../utils/workspace-registration.ts";
 import { pathExistsAsDirectory, removeWorkspaceEntry, toAbsoluteProjectRoot } from "../utils/workspaces-index.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -1655,53 +1654,12 @@ export class BacklogServer {
 	}
 
 	private async handleAddWorkspace(req: Request): Promise<Response> {
-		try {
-			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-			// Create a new global-store project by name (no path, no repo): the
-			// preferred "add a project" path. A repo-less slot needs no marker — it
-			// is found by the scan via <globalStore>/<name>/config.yml.
-			const name = typeof body.name === "string" ? body.name.trim() : "";
-			if (name) {
-				return await this.createGlobalProject(name);
-			}
-			const raw = typeof body.path === "string" ? body.path.trim() : "";
-			if (!raw) {
-				return Response.json({ error: "name or path is required" }, { status: 400 });
-			}
-			const projectRoot = toAbsoluteProjectRoot(raw);
-			try {
-				await registerWorkspaceAtPath(raw);
-			} catch (error) {
-				// Auto-init only when there is no backlog/ at all. A `config_load_failed`
-				// means a config exists but couldn't be parsed — likely user-edited
-				// YAML; surface the error rather than silently overwriting.
-				const needsInit = error instanceof WorkspaceRegistrationError && error.code === "no_backlog_config";
-				if (needsInit) {
-					const projectName = basename(projectRoot) || "Backlog Project";
-					const filesystemOnly = !(await pathExistsAsDirectory(join(projectRoot, ".git")));
-					const initCore = new Core(projectRoot);
-					await initializeProject(initCore, {
-						projectName,
-						integrationMode: "none",
-						filesystemOnly,
-						existingConfig: null,
-					});
-					await registerWorkspaceAtPath(projectRoot);
-				} else {
-					throw error;
-				}
-			}
-			const payload = await this.listWorkspacesPayload();
-			const added = payload.workspaces.find((w) => toAbsoluteProjectRoot(w.path) === projectRoot);
-			return Response.json({ ...payload, addedId: added?.id ?? null });
-		} catch (error) {
-			if (error instanceof WorkspaceRegistrationError) {
-				return Response.json({ error: error.message }, { status: 400 });
-			}
-			console.error("Error adding workspace:", error);
-			const message = error instanceof Error ? error.message : "Unknown error";
-			return Response.json({ error: `Failed to add workspace: ${message}` }, { status: 400 });
+		const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+		const name = typeof body.name === "string" ? body.name.trim() : "";
+		if (!name) {
+			return Response.json({ error: "name is required" }, { status: 400 });
 		}
+		return await this.createGlobalProject(name);
 	}
 
 	private async handlePatchWorkspace(req: Request, id: string): Promise<Response> {
