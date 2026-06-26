@@ -492,37 +492,6 @@ export class ApiClient {
 			method: "DELETE",
 		});
 	}
-
-	async initializeProject(options: {
-		projectName: string;
-		backlogDirectory?: string;
-		backlogDirectorySource?: "backlog" | ".backlog" | "custom";
-		configLocation?: "folder" | "root";
-		integrationMode: "mcp" | "cli" | "none";
-		mcpClients?: ("claude" | "codex" | "gemini" | "kiro" | "guide")[];
-		agentInstructions?: ("CLAUDE.md" | "AGENTS.md" | "GEMINI.md" | ".github/copilot-instructions.md")[];
-		installClaudeAgent?: boolean;
-		filesystemOnly?: boolean;
-		advancedConfig?: {
-			checkActiveBranches?: boolean;
-			remoteOperations?: boolean;
-			activeBranchDays?: number;
-			bypassGitHooks?: boolean;
-			zeroPaddedIds?: number;
-			taskPrefix?: string;
-			defaultEditor?: string;
-			defaultPort?: number;
-			autoOpenBrowser?: boolean;
-		};
-	}): Promise<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }> {
-		return this.fetchJson<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }>(
-			`${API_BASE}/init`,
-			{
-				method: "POST",
-				body: JSON.stringify(options),
-			},
-		);
-	}
 }
 
 export const apiClient = new ApiClient();

@@ -74,18 +74,6 @@ function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
 	});
 }
 
-function parseOptionalBoolean(value: unknown): boolean | undefined {
-	if (typeof value === "boolean") {
-		return value;
-	}
-	if (typeof value === "string") {
-		const normalized = value.trim().toLowerCase();
-		if (normalized === "true") return true;
-		if (normalized === "false") return false;
-	}
-	return undefined;
-}
-
 // @ts-expect-error
 import favicon from "../web/favicon.png" with { type: "file" };
 import indexHtml from "../web/index.html";
@@ -326,9 +314,6 @@ export class BacklogServer {
 					},
 					"/api/status": {
 						GET: this.guard(() => this.handleGetStatus()),
-					},
-					"/api/init": {
-						POST: this.guard((req) => this.handleInit(req)),
 					},
 					"/api/search": {
 						GET: this.guard((req) => this.handleSearch(req)),
@@ -1493,72 +1478,6 @@ export class BacklogServer {
 				configLocation: null,
 				rootConfigPath: null,
 			});
-		}
-	}
-
-	private async handleInit(req: Request): Promise<Response> {
-		try {
-			const body = await req.json();
-			const projectName = typeof body.projectName === "string" ? body.projectName.trim() : "";
-			const backlogDirectory = typeof body.backlogDirectory === "string" ? body.backlogDirectory.trim() : undefined;
-			const backlogDirectorySource =
-				body.backlogDirectorySource === "backlog" ||
-				body.backlogDirectorySource === ".backlog" ||
-				body.backlogDirectorySource === "custom"
-					? body.backlogDirectorySource
-					: undefined;
-			const configLocation =
-				body.configLocation === "folder" || body.configLocation === "root" ? body.configLocation : undefined;
-			const integrationMode = body.integrationMode as "mcp" | "cli" | "none" | undefined;
-			const mcpClients = Array.isArray(body.mcpClients) ? body.mcpClients : [];
-			const agentInstructions = Array.isArray(body.agentInstructions) ? body.agentInstructions : [];
-			const installClaudeAgentFlag = parseOptionalBoolean(body.installClaudeAgent) ?? false;
-			const filesystemOnly = parseOptionalBoolean(body.filesystemOnly) ?? false;
-			const advancedConfig = body.advancedConfig || {};
-
-			// Input validation (browser layer responsibility)
-			if (!projectName) {
-				return Response.json({ error: "Project name is required" }, { status: 400 });
-			}
-
-			// Check if already initialized (for browser, we don't allow re-init)
-			const existingConfig = await this.core.filesystem.loadConfig();
-			if (existingConfig) {
-				return Response.json({ error: "Project is already initialized" }, { status: 400 });
-			}
-
-			// Call shared core init function
-			const result = await initializeProject(this.core, {
-				projectName,
-				backlogDirectory,
-				backlogDirectorySource,
-				configLocation,
-				integrationMode: integrationMode || "none",
-				mcpClients,
-				agentInstructions,
-				installClaudeAgent: installClaudeAgentFlag,
-				filesystemOnly,
-				advancedConfig,
-				existingConfig: null,
-			});
-
-			// Update server's project name
-			this.projectName = result.projectName;
-
-			// Ensure config watcher is set up now that config file exists
-			if (this.contentStore) {
-				this.contentStore.ensureConfigWatcher();
-			}
-
-			return Response.json({
-				success: result.success,
-				projectName: result.projectName,
-				mcpResults: result.mcpResults,
-			});
-		} catch (error) {
-			console.error("Error initializing project:", error);
-			const message = error instanceof Error ? error.message : "Failed to initialize project";
-			return Response.json({ error: message }, { status: 500 });
 		}
 	}
 
