@@ -100,7 +100,7 @@ function doStart(port: number): void {
 	launchctl(["bootstrap", p.gui, p.plist]);
 	console.log(`Started ${LABEL} on port ${port}.`);
 	console.log(`Open http://localhost:${port}`);
-	console.log("Tip: register a project with `backlog workspace add <path>` if the UI shows an empty workspace.");
+	console.log("Tip: create a project with `backlog init <name>` if the UI shows no projects.");
 }
 
 function doStop(): void {

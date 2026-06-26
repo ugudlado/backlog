@@ -1,33 +1,19 @@
 /**
- * RED phase: CLI integration tests for `backlog workspace list [--plain]`
- * and `backlog workspace switch <id>`.
- *
- * These tests FAIL until T-2 implements the `list` and `switch` subcommands
- * in src/commands/workspace.ts.
- *
- * Expected RED failure reason: CLI exits with "error: unknown command 'list'" /
- * "error: unknown command 'switch'" (Commander.js error for unregistered
- * subcommands) and a non-zero exit code.
- *
- * Fixture strategy:
- *   Each test creates an isolated machineConfigDir via BACKLOG_MACHINE_CONFIG_DIR
- *   and populates it with real workspace entries using `upsertWorkspaceEntry` /
- *   `setCurrentWorkspaceId`.
+ * CLI integration tests for `backlog project list [--plain]` and
+ * `backlog project switch <name>`. These operate on global-store projects
+ * (discovered by scanning <globalStore>/*), not the local registry.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readWorkspacesIndex, setCurrentWorkspaceId, upsertWorkspaceEntry } from "../utils/workspaces-index.ts";
+import { readWorkspacesIndex, setCurrentWorkspaceId } from "../utils/workspaces-index.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Creates a unique temp directory path (does NOT mkdir). */
 function tmpRoot(label: string): string {
-	return join(tmpdir(), `ws-list-switch-cli-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+	return join(tmpdir(), `project-list-switch-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 }
 
 interface SpawnResult {
@@ -36,9 +22,6 @@ interface SpawnResult {
 	stderr: string;
 }
 
-/**
- * Spawns the CLI binary with the given args and environment, collecting stdout/stderr.
- */
 async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<SpawnResult> {
 	const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
 		env: { ...process.env, NO_COLOR: "1", ...env },
@@ -46,133 +29,106 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<SpawnResu
 		stderr: "pipe",
 		stdin: "ignore",
 	});
-
-	const [exitCode, stdoutText, stderrText] = await Promise.all([
+	const [exitCode, stdout, stderr] = await Promise.all([
 		proc.exited,
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
 	]);
-
-	return { exitCode, stdout: stdoutText, stderr: stderrText };
+	return { exitCode, stdout, stderr };
 }
 
-// ─── Test suite ───────────────────────────────────────────────────────────────
+/** Create a global-store project slot (flat config.yml + tasks/) with a given id. */
+async function makeSlot(globalStoreDir: string, name: string, id: string): Promise<void> {
+	const slot = join(globalStoreDir, name);
+	await mkdir(join(slot, "tasks"), { recursive: true });
+	await writeFile(join(slot, "config.yml"), `id: "${id}"\nproject_name: "${name}"\nstatuses: ["To Do", "Done"]\n`);
+}
 
-describe("backlog workspace list + switch CLI integration", () => {
+describe("backlog project list + switch CLI integration", () => {
 	let base: string;
 	let machineConfigDir: string;
+	let globalStoreDir: string;
+	let env: NodeJS.ProcessEnv;
+	const origMachineConfig = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 
 	beforeEach(async () => {
 		base = tmpRoot("suite");
-		machineConfigDir = join(base, ".config", "backlog.md");
+		machineConfigDir = join(base, ".config", "backlog");
+		globalStoreDir = join(base, "store");
 		await mkdir(machineConfigDir, { recursive: true });
+		await mkdir(globalStoreDir, { recursive: true });
+		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
+		env = { BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir };
+		// In-process helpers (setCurrentWorkspaceId / readWorkspacesIndex below)
+		// read the machine config from this env var, so point it at the test dir.
+		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
 	});
 
 	afterEach(async () => {
+		if (origMachineConfig === undefined) delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
+		else process.env.BACKLOG_MACHINE_CONFIG_DIR = origMachineConfig;
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
 		await rm(base, { recursive: true, force: true });
 	});
 
-	// ── 1. list with two entries: both ids present, current marked with * ──────
-	it("list with two entries: stdout contains both ids; current is marked *; exits 0", async () => {
-		const wsAPath = join(base, "workspace-a");
-		const wsBPath = join(base, "workspace-b");
-		await upsertWorkspaceEntry({ path: wsAPath, id: "ws-a" }, machineConfigDir);
-		await upsertWorkspaceEntry({ path: wsBPath, id: "ws-b" }, machineConfigDir);
-		await setCurrentWorkspaceId("ws-a", machineConfigDir);
+	it("list shows both projects; current is marked *; exits 0", async () => {
+		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
+		await makeSlot(globalStoreDir, "Beta", "beta-2");
+		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
 
-		const result = await runCli(["workspace", "list"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
-
+		const result = await runCli(["project", "list"], env);
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout).toContain("ws-a");
-		expect(result.stdout).toContain("ws-b");
-		// The current entry must be preceded by *
-		expect(result.stdout).toMatch(/^\*\s+ws-a\b/m);
-		// The non-current entry must NOT be preceded by *
-		expect(result.stdout).toMatch(/^ +ws-b\b/m);
+		expect(result.stdout).toContain("Alpha");
+		expect(result.stdout).toContain("Beta");
+		expect(result.stdout).toMatch(/^\*\s+Alpha\b/m);
+		expect(result.stdout).toMatch(/^ +Beta\b/m);
 	});
 
-	// ── 2. list --plain populated: stdout parses as valid JSON ────────────────
-	it("list --plain with two entries: stdout is JSON matching upserted data", async () => {
-		const wsAPath = join(base, "workspace-a");
-		const wsBPath = join(base, "workspace-b");
-		await upsertWorkspaceEntry({ path: wsAPath, id: "ws-a" }, machineConfigDir);
-		await upsertWorkspaceEntry({ path: wsBPath, id: "ws-b" }, machineConfigDir);
-		await setCurrentWorkspaceId("ws-a", machineConfigDir);
+	it("list --plain emits JSON of the scanned projects", async () => {
+		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
+		await makeSlot(globalStoreDir, "Beta", "beta-2");
+		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
 
-		const result = await runCli(["workspace", "list", "--plain"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
-
+		const result = await runCli(["project", "list", "--plain"], env);
 		expect(result.exitCode).toBe(0);
-
 		const parsed = JSON.parse(result.stdout.trim()) as {
 			current: string | null;
-			workspaces: Array<{ id: string | null; path: string }>;
+			projects: Array<{ id: string; name: string }>;
 		};
-		expect(parsed.current).toBe("ws-a");
-		expect(parsed.workspaces).toHaveLength(2);
-
-		// Both entries must appear (order may vary — sort by id)
-		const sorted = [...parsed.workspaces].sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""));
-		expect(sorted[0]).toEqual({ id: "ws-a", path: wsAPath });
-		expect(sorted[1]).toEqual({ id: "ws-b", path: wsBPath });
+		expect(parsed.current).toBe("alpha-1");
+		const sorted = [...parsed.projects].sort((a, b) => a.id.localeCompare(b.id));
+		expect(sorted).toEqual([
+			{ id: "alpha-1", name: "Alpha" },
+			{ id: "beta-2", name: "Beta" },
+		]);
 	});
 
-	// ── 3. list on empty registry: exits 0, output mentions "No workspaces" ───
-	it("list on empty registry: exits 0 and output mentions no workspaces", async () => {
-		// machineConfigDir exists but workspaces.yml does not — readWorkspacesIndex handles that.
-		const result = await runCli(["workspace", "list"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
-
+	it("list with no projects: exits 0 and suggests init", async () => {
+		const result = await runCli(["project", "list"], env);
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout).toMatch(/no workspaces/i);
+		expect(result.stdout).toMatch(/no projects/i);
 	});
 
-	// ── 4. list --plain on empty registry: exits 0, stdout is {"current":null,"workspaces":[]} ──
-	it("list --plain on empty registry: exits 0 and emits empty JSON", async () => {
-		const result = await runCli(["workspace", "list", "--plain"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
+	it("switch by name: exits 0, confirms, current updates", async () => {
+		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
+		await makeSlot(globalStoreDir, "Beta", "beta-2");
+		await setCurrentWorkspaceId("alpha-1", machineConfigDir);
 
+		const result = await runCli(["project", "switch", "Beta"], env);
 		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Switched to project Beta");
 
-		const parsed = JSON.parse(result.stdout.trim()) as unknown;
-		expect(parsed).toEqual({ current: null, workspaces: [] });
-	});
-
-	// ── 5. switch <known-id>: exits 0, confirmation in stdout, current updates ─
-	it("switch known-id: exits 0, stdout contains confirmation, registry current updates", async () => {
-		const wsAPath = join(base, "workspace-a");
-		const wsBPath = join(base, "workspace-b");
-		await upsertWorkspaceEntry({ path: wsAPath, id: "ws-a" }, machineConfigDir);
-		await upsertWorkspaceEntry({ path: wsBPath, id: "ws-b" }, machineConfigDir);
-		await setCurrentWorkspaceId("ws-a", machineConfigDir);
-
-		const result = await runCli(["workspace", "switch", "ws-b"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
-
-		expect(result.exitCode).toBe(0);
-		expect(result.stdout).toContain("Switched to workspace ws-b");
-
-		// Verify registry was updated
 		const index = await readWorkspacesIndex(machineConfigDir);
-		expect(index.current).toBe("ws-b");
+		expect(index.current).toBe("beta-2");
 	});
 
-	// ── 6. switch <unknown-id>: exits 1, stderr contains error message ─────────
-	it("switch unknown-id: exits 1 and stderr contains no-workspace error", async () => {
-		const wsAPath = join(base, "workspace-a");
-		await upsertWorkspaceEntry({ path: wsAPath, id: "ws-a" }, machineConfigDir);
-
-		const result = await runCli(["workspace", "switch", "nonexistent"], {
-			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
-		});
-
+	it("switch unknown name: exits 1 with error", async () => {
+		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
+		const result = await runCli(["project", "switch", "Ghost"], env);
 		expect(result.exitCode).toBe(1);
-		expect(result.stderr).toContain('No workspace with id "nonexistent" in registry');
+		expect(result.stderr).toContain('No project named "Ghost"');
 	});
 });

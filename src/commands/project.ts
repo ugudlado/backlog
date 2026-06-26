@@ -90,47 +90,59 @@ async function doDoctor(opts: DoctorOptions): Promise<void> {
 	process.exit(0);
 }
 
-export function registerWorkspaceCommand(program: Command): void {
-	const ws = program.command("workspace").description("manage the machine-wide workspace registry");
+export function registerProjectCommand(program: Command): void {
+	const proj = program.command("project").description("list and switch global-store projects");
 
-	ws.command("doctor")
-		.description("scan the registry for drift; --fix to repair")
-		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
-		.option("--yes", "skip the confirmation prompt when --fix is supplied")
-		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
-
-	ws.command("list")
-		.description("list all registered workspaces")
+	proj
+		.command("list")
+		.description("list all projects in the global store")
 		.option("--plain", "emit JSON output")
 		.action((opts: { plain?: boolean }) =>
 			runAction(async () => {
+				const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
 				const index = await readWorkspacesIndex();
+				const projects = await scanGlobalStoreProjects();
 				if (opts.plain) {
-					const payload = {
-						current: index.current ?? null,
-						workspaces: index.workspaces.map((w) => ({ id: w.id ?? null, path: w.path })),
-					};
-					console.log(JSON.stringify(payload));
+					console.log(
+						JSON.stringify({
+							current: index.current ?? null,
+							projects: projects.map((p) => ({ id: p.id, name: p.name })),
+						}),
+					);
 					return;
 				}
-				if (index.workspaces.length === 0) {
-					console.log("No workspaces registered.");
+				if (projects.length === 0) {
+					console.log("No projects yet. Create one with `backlog init <name>`.");
 					return;
 				}
-				for (const w of index.workspaces) {
-					const marker = w.id && w.id === index.current ? "*" : " ";
-					const id = w.id ?? "(no id)";
-					console.log(`${marker} ${id}\t${w.path}`);
+				for (const p of projects) {
+					const marker = p.id === index.current ? "*" : " ";
+					console.log(`${marker} ${p.name}\t${p.id}`);
 				}
 			}),
 		);
 
-	ws.command("switch <id>")
-		.description("set the current workspace by id")
-		.action((id: string) =>
+	proj
+		.command("switch <name>")
+		.description("set the current project by name (or id)")
+		.action((name: string) =>
 			runAction(async () => {
-				await setCurrentWorkspaceId(id);
-				console.log(`Switched to workspace ${id}`);
+				const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
+				const match = (await scanGlobalStoreProjects()).find((p) => p.name === name || p.id === name);
+				if (!match) {
+					console.error(`No project named "${name}".`);
+					process.exit(1);
+				}
+				await setCurrentWorkspaceId(match.id);
+				console.log(`Switched to project ${match.name}`);
 			}),
 		);
+
+	// Registry maintenance for the local-mode fallback registry (advanced).
+	proj
+		.command("doctor")
+		.description("scan the local-mode registry for drift; --fix to repair")
+		.option("--fix", "remove broken/duplicate entries and clear stale current pointer")
+		.option("--yes", "skip the confirmation prompt when --fix is supplied")
+		.action((opts: DoctorOptions) => runAction(() => doDoctor(opts)));
 }

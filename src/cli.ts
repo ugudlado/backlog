@@ -10,9 +10,9 @@ import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { registerProjectCommand } from "./commands/project.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { registerWorkspaceCommand } from "./commands/workspace.ts";
 import { DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -397,8 +397,8 @@ async function requireProjectRoot(): Promise<string> {
 	if (!resolved.ok) {
 		if (resolved.kind === "ambiguous") {
 			console.error(
-				`Multiple Backlog.md workspaces match the current directory:\n  ${resolved.paths.join("\n  ")}\n` +
-					"Run the command from inside one workspace, or disambiguate with `backlog workspace switch`.",
+				`Multiple Backlog.md projects match the current directory:\n  ${resolved.paths.join("\n  ")}\n` +
+					"Select one with `backlog --project <name>` or `backlog project switch <name>`.",
 			);
 		} else {
 			console.error("No Backlog.md project found. Run `backlog init` to initialize.");
@@ -3469,7 +3469,7 @@ registerMcpCommand(program);
 registerServiceCommand(program);
 
 // Workspace registry command group
-registerWorkspaceCommand(program);
+registerProjectCommand(program);
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands

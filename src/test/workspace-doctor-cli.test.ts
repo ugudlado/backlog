@@ -1,5 +1,5 @@
 /**
- * RED phase: CLI integration tests for `backlog workspace doctor [--fix] [--yes]`.
+ * RED phase: CLI integration tests for `backlog project doctor [--fix] [--yes]`.
  *
  * These tests FAIL until T-8 implements the `workspace` parent command and
  * `doctor` subcommand in src/cli.ts.
@@ -79,7 +79,7 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv, stdinInput?: strin
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
-describe("backlog workspace doctor CLI integration", () => {
+describe("backlog project doctor CLI integration", () => {
 	let base: string;
 	let machineConfigDir: string;
 
@@ -99,7 +99,7 @@ describe("backlog workspace doctor CLI integration", () => {
 		await makeHealthyWorkspace(wsDir);
 		await upsertWorkspaceEntry({ path: wsDir, id: "ws-healthy" }, machineConfigDir);
 
-		const result = await runCli(["workspace", "doctor"], {
+		const result = await runCli(["project", "doctor"], {
 			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
 		});
 
@@ -118,7 +118,7 @@ describe("backlog workspace doctor CLI integration", () => {
 		const missingPath = join(base, "does-not-exist");
 		await upsertWorkspaceEntry({ path: missingPath, id: "ws-broken" }, machineConfigDir);
 
-		const result = await runCli(["workspace", "doctor"], {
+		const result = await runCli(["project", "doctor"], {
 			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
 		});
 
@@ -138,7 +138,7 @@ describe("backlog workspace doctor CLI integration", () => {
 
 		// Pipe "y\n" so clack's ConfirmPrompt receives a 'y' keypress.
 		const result = await runCli(
-			["workspace", "doctor", "--fix"],
+			["project", "doctor", "--fix"],
 			{ BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir },
 			"y\n",
 		);
@@ -157,7 +157,7 @@ describe("backlog workspace doctor CLI integration", () => {
 		await upsertWorkspaceEntry({ path: missingPath, id: "ws-auto-prune" }, machineConfigDir);
 
 		// No stdin input needed — --yes bypasses the prompt entirely.
-		const result = await runCli(["workspace", "doctor", "--fix", "--yes"], {
+		const result = await runCli(["project", "doctor", "--fix", "--yes"], {
 			BACKLOG_MACHINE_CONFIG_DIR: machineConfigDir,
 		});
 
