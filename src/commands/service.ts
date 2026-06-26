@@ -91,12 +91,24 @@ function writePlist(port: number, p: Paths): void {
 	writeFileSync(p.plist, renderPlist(resolveBacklogBin(), port, p));
 }
 
+// `launchctl bootout` returns once the teardown is *queued*, not once the job
+// is gone. Bootstrapping immediately after races that teardown and fails with
+// "Bootstrap failed: 5: Input/output error". Boot out, then poll until the job
+// actually leaves the domain before the caller bootstraps again.
+function bootoutAndWait(p: Paths): void {
+	if (!isLoaded(p)) return;
+	launchctl(["bootout", `${p.gui}/${LABEL}`], { allowFail: true });
+	// ponytail: 2s/50ms busy-wait is plenty for a single launchd job; bump only if it ever times out.
+	const deadline = Date.now() + 2000;
+	while (isLoaded(p) && Date.now() < deadline) {
+		spawnSync("sleep", ["0.05"]); // sync pause without an event loop
+	}
+}
+
 function doStart(port: number): void {
 	const p = paths();
 	writePlist(port, p);
-	if (isLoaded(p)) {
-		launchctl(["bootout", `${p.gui}/${LABEL}`], { allowFail: true });
-	}
+	bootoutAndWait(p);
 	launchctl(["bootstrap", p.gui, p.plist]);
 	console.log(`Started ${LABEL} on port ${port}.`);
 	console.log(`Open http://localhost:${port}`);
@@ -105,7 +117,7 @@ function doStart(port: number): void {
 
 function doStop(): void {
 	const p = paths();
-	launchctl(["bootout", `${p.gui}/${LABEL}`], { allowFail: true });
+	bootoutAndWait(p);
 	console.log(`Stopped ${LABEL}.`);
 }
 
@@ -164,6 +176,15 @@ function doLogs(): void {
 	process.exit(r.status ?? 0);
 }
 
+function parsePortOrExit(raw: string): number {
+	const port = Number.parseInt(raw, 10);
+	if (!Number.isInteger(port) || port < 1 || port > 65535) {
+		console.error(`Invalid --port: ${raw}`);
+		process.exit(2);
+	}
+	return port;
+}
+
 export function registerServiceCommand(program: Command): void {
 	const svc = program.command("service").description("manage backlog server as a macOS launchd service");
 
@@ -173,12 +194,16 @@ export function registerServiceCommand(program: Command): void {
 		.option("-p, --port <port>", "port to serve on", String(DEFAULT_PORT))
 		.action((opts: { port: string }) => {
 			ensureMacOS();
-			const port = Number.parseInt(opts.port, 10);
-			if (!Number.isInteger(port) || port < 1 || port > 65535) {
-				console.error(`Invalid --port: ${opts.port}`);
-				process.exit(2);
-			}
-			doStart(port);
+			doStart(parsePortOrExit(opts.port));
+		});
+
+	svc
+		.command("restart")
+		.description("restart the service (boots out cleanly, then starts)")
+		.option("-p, --port <port>", "port to serve on", String(DEFAULT_PORT))
+		.action((opts: { port: string }) => {
+			ensureMacOS();
+			doStart(parsePortOrExit(opts.port));
 		});
 
 	svc
