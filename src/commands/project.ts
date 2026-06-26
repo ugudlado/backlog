@@ -138,6 +138,49 @@ export function registerProjectCommand(program: Command): void {
 			}),
 		);
 
+	proj
+		.command("create <name>")
+		.description("create a new project in the global store")
+		.action((name: string) =>
+			runAction(async () => {
+				const { createGlobalProject } = await import("../core/init.ts");
+				const result = await createGlobalProject(name);
+				if (!result.ok) {
+					const msg =
+						result.error === "no_global_store"
+							? "globalStore is not configured. Set it in ~/.config/backlog/config.yml."
+							: result.error === "invalid_name"
+								? `Invalid project name: "${name}". It must not contain path separators or '..'.`
+								: `A project named "${name}" already exists.`;
+					console.error(msg);
+					process.exit(1);
+				}
+				if (result.id) await setCurrentProjectId(result.id);
+				console.log(`Created project ${name}`);
+			}),
+		);
+
+	proj
+		.command("delete <name>")
+		.description("archive a project (moves its data to the global store's .archive; not destroyed)")
+		.action((name: string) =>
+			runAction(async () => {
+				const { scanGlobalStoreProjects, archiveGlobalStoreProject } = await import("../utils/global-store-scan.ts");
+				const match = (await scanGlobalStoreProjects()).find((p) => p.name === name || p.id === name);
+				if (!match) {
+					console.error(`No project named "${name}".`);
+					process.exit(1);
+				}
+				const dest = await archiveGlobalStoreProject(match.id, Date.now());
+				// If the archived project was current, clear the pointer.
+				const index = await readProjectsIndex();
+				if (index.current === match.id) {
+					await setCurrentProjectId(null);
+				}
+				console.log(`Archived project ${match.name} -> ${dest}`);
+			}),
+		);
+
 	// Registry maintenance for the local-mode fallback registry (advanced).
 	proj
 		.command("doctor")

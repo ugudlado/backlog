@@ -3,7 +3,6 @@ import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
-import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { isCreateLockError } from "../file-system/operations.ts";
@@ -13,7 +12,7 @@ import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
-import { pathExistsAsDirectory, removeProjectEntry, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
+import { pathExistsAsDirectory, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -1527,43 +1526,33 @@ export class BacklogServer {
 	 * repo and no marker — the scan discovers it from its config.yml alone.
 	 */
 	private async createGlobalProject(name: string): Promise<Response> {
-		const { readMachineConfig } = await import("../utils/machine-config.ts");
-		const { isSafeSlotName } = await import("../utils/backlog-directory.ts");
-		const { globalStore } = readMachineConfig();
-		if (!globalStore) {
-			return Response.json(
-				{ error: "globalStore is not configured. Set it in ~/.config/backlog/config.yml." },
-				{ status: 400 },
-			);
+		const { createGlobalProject } = await import("../core/init.ts");
+		const result = await createGlobalProject(name);
+		if (!result.ok) {
+			if (result.error === "no_global_store") {
+				return Response.json(
+					{ error: "globalStore is not configured. Set it in ~/.config/backlog/config.yml." },
+					{ status: 400 },
+				);
+			}
+			if (result.error === "invalid_name") {
+				return Response.json(
+					{ error: `Invalid project name: "${name}". It must not contain path separators or '..'.` },
+					{ status: 400 },
+				);
+			}
+			if (result.error === "already_exists") {
+				return Response.json({ error: `A project named "${name}" already exists.` }, { status: 409 });
+			}
+			return Response.json({ error: "Failed to create project" }, { status: 400 });
 		}
-		if (!isSafeSlotName(name)) {
-			return Response.json(
-				{ error: `Invalid project name: "${name}". It must not contain path separators or '..'.` },
-				{ status: 400 },
-			);
-		}
-		const slotPath = join(globalStore, name);
-		// The slot IS the project root here (no repo), so init's repo-vs-slot
-		// branch detection doesn't apply — guard against an existing project
-		// directly.
-		if (await pathExistsAsDirectory(slotPath)) {
-			return Response.json({ error: `A project named "${name}" already exists.` }, { status: 409 });
-		}
-		const initCore = new Core(slotPath);
-		initCore.filesystem.setGlobalStoreSlot(slotPath, name);
-		await initializeProject(initCore, {
-			projectName: name,
-			integrationMode: "none",
-			filesystemOnly: true,
-		});
 		// Make the new project current so the UI's "switch after add" works.
-		// Look up the freshly-created slot by its path to get the scan id.
-		const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-		const { setCurrentProjectId } = await import("../utils/projects-index.ts");
-		const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);
-		if (created) await setCurrentProjectId(created.id);
+		if (result.id) {
+			const { setCurrentProjectId } = await import("../utils/projects-index.ts");
+			await setCurrentProjectId(result.id);
+		}
 		const payload = await this.listProjectsPayload();
-		return Response.json({ ...payload, addedId: created?.id ?? null });
+		return Response.json({ ...payload, addedId: result.id ?? null });
 	}
 
 	private async handleCreateProject(req: Request): Promise<Response> {
@@ -1649,28 +1638,25 @@ export class BacklogServer {
 	private async handleDeleteProject(id: string): Promise<Response> {
 		try {
 			return await this.withWorkspaceMutation(async () => {
-				const { readProjectsWithIds } = await import("../utils/workspace-registration.ts");
-				const entries = await readProjectsWithIds();
-				const target = entries.find((e) => e.id === id);
+				const { findGlobalStoreProject, archiveGlobalStoreProject } = await import("../utils/global-store-scan.ts");
+				const target = await findGlobalStoreProject(id);
 				if (!target) {
 					return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
 				}
-				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) === toAbsoluteProjectRoot(target.path)) {
+				if (toAbsoluteProjectRoot(this.core.filesystem.rootDir) === toAbsoluteProjectRoot(target.slotPath)) {
 					return Response.json(
 						{ error: "Cannot remove the active project. Switch to another project first." },
 						{ status: 409 },
 					);
 				}
-				const removed = await removeProjectEntry(target.path);
-				if (!removed) {
-					return Response.json({ error: "Workspace entry not found in index" }, { status: 404 });
-				}
+				// Soft delete: move the slot to <globalStore>/.archive/ (data kept).
+				await archiveGlobalStoreProject(id, Date.now());
 				return Response.json(await this.listProjectsPayload());
 			});
 		} catch (error) {
-			console.error("Error deleting workspace:", error);
+			console.error("Error deleting project:", error);
 			const message = error instanceof Error ? error.message : "Unknown error";
-			return Response.json({ error: `Failed to remove workspace: ${message}` }, { status: 400 });
+			return Response.json({ error: `Failed to remove project: ${message}` }, { status: 400 });
 		}
 	}
 }

@@ -40,6 +40,45 @@ async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
+export type CreateGlobalProjectError = "no_global_store" | "invalid_name" | "already_exists";
+
+export interface CreateGlobalProjectResult {
+	ok: boolean;
+	error?: CreateGlobalProjectError;
+	/** Scan id of the created project (slot dir name), when ok. */
+	id?: string;
+	slotPath?: string;
+}
+
+/**
+ * Create a new global-store project by name: a flat slot at
+ * `<globalStore>/<name>/` (config.yml + tasks/). Shared by the CLI
+ * (`project create` / `init <name>`) and the server (POST /api/projects).
+ * Does NOT set the current pointer — callers decide that.
+ */
+export async function createGlobalProject(name: string): Promise<CreateGlobalProjectResult> {
+	const { join } = await import("node:path");
+	const { readMachineConfig } = await import("../utils/machine-config.ts");
+	const { isSafeSlotName } = await import("../utils/backlog-directory.ts");
+	const { pathExistsAsDirectory } = await import("../utils/projects-index.ts");
+	const { Core } = await import("./backlog.ts");
+
+	const { globalStore } = readMachineConfig();
+	if (!globalStore) return { ok: false, error: "no_global_store" };
+	if (!isSafeSlotName(name)) return { ok: false, error: "invalid_name" };
+
+	const slotPath = join(globalStore, name);
+	if (await pathExistsAsDirectory(slotPath)) return { ok: false, error: "already_exists" };
+
+	const core = new Core(slotPath);
+	core.filesystem.setGlobalStoreSlot(slotPath, name);
+	await initializeProject(core, { projectName: name, integrationMode: "none", filesystemOnly: true });
+
+	const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
+	const created = (await scanGlobalStoreProjects()).find((p) => p.slotPath === slotPath);
+	return { ok: true, id: created?.id, slotPath };
+}
+
 export type IntegrationMode = "mcp" | "cli" | "none";
 export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 

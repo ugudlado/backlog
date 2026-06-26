@@ -32,7 +32,8 @@ export async function scanGlobalStoreProjects(): Promise<GlobalStoreProject[]> {
 
 	const projects = await Promise.all(
 		entries.map(async (dirent) => {
-			if (!dirent.isDirectory()) return null;
+			// Skip non-dirs and dot-dirs (e.g. `.archive` for soft-deleted projects).
+			if (!dirent.isDirectory() || dirent.name.startsWith(".")) return null;
 			const slotPath = join(globalStore, dirent.name);
 			try {
 				const content = await readFile(join(slotPath, DEFAULT_FILES.CONFIG), "utf8");
@@ -51,4 +52,24 @@ export async function scanGlobalStoreProjects(): Promise<GlobalStoreProject[]> {
 /** Find a single global-store project by its scan id, or null. */
 export async function findGlobalStoreProject(id: string): Promise<GlobalStoreProject | null> {
 	return (await scanGlobalStoreProjects()).find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Soft-delete a global-store project: move its slot to `<globalStore>/.archive/`
+ * instead of deleting data. The `.archive` dir is skipped by the scan, so the
+ * project disappears from listings but its tasks remain recoverable on disk.
+ * Returns the archived path, or null if the project was not found.
+ */
+export async function archiveGlobalStoreProject(id: string, timestamp: number): Promise<string | null> {
+	const project = await findGlobalStoreProject(id);
+	if (!project) return null;
+	const { globalStore } = readMachineConfig();
+	if (!globalStore) return null;
+	const { mkdir, rename } = await import("node:fs/promises");
+	const archiveDir = join(globalStore, ".archive");
+	await mkdir(archiveDir, { recursive: true });
+	// Suffix with a timestamp so re-archiving a same-named project never clobbers.
+	const dest = join(archiveDir, `${project.name}-${timestamp}`);
+	await rename(project.slotPath, dest);
+	return dest;
 }
