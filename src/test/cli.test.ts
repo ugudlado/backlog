@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core, isGitRepository } from "../index.ts";
+import { Core } from "../index.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createTestGlobalStore, createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -47,7 +47,7 @@ describe("CLI Integration", () => {
 
 			// Initialize backlog project using Core (simulating CLI)
 			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "CLI Test Project", true);
+			await initializeTestProject(core, "CLI Test Project");
 
 			// Verify directory structure was created
 			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
@@ -58,10 +58,6 @@ describe("CLI Integration", () => {
 			expect(config?.projectName).toBe("CLI Test Project");
 			expect(config?.statuses).toEqual(["To Do", "Ready", "In Progress", "Review", "Verify", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
-
-			// Verify git commit was created
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("Initialize backlog project: CLI Test Project");
 		});
 
 		it("should create all required directories", async () => {
@@ -106,22 +102,6 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe(specialProjectName);
-		});
-
-		it("should work when git repo exists", async () => {
-			// Set up existing git repo
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-			const isRepo = await isGitRepository(TEST_DIR);
-			expect(isRepo).toBe(true);
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Existing Repo Test");
-
-			const config = await core.filesystem.loadConfig();
-			expect(config?.projectName).toBe("Existing Repo Test");
 		});
 
 		it("should accept optional project name parameter", async () => {
@@ -318,27 +298,6 @@ describe("CLI Integration", () => {
 		});
 	});
 
-	describe("git integration", () => {
-		beforeEach(async () => {
-			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		});
-
-		it("should create initial commit with backlog structure", async () => {
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Git Integration Test", true);
-
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toBe("backlog: Initialize backlog project: Git Integration Test");
-
-			// Verify git status is clean after initialization
-			const isClean = await core.gitOps.isClean();
-			expect(isClean).toBe(true);
-		});
-	});
-
 	describe("create commands", () => {
 		beforeEach(async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -346,7 +305,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Create Command Test", true);
+			await initializeTestProject(core, "Create Command Test");
 		});
 	});
 
@@ -358,7 +317,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "List Test Project", true);
+			await initializeTestProject(core, "List Test Project");
 		});
 
 		it("should show 'No tasks found' when no tasks exist", async () => {
@@ -672,7 +631,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Edit Test Project", true);
+			await initializeTestProject(core, "Edit Test Project");
 		});
 
 		it("should update task title, description, and status", async () => {
@@ -924,7 +883,7 @@ describe("CLI Integration", () => {
 			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Board Test Project", true);
+			await initializeTestProject(core, "Board Test Project");
 		});
 
 		it("should display kanban board with tasks grouped by status", async () => {

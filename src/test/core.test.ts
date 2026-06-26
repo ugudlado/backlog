@@ -30,13 +30,12 @@ describe("Core", () => {
 	});
 
 	describe("initialization", () => {
-		it("should have filesystem and git operations available", () => {
+		it("should have filesystem available", () => {
 			expect(core.filesystem).toBeDefined();
-			expect(core.gitOps).toBeDefined();
 		});
 
 		it("should initialize project with default config", async () => {
-			await initializeTestProject(core, "Test Project", true);
+			await initializeTestProject(core, "Test Project");
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
@@ -45,7 +44,7 @@ describe("Core", () => {
 		});
 
 		it("should use root backlog.config.yml for custom backlog directories", async () => {
-			await initializeTestProject(core, "Custom Root Project", false, "planning/backlog-data");
+			await initializeTestProject(core, "Custom Root Project", "planning/backlog-data");
 
 			expect(await Bun.file(join(TEST_DIR, "backlog.config.yml")).exists()).toBe(true);
 			expect(await Bun.file(join(TEST_DIR, "planning", "backlog-data", "config.yml")).exists()).toBe(false);
@@ -70,7 +69,7 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await initializeTestProject(core, "Test Project", true);
+			await initializeTestProject(core, "Test Project");
 		});
 
 		it("should create task without auto-commit", async () => {
@@ -344,7 +343,7 @@ describe("Core", () => {
 		});
 
 		it("should create sub-tasks with proper hierarchical IDs", async () => {
-			await initializeTestProject(core, "Subtask Project", true);
+			await initializeTestProject(core, "Subtask Project");
 
 			// Create parent task
 			const { task: parent } = await core.createTaskFromInput({

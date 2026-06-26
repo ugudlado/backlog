@@ -15,7 +15,7 @@ describe("Task ID Generation with Archives", () => {
 	beforeEach(async () => {
 		testDir = await mkdtemp(TEST_DIR);
 		core = new Core(testDir);
-		await initializeTestProject(core, "Test Project", false);
+		await initializeTestProject(core, "Test Project");
 	});
 
 	afterEach(async () => {

@@ -8,7 +8,7 @@
  *   applyFixes(entries: ProjectEntry[], issues: WorkspaceIssue[], current?: string): { entries: ProjectEntry[]; current?: string }
  *
  *   WorkspaceIssue = { entryId: string | null; path: string; kind: WorkspaceIssueKind }
- *   WorkspaceIssueKind = "missing-path" | "not-git-repo" | "no-backlog-dir" | "duplicate-path" | "stale-current-pointer"
+ *   WorkspaceIssueKind = "missing-path" | "duplicate-path" | "stale-current-pointer"
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -52,22 +52,6 @@ describe("scanWorkspaces issue detection", () => {
 		const entries: ProjectEntry[] = [{ path: missingPath, id: "ws-missing" }];
 		const issues = await scanWorkspaces(entries);
 		expect(issues.some((i) => i.kind === "missing-path" && i.entryId === "ws-missing")).toBe(true);
-	});
-
-	it("flags not-git-repo when path exists but has no .git", async () => {
-		const dir = join(base, "not-git");
-		await mkdir(dir, { recursive: true });
-		const entries: ProjectEntry[] = [{ path: dir, id: "ws-not-git" }];
-		const issues = await scanWorkspaces(entries);
-		expect(issues.some((i) => i.kind === "not-git-repo" && i.entryId === "ws-not-git")).toBe(true);
-	});
-
-	it("flags no-backlog-dir when path is a git repo but has no backlog/ subdir", async () => {
-		const dir = join(base, "git-no-backlog");
-		await makeGitRepo(dir);
-		const entries: ProjectEntry[] = [{ path: dir, id: "ws-no-backlog" }];
-		const issues = await scanWorkspaces(entries);
-		expect(issues.some((i) => i.kind === "no-backlog-dir" && i.entryId === "ws-no-backlog")).toBe(true);
 	});
 
 	it("flags duplicate-path on both entries when two entries share the same path", async () => {
@@ -134,24 +118,6 @@ describe("applyFixes registry repair", () => {
 		const issues = await scanWorkspaces(entries);
 		const { entries: fixed } = applyFixes(entries, issues);
 		expect(fixed.some((e) => e.path === missing)).toBe(false);
-	});
-
-	it("removes not-git-repo entries", async () => {
-		const dir = join(base, "not-git");
-		await mkdir(dir, { recursive: true });
-		const entries: ProjectEntry[] = [{ path: dir, id: "ws-not-git" }];
-		const issues = await scanWorkspaces(entries);
-		const { entries: fixed } = applyFixes(entries, issues);
-		expect(fixed.some((e) => e.path === dir)).toBe(false);
-	});
-
-	it("removes no-backlog-dir entries", async () => {
-		const dir = join(base, "git-only");
-		await makeGitRepo(dir);
-		const entries: ProjectEntry[] = [{ path: dir, id: "ws-no-backlog" }];
-		const issues = await scanWorkspaces(entries);
-		const { entries: fixed } = applyFixes(entries, issues);
-		expect(fixed.some((e) => e.path === dir)).toBe(false);
 	});
 
 	it("deduplicates duplicate-path: keeps entry with id, removes entry without", async () => {

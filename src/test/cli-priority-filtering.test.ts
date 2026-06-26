@@ -24,7 +24,7 @@ describe("CLI Priority Filtering", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Priority Test", false);
+		await initializeTestProject(core, "Priority Test");
 
 		await $`bun ${CLI_PATH} task create "High task" --priority high`.cwd(TEST_DIR).quiet();
 		await $`bun ${CLI_PATH} task create "Medium task" --priority medium`.cwd(TEST_DIR).quiet();

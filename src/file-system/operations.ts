@@ -1,5 +1,5 @@
 import { mkdir, rename, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
@@ -8,7 +8,6 @@ import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { readMachineConfig } from "../utils/machine-config.ts";
 import { buildGlobPattern, extractAnyPrefix, idForFilename, normalizeId } from "../utils/prefix-config.ts";
 import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -143,18 +142,9 @@ export class FileSystem {
 		this.globalStoreSlot = true;
 	}
 
-	/**
-	 * True when this FS targets a global-store slot — either set explicitly via
-	 * setGlobalStoreSlot (init/create), or inferred from path geometry when the
-	 * project root lives under the machine's global store (resolve path). Global
-	 * store projects live outside any code repo, so git integration is skipped.
-	 */
+	/** True when this FS was pointed at a global-store slot via setGlobalStoreSlot. */
 	isGlobalStoreSlot(): boolean {
-		if (this.globalStoreSlot) return true;
-		const { globalStore } = readMachineConfig();
-		if (!globalStore) return false;
-		const rel = relative(globalStore, this.projectRoot);
-		return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+		return this.globalStoreSlot;
 	}
 
 	setConfigLocation(configSource: BacklogConfigSource): void {

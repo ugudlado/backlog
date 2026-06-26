@@ -1,6 +1,5 @@
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { atomicWriteFile, FileSystem } from "../file-system/operations.ts";
-import { GitOperations } from "../git/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import {
 	type AcceptanceCriterion,
@@ -85,14 +84,12 @@ export interface TuiTaskEditResult {
 
 export class Core {
 	public fs: FileSystem;
-	public git: GitOperations;
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot, () => this.fs.isGlobalStoreSlot());
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
@@ -356,13 +353,12 @@ export class Core {
 
 	/**
 	 * Re-point this Core instance to a different project root.
-	 * Disposes caches and re-creates FileSystem / GitOperations.
+	 * Disposes caches and re-creates FileSystem.
 	 */
 	reinitializeProjectRoot(projectRoot: string): void {
 		this.disposeSearchService();
 		this.disposeContentStore();
 		this.fs = new FileSystem(projectRoot);
-		this.git = new GitOperations(projectRoot, () => this.fs.isGlobalStoreSlot());
 	}
 
 	disposeSearchService(): void {
@@ -384,10 +380,6 @@ export class Core {
 		return this.fs;
 	}
 
-	get gitOps() {
-		return this.git;
-	}
-
 	async ensureConfigLoaded(): Promise<void> {
 		try {
 			// Warm the filesystem config cache for subsequent reads.
@@ -397,11 +389,6 @@ export class Core {
 				console.warn("Failed to preload config:", error);
 			}
 		}
-	}
-
-	async getGitOps() {
-		await this.ensureConfigLoaded();
-		return this.git;
 	}
 
 	// Config migration
@@ -1741,9 +1728,7 @@ export class Core {
 		return task.acceptanceCriteriaItems || [];
 	}
 
-	async listTasksWithMetadata(
-		includeBranchMeta = false,
-	): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
+	async listTasksWithMetadata(): Promise<Array<Task & { lastModified?: Date }>> {
 		const tasks = await this.fs.listTasks();
 		return await Promise.all(
 			tasks.map(async (task) => {
@@ -1755,10 +1740,6 @@ export class Core {
 					return {
 						...task,
 						lastModified: new Date(stats.mtime),
-						// Only include branch if explicitly requested
-						...(includeBranchMeta && {
-							branch: (await this.git.getFileLastModifiedBranch(filePath)) || undefined,
-						}),
 					};
 				}
 				return task;

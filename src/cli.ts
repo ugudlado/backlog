@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -3057,45 +3057,16 @@ program
 			let successCount = 0;
 
 			console.log("Moving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
 			for (const task of tasksToMove) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.completedDir, taskFilename);
-
 				const success = await core.completeTask(task.id);
 				if (success) {
 					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
 				} else {
 					console.error(`Failed to move task ${task.id}`);
 				}
 			}
 
-			// Stage the moves so Git recognizes them; the user commits manually.
-			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && hasGitRepository) {
-				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
-					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
 			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && hasGitRepository) {
-				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
-			}
 		} catch (err) {
 			console.error("Failed to run cleanup", err);
 			process.exitCode = 1;

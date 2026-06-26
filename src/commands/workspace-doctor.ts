@@ -1,14 +1,7 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
-import { isGitRepository } from "../git/operations.ts";
 import type { ProjectEntry } from "../utils/projects-index.ts";
 
-export type WorkspaceIssueKind =
-	| "missing-path"
-	| "not-git-repo"
-	| "no-backlog-dir"
-	| "duplicate-path"
-	| "stale-current-pointer";
+export type WorkspaceIssueKind = "missing-path" | "duplicate-path" | "stale-current-pointer";
 
 export interface WorkspaceIssue {
 	entryId: string | null;
@@ -26,10 +19,8 @@ async function pathExistsAsDirectory(p: string): Promise<boolean> {
 }
 
 /**
- * Scans workspace entries for five categories of drift:
+ * Scans workspace entries for three categories of drift:
  *   - missing-path: path does not exist on disk
- *   - not-git-repo: path exists but has no .git
- *   - no-backlog-dir: git repo with no backlog/ subdir
  *   - duplicate-path: two or more entries share the same path
  *   - stale-current-pointer: current id does not match any entry
  */
@@ -53,7 +44,7 @@ export async function scanWorkspaces(entries: ProjectEntry[], current?: string):
 		}
 	}
 
-	// Per-entry checks (skip missing-path / not-git-repo / no-backlog-dir for duplicates? No — check all)
+	// Per-entry checks (run for all entries, including duplicates)
 	for (const e of entries) {
 		const entryId = e.id ?? null;
 		const path = e.path;
@@ -61,23 +52,6 @@ export async function scanWorkspaces(entries: ProjectEntry[], current?: string):
 		const exists = await pathExistsAsDirectory(path);
 		if (!exists) {
 			issues.push({ entryId, path, kind: "missing-path" });
-			continue;
-		}
-
-		let isGit: boolean;
-		try {
-			isGit = await isGitRepository(path);
-		} catch {
-			isGit = false;
-		}
-		if (!isGit) {
-			issues.push({ entryId, path, kind: "not-git-repo" });
-			continue;
-		}
-
-		const hasBacklog = await pathExistsAsDirectory(join(path, "backlog"));
-		if (!hasBacklog) {
-			issues.push({ entryId, path, kind: "no-backlog-dir" });
 		}
 	}
 
@@ -97,7 +71,7 @@ export async function scanWorkspaces(entries: ProjectEntry[], current?: string):
  * deduplicating paths. Returns new arrays — does not mutate inputs.
  *
  * Rules:
- *   - missing-path, not-git-repo, no-backlog-dir → remove entry
+ *   - missing-path → remove entry
  *   - duplicate-path → keep first entry that has an id; otherwise keep
  *     the first entry in original order
  *   - stale-current-pointer → clear the current field (return undefined)
@@ -107,8 +81,8 @@ export function applyFixes(
 	issues: WorkspaceIssue[],
 	current?: string,
 ): { entries: ProjectEntry[]; current?: string } {
-	// Build a set of paths that should be fully removed (missing, not-git, no-backlog)
-	const removeKinds: WorkspaceIssueKind[] = ["missing-path", "not-git-repo", "no-backlog-dir"];
+	// Build a set of paths that should be fully removed
+	const removeKinds: WorkspaceIssueKind[] = ["missing-path"];
 	const removePaths = new Set<string>();
 	for (const issue of issues) {
 		if (removeKinds.includes(issue.kind)) {

@@ -102,7 +102,6 @@ describe("CLI init without Git", () => {
 
 		expect(tasks.map((task) => task.title)).toContain("No Git Task");
 		expect(archivedMilestones.map((item) => item.title)).toContain("No Git Milestone");
-		expect(await core.gitOps.getStatus()).toBe("");
 	});
 
 	test("init scaffolds only tasks, milestones, archive, completed — no drafts/docs/decisions dirs", async () => {

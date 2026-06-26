@@ -21,12 +21,6 @@ export { SearchService } from "./core/search-service.ts";
 // File system operations
 export { FileSystem } from "./file-system/operations.ts";
 
-// Git operations
-export {
-	GitOperations,
-	initializeGitRepository,
-	isGitRepository,
-} from "./git/operations.ts";
 // Markdown operations
 export * from "./markdown/parser.ts";
 export * from "./markdown/serializer.ts";

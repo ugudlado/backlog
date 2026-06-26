@@ -42,7 +42,7 @@ describe("atomic task creation", () => {
 
 		testDir = await mkdtemp(join(tmpdir(), "backlog-atomic-create-"));
 		const core = new Core(testDir);
-		await initializeTestProject(core, "Atomic Create Test", false);
+		await initializeTestProject(core, "Atomic Create Test");
 	});
 
 	afterEach(async () => {
