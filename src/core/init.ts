@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { basename, isAbsolute, relative } from "node:path";
+import { basename } from "node:path";
 import { spawn } from "bun";
 import {
 	type AgentInstructionFile,
@@ -37,11 +37,6 @@ async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
 	}
 }
 
-function isBacklogOutsideProjectRoot(backlogPath: string, projectRoot: string): boolean {
-	if (!isAbsolute(backlogPath)) return false;
-	return relative(projectRoot, backlogPath).startsWith("..");
-}
-
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
@@ -63,12 +58,6 @@ export interface InitializeProjectOptions {
 	agentInstructions?: AgentInstructionFile[];
 	installClaudeAgent?: boolean;
 	filesystemOnly?: boolean;
-	/**
-	 * Create a repo-less global-store project: the FileSystem is already pointed
-	 * at the flat slot via setGlobalStoreSlot, and there is no repo to mark.
-	 * Forces the global-store layout and skips the repo-root marker.
-	 */
-	repoless?: boolean;
 	advancedConfig?: {
 		checkActiveBranches?: boolean;
 		remoteOperations?: boolean;
@@ -131,7 +120,6 @@ export async function initializeProject(
 		advancedConfig = {},
 		existingConfig,
 		filesystemOnly = false,
-		repoless = false,
 	} = options;
 
 	const isReInitialization = !!existingConfig;
@@ -239,10 +227,9 @@ export async function initializeProject(
 	// Create structure and save config (id minted + workspace registered after save).
 	if (isReInitialization) {
 		await core.filesystem.saveConfig(config);
-	} else if (repoless || isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot)) {
-		// GlobalStore branch: backlog directory is outside the project root.
-		// FileSystem was already resolved to the external slot by resolveBacklogDirectory.
-		// We just need to validate preconditions and create the structure.
+	} else if (core.filesystem.isGlobalStoreSlot()) {
+		// Global-store branch: the caller pointed the FS at a flat slot via
+		// setGlobalStoreSlot. Validate preconditions and create the structure.
 		const machine = readMachineConfig();
 		if (machine.globalStore) {
 			await ensureGlobalStoreExists(machine.globalStore);
@@ -302,11 +289,10 @@ export async function initializeProject(
 	// read-only setups), init still succeeds.
 	//
 	// Global-store projects are discovered by scanning <globalStore>/* (the slot
-	// IS the source of truth), so they do NOT get a registry path — that's the
-	// whole point of the repo-root marker. We still set the current pointer to
-	// the new project's id so it becomes active. Local-mode projects keep their
-	// registry path, which is their only address.
-	const isGlobalStore = repoless || isBacklogOutsideProjectRoot(core.filesystem.backlogDir, projectRoot);
+	// IS the source of truth), so they do NOT get a registry path. We set the
+	// current pointer to the new project's id so it becomes active. Local-mode
+	// projects keep their registry path, which is their only address.
+	const isGlobalStore = core.filesystem.isGlobalStoreSlot();
 	try {
 		if (isGlobalStore) {
 			// Mark the new project current using the SAME id the global-store scan

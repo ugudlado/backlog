@@ -55,6 +55,8 @@ export class FileSystem {
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
+	/** True once pointed at a global-store slot via setGlobalStoreSlot. */
+	private globalStoreSlot = false;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -129,14 +131,20 @@ export class FileSystem {
 	/**
 	 * Point the FileSystem at an absolute global-store slot. Used by init when
 	 * the slot is keyed by project name (which the relative-only
-	 * `setBacklogDirectory` cannot express). `slotName` is recorded as the
-	 * directory name for display/marker purposes.
+	 * `setBacklogDirectory` cannot express). Marks the FS as a global-store slot
+	 * so init creates the flat slot layout without inferring it from geometry.
 	 */
 	setGlobalStoreSlot(absoluteSlotPath: string, slotName: string): void {
 		this.resolvedBacklogDirName = slotName;
 		this.resolvedBacklogDir = absoluteSlotPath;
 		this.resolvedConfigPath = join(absoluteSlotPath, DEFAULT_FILES.CONFIG);
 		this.configSource = "folder";
+		this.globalStoreSlot = true;
+	}
+
+	/** True when this FS was pointed at a global-store slot. */
+	isGlobalStoreSlot(): boolean {
+		return this.globalStoreSlot;
 	}
 
 	setConfigLocation(configSource: BacklogConfigSource): void {

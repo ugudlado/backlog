@@ -1,11 +1,7 @@
 /**
- * Tests for globalStore-aware init behavior.
- * When globalStore is set in machine config, initializeProject should:
- * - Create backlog structure in <globalStore>/<basename(gitRoot)>/
- * - NOT create backlog/ in the code repo
- * - Skip git staging for the code repo
- * - Error if globalStore dir does not exist
- * - Error if slot already exists and is non-empty
+ * Tests for global-store init: when the FileSystem is pointed at a slot via
+ * setGlobalStoreSlot, initializeProject creates a flat <globalStore>/<name>/
+ * (config.yml + tasks/ at the root), leaving any code repo untouched.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
@@ -87,10 +83,10 @@ afterEach(async () => {
 	await rm(TMP_BASE, { recursive: true, force: true });
 });
 
-describe("initializeProject — global-store (repoless) creation", () => {
+describe("initializeProject — global-store creation", () => {
 	// Projects are global-store entities keyed by name (no repo tagging). The
-	// slot is set explicitly via setGlobalStoreSlot and init runs repoless: the
-	// slot is both project root and data dir, with a flat config.yml + tasks/.
+	// slot is set explicitly via setGlobalStoreSlot: the slot is both project
+	// root and data dir, with a flat config.yml + tasks/.
 	function makeGlobalCore(name: string): { core: Core; slotPath: string } {
 		const slotPath = join(globalStoreDir, name);
 		const core = new Core(slotPath);
@@ -102,7 +98,7 @@ describe("initializeProject — global-store (repoless) creation", () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 		const { core, slotPath } = makeGlobalCore("Alpha");
-		await initializeProject(core, makeInitOptions({ projectName: "Alpha", repoless: true, filesystemOnly: true }));
+		await initializeProject(core, makeInitOptions({ projectName: "Alpha", filesystemOnly: true }));
 
 		expect(await dirExists(slotPath)).toBe(true);
 		expect(await dirExists(join(slotPath, "tasks"))).toBe(true);
@@ -115,7 +111,7 @@ describe("initializeProject — global-store (repoless) creation", () => {
 		await writeFile(join(machineConfigDir, "config.yml"), `globalStore: ${globalStoreDir}\n`);
 		clearMachineConfigCache();
 		const { core } = makeGlobalCore("Beta");
-		await initializeProject(core, makeInitOptions({ projectName: "Beta", repoless: true, filesystemOnly: true }));
+		await initializeProject(core, makeInitOptions({ projectName: "Beta", filesystemOnly: true }));
 
 		// The code repo is left completely untouched.
 		const status = await $`git -C ${repoDir} status --porcelain`.text();

@@ -1643,7 +1643,6 @@ export class BacklogServer {
 			projectName: name,
 			integrationMode: "none",
 			filesystemOnly: true,
-			repoless: true,
 		});
 		// Make the new project current so the UI's "switch after add" works.
 		// Look up the freshly-created slot by its path to get the scan id.

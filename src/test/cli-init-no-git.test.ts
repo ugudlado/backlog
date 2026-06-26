@@ -11,7 +11,18 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 let TEST_DIR: string;
 // Backlog stores every project in the configured global store; init requires it.
 let initEnv: Record<string, string>;
+let globalStoreDir: string;
 const origMachineConfig = process.env.BACKLOG_MACHINE_CONFIG_DIR;
+
+/** Open the created project from its global-store slot (keyed by project name). */
+function openSlot(projectName: string): Core {
+	const slotPath = join(globalStoreDir, projectName);
+	const core = new Core(slotPath);
+	// The slot has a flat config.yml at its root (not <slot>/backlog/), so point
+	// the FileSystem at it directly — the same way init/the server resolve it.
+	core.filesystem.setGlobalStoreSlot(slotPath, projectName);
+	return core;
+}
 
 async function pathExists(path: string): Promise<boolean> {
 	try {
@@ -28,7 +39,7 @@ async function initFilesystemOnlyProject(projectName = "No Git Project"): Promis
 		.env(initEnv)
 		.quiet();
 	expect(result.exitCode).toBe(0);
-	return new Core(TEST_DIR);
+	return openSlot(projectName);
 }
 
 describe("CLI init without Git", () => {
@@ -37,8 +48,9 @@ describe("CLI init without Git", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 		const gs = await createTestGlobalStore(TEST_DIR);
 		initEnv = gs.env;
-		// In-process Core resolution (the `new Core(TEST_DIR)` calls below) reads
-		// the machine config from this env var, so point it at the test's store.
+		globalStoreDir = gs.globalStoreDir;
+		// In-process Core resolution reads the machine config from this env var,
+		// so point it at the test's store.
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = gs.machineConfigDir;
 		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
 		clearMachineConfigCache();
@@ -67,7 +79,7 @@ describe("CLI init without Git", () => {
 		expect(result.exitCode).toBe(0);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
 
-		const core = new Core(TEST_DIR);
+		const core = openSlot("Filesystem Project");
 		const config = await core.filesystem.loadConfig();
 
 		expect(config?.projectName).toBe("Filesystem Project");
