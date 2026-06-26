@@ -63,11 +63,7 @@ If you can simplify the code, do it.
 
 ### Configuration Management
 
-Use the globally installed `backlog` binary for all task and config commands:
-
-- `backlog config list` - View all configuration values
-- `backlog config get <key>` - Get a specific config value (e.g. defaultEditor)
-- `backlog config set <key> <value>` - Set a config value with validation
+Use the globally installed `backlog` binary for all task commands. There is no CLI `config` command. Project config is viewed and edited via the Web UI Settings page or by editing the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
 
 > **Agents:** Always use `backlog <command>`, never `bun run cli <command>`. The dev build triggers a slow CSS rebuild and hits sandbox write restrictions on `~/.config/backlog/` paths.
 

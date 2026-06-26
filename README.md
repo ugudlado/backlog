@@ -257,26 +257,17 @@ Backlog.md merges the following layers (highest → lowest):
 2. Project config file (`config.yml` inside the project's global-store slot)
 3. Built‑ins
 
-### Interactive wizard (`backlog config`)
+### Interactive wizard (`backlog init` advanced settings)
 
-Run `backlog config` with no arguments to launch the full interactive wizard. This is the same experience triggered from `backlog init` when you opt into advanced settings, and it walks through the complete configuration surface:
-- Cross-branch accuracy: `checkActiveBranches`, `remoteOperations`, and `activeBranchDays`.
-- Git workflow: `autoCommit` and `bypassGitHooks`.
-- ID formatting: enable or size `zeroPaddedIds`.
-- Editor integration: pick a `defaultEditor` with availability checks.
+When you run `backlog init` and answer "Yes" at the advanced settings prompt, an interactive wizard walks through the project configuration surface:
 - Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
 - Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
 
-Skipping the wizard (answering "No" during init) applies the safe defaults that ship with Backlog.md:
-- `checkActiveBranches=true`, `remoteOperations=true`, `activeBranchDays=30`.
-- `autoCommit=false`, `bypassGitHooks=false`.
-- `zeroPaddedIds` disabled.
-- `defaultEditor` unset (falls back to your environment).
-- `defaultPort=6420`, `autoOpenBrowser=true`.
+Answering "No" applies the safe defaults that ship with Backlog.md (`defaultPort=6420`, `autoOpenBrowser=true`). When you revisit `backlog init`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 
-Projects live in the global store, not in a Git repo, so they are filesystem-only by default: `checkActiveBranches`, `remoteOperations`, and auto-commit are off, and no `git init` is run. CLI, Web, and MCP workflows never depend on a Git repository.
+Projects live in the global store, not in a Git repo. CLI, Web, and MCP workflows never depend on a Git repository.
 
-Whenever you revisit `backlog init` or rerun `backlog config`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
+To change project config later, use the Web UI Settings page or edit the project config file directly (see below).
 
 ### Machine-level config (`~/.config/backlog.md/config.yml`)
 
@@ -292,17 +283,17 @@ globalStore: /path/to/my/backlog-store
 When `globalStore` is set:
 - `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
 - All task reads and writes go to the external slot — the code repo is never touched.
-- `git log` in your code repo stays clean even with `autoCommit: true`.
+- `git log` in your code repo stays clean.
 - The `globalStore` directory must exist before running `backlog init`. Backlog.md will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
-The current `globalStore` value (or `(not set)`) is shown in `backlog config list`.
+The current `globalStore` value (or `(not set)`) is whatever you have written in `~/.config/backlog.md/config.yml`.
 
 To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.
 
 ### Definition of Done defaults
 
-Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
+Set project-wide DoD items during `backlog init` advanced setup, in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
 
 ```yaml
 definition_of_done:
@@ -315,7 +306,7 @@ When a project uses root config discovery, edit `backlog.config.yml` instead of 
 
 These items are added to every new task by default. You can add more on create with `--dod`, or disable defaults per task with `--no-dod-defaults`.
 
-For the full configuration reference (all options, commands, and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
+For the full configuration reference (all options and detailed notes), see **[ADVANCED-CONFIG.md](ADVANCED-CONFIG.md)**.
 
 ---
 

@@ -8,7 +8,7 @@ Full command reference for Backlog.md. For getting started, see [README.md](READ
 |-------------|------------------------------------------------------|
 | Initialize project | `backlog init [project-name]` (creates backlog structure with a minimal interactive flow) |
 | Re-initialize | `backlog init` (preserves existing config, allows updates) |
-| Advanced settings wizard | `backlog config` (no args) — launches the full interactive configuration flow |
+| Advanced settings wizard | `backlog init` then choose "Yes" at the advanced settings prompt |
 
 `backlog init` keeps first-run setup focused on the essentials:
 - **Project name** – identifier for your backlog (defaults to the current directory on re-run).
@@ -20,7 +20,7 @@ Full command reference for Backlog.md. For getting started, see [README.md](READ
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
 
-You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups, and init also supports `--backlog-dir <path>` plus `--config-location <folder|root>` for scripted configuration.
+You can rerun the wizard anytime by running `backlog init` again and choosing "Yes" at the advanced settings prompt. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups. To change project config later without rerunning init, use the Web UI Settings page or edit the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
 
 ## Task Management
 

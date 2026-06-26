@@ -22,9 +22,10 @@
 
 ### Configuration Management
 
-- `bun run cli config list` - View all configuration values
-- `bun run cli config get <key>` - Get a specific config value (e.g. defaultEditor)
-- `bun run cli config set <key> <value>` - Set a config value with validation
+There is no `backlog config` CLI command. Project configuration is edited via the
+Web UI Settings page or by editing the project config file directly
+(`backlog/config.yml`, or `backlog.config.yml` at the project root). The
+interactive advanced-settings wizard runs as part of `backlog init`.
 
 ## Core Structure
 
