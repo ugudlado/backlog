@@ -234,29 +234,3 @@ backlog board export --readme --export-version "Release 2024.12.1-beta"
 ```
 
 Perfect for sharing project status, creating reports, or storing snapshots in version control.
-
----
-
-## Shell Tab Completion
-
-Backlog.md includes built-in intelligent tab completion for bash, zsh, fish, and PowerShell shells. Completion scripts are embedded in the binary — no external files needed.
-
-**Quick Installation:**
-```bash
-# Auto-detect and install for your current shell
-backlog completion install
-
-# Or specify shell explicitly
-backlog completion install --shell bash
-backlog completion install --shell zsh
-backlog completion install --shell fish
-backlog completion install --shell pwsh
-```
-
-**What you get:**
-- Command completion: `backlog <TAB>` → shows all commands
-- Dynamic task IDs: `backlog task edit <TAB>` → shows actual task IDs from your backlog
-- Smart flags: `--status <TAB>` → shows configured status values
-- Context-aware suggestions for priorities, labels, and assignees
-
-Full documentation: See [completions/README.md](completions/README.md) for detailed installation instructions, troubleshooting, and examples.

@@ -39,7 +39,6 @@ interface WizardOptions {
 export interface AdvancedConfigWizardResult {
 	config: Partial<BacklogConfig>;
 	installClaudeAgent: boolean;
-	installShellCompletions: boolean;
 }
 
 type DefinitionOfDoneAction = "add" | "remove" | "reorder" | "clear" | "done";
@@ -213,19 +212,6 @@ export async function runAdvancedConfigWizard({
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
 	let installClaudeAgent = false;
-	let installShellCompletions = false;
-
-	const completionPrompt = await promptImpl(
-		{
-			type: "confirm",
-			name: "installCompletions",
-			message: "Install shell completions now?",
-			hint: "Adds TAB completion support for backlog commands in your shell",
-			initial: true,
-		},
-		{ onCancel },
-	);
-	installShellCompletions = Boolean(completionPrompt?.installCompletions);
 
 	const crossBranchPrompt = await promptImpl(
 		{
@@ -627,6 +613,5 @@ export async function runAdvancedConfigWizard({
 			autoOpenBrowser,
 		},
 		installClaudeAgent,
-		installShellCompletions,
 	};
 }

@@ -36,7 +36,6 @@ describe("Config commands", () => {
 
 	it("configureAdvancedSettings keeps defaults when no changes requested", async () => {
 		const promptStub = createPromptStub([
-			{ installCompletions: false },
 			{ checkActiveBranches: true },
 			{ remoteOperations: true },
 			{ activeBranchDays: 30 },
@@ -48,12 +47,11 @@ describe("Config commands", () => {
 			{ installClaudeAgent: false },
 		]);
 
-		const { mergedConfig, installClaudeAgent, installShellCompletions } = await configureAdvancedSettings(core, {
+		const { mergedConfig, installClaudeAgent } = await configureAdvancedSettings(core, {
 			promptImpl: promptStub,
 		});
 
 		expect(installClaudeAgent).toBe(false);
-		expect(installShellCompletions).toBe(false);
 		expect(mergedConfig.checkActiveBranches).toBe(true);
 		expect(mergedConfig.remoteOperations).toBe(true);
 		expect(mergedConfig.activeBranchDays).toBe(30);
@@ -72,7 +70,6 @@ describe("Config commands", () => {
 
 	it("configureAdvancedSettings applies wizard selections", async () => {
 		const promptStub = createPromptStub([
-			{ installCompletions: true },
 			{ checkActiveBranches: true },
 			{ remoteOperations: false },
 			{ activeBranchDays: 14 },
@@ -88,12 +85,11 @@ describe("Config commands", () => {
 			{ installClaudeAgent: true },
 		]);
 
-		const { mergedConfig, installClaudeAgent, installShellCompletions } = await configureAdvancedSettings(core, {
+		const { mergedConfig, installClaudeAgent } = await configureAdvancedSettings(core, {
 			promptImpl: promptStub,
 		});
 
 		expect(installClaudeAgent).toBe(true);
-		expect(installShellCompletions).toBe(true);
 		expect(mergedConfig.checkActiveBranches).toBe(true);
 		expect(mergedConfig.remoteOperations).toBe(false);
 		expect(mergedConfig.activeBranchDays).toBe(14);
@@ -115,7 +111,6 @@ describe("Config commands", () => {
 
 	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
 		const promptStub = createPromptStub([
-			{ installCompletions: false },
 			{ checkActiveBranches: true },
 			{ remoteOperations: true },
 			{ activeBranchDays: 30 },

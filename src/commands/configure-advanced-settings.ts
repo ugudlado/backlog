@@ -10,7 +10,7 @@ interface ConfigureAdvancedOptions {
 export async function configureAdvancedSettings(
 	core: Core,
 	{ promptImpl, cancelMessage = "Aborting configuration." }: ConfigureAdvancedOptions = {},
-): Promise<{ mergedConfig: BacklogConfig; installClaudeAgent: boolean; installShellCompletions: boolean }> {
+): Promise<{ mergedConfig: BacklogConfig; installClaudeAgent: boolean }> {
 	const existingConfig = await core.filesystem.loadConfig();
 	if (!existingConfig) {
 		throw new Error("No backlog project found. Initialize one first with: backlog init");
@@ -29,6 +29,5 @@ export async function configureAdvancedSettings(
 	return {
 		mergedConfig,
 		installClaudeAgent: wizardResult.installClaudeAgent,
-		installShellCompletions: wizardResult.installShellCompletions,
 	};
 }
