@@ -10,6 +10,9 @@ permissions:
   checks: write
   pull-requests: write
 
+# Shai-Hulud 2.0 supply-chain malware scan (merged from shai-hulud-check.yml).
+# Guarded to main-only: push to main, or PRs targeting main.
+
 env:
   BUN_VERSION: 1.3.11
 
@@ -131,3 +134,14 @@ jobs:
           name: tui-interactive-transcripts-compiled-${{ matrix.os }}
           path: tmp/tui-interactive-transcripts/*.log
           if-no-files-found: ignore
+
+  security-check:
+    name: shai-hulud-2.0-security-check
+    # main-only: push to main, or PRs targeting main
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gensecaihq/Shai-Hulud-2.0-Detector@v1
+        with:
+          fail-on-critical: true

@@ -85,8 +85,9 @@ jobs:
   npm-publish:
     needs: [build, verify-platform-packages]
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: Prepare npm package
@@ -119,6 +120,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Upgrade npm for trusted publishing (OIDC)
+        run: npm install -g npm@latest
       - name: Dry run publish
         run: |
           cd dist
@@ -130,8 +133,9 @@ jobs:
 
   publish-binaries:
     needs: build
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         include:
@@ -200,6 +204,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Upgrade npm for trusted publishing (OIDC)
+        run: npm install -g npm@latest
       - name: Dry run platform publish
         run: |
           cd pkg
@@ -371,7 +377,7 @@ jobs:
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
           EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado1/backlog-${platform}-${arch}`);')"
-          echo "Waiting for backlog.md@${VERSION} install + ${EXPECTED_PACKAGE} optional dependency..."
+          echo "Waiting for @ugudlado1/backlog@${VERSION} install + ${EXPECTED_PACKAGE} optional dependency..."
 
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
             rm -rf sanity
@@ -379,7 +385,7 @@ jobs:
             cd sanity
             npm init -y >/dev/null 2>&1
 
-            if npm i "backlog.md@${VERSION}" --prefer-online --no-audit --no-fund; then
+            if npm i "@ugudlado1/backlog@${VERSION}" --prefer-online --no-audit --no-fund; then
               if npx backlog -v; then
                 echo "Install sanity succeeded on attempt ${attempt}/${MAX_ATTEMPTS}."
                 exit 0
@@ -401,7 +407,7 @@ jobs:
             fi
           done
 
-          echo "Install sanity timed out for backlog.md@${VERSION}."
+          echo "Install sanity timed out for @ugudlado1/backlog@${VERSION}."
           exit 1
       - name: Install and run backlog -v (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
@@ -417,7 +423,7 @@ jobs:
           }
 
           $ExpectedPackage = "@ugudlado1/backlog-windows-$Arch"
-          Write-Host "Waiting for backlog.md@$Version install + $ExpectedPackage optional dependency..."
+          Write-Host "Waiting for @ugudlado1/backlog@$Version install + $ExpectedPackage optional dependency..."
 
           for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
             if (Test-Path "sanity") {
@@ -428,7 +434,7 @@ jobs:
 
             try {
               npm init -y | Out-Null
-              npm i "backlog.md@$Version" --prefer-online --no-audit --no-fund
+              npm i "@ugudlado1/backlog@$Version" --prefer-online --no-audit --no-fund
               if ($LASTEXITCODE -eq 0) {
                 npx backlog -v
                 if ($LASTEXITCODE -eq 0) {
@@ -454,7 +460,7 @@ jobs:
             }
           }
 
-          throw "Install sanity timed out for backlog.md@$Version."
+          throw "Install sanity timed out for @ugudlado1/backlog@$Version."
 
   github-release:
     needs: build
