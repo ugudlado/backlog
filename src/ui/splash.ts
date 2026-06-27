@@ -33,7 +33,7 @@ function getWideLogoLines(): string[] {
 
 function getNarrowLogoLines(color: boolean | undefined): string[] {
 	// Minimal fallback for very narrow terminals
-	return [bold(color, "Backlog.md")];
+	return [bold(color, "Backlog")];
 }
 
 // Terminal hyperlinks (OSC 8). Safely ignored by terminals that don't support them.
@@ -61,21 +61,21 @@ export async function printSplash(opts: SplashOptions): Promise<void> {
 		lines.push("");
 		lines.push(...getWideLogoLines());
 		lines.push("");
-		lines.push(`${bold(color, "Backlog.md")} ${dim(color, `v${version}`)}`);
+		lines.push(`${bold(color, "Backlog")} ${dim(color, `v${version}`)}`);
 	} else if (!plain && (width === 0 || width >= 20)) {
 		// Also add space before the narrow logo variant
 		lines.push("");
 		lines.push(...getNarrowLogoLines(color));
 		lines.push(dim(color, `v${version}`));
 	} else {
-		lines.push(`${bold(color, "Backlog.md")} v${version}`);
+		lines.push(`${bold(color, "Backlog")} v${version}`);
 	}
 
 	lines.push("");
 
 	if (!initialized) {
 		lines.push(bold(color, "Not initialized"));
-		lines.push(`  ${green(color, "backlog init")}  ${dim(color, "Initialize Backlog.md in this repo")}`);
+		lines.push(`  ${green(color, "backlog init")}  ${dim(color, "Initialize Backlog in this repo")}`);
 	} else {
 		lines.push(bold(color, "Quickstart"));
 		lines.push(
@@ -87,7 +87,7 @@ export async function printSplash(opts: SplashOptions): Promise<void> {
 	}
 
 	lines.push("");
-	const linkTarget = "https://backlog.md";
+	const linkTarget = "https://github.com/ugudlado/backlog";
 	// Enable hyperlink on TTY regardless of color; respect --plain
 	const hyperlinkEnabled = !!process.stdout.isTTY && !plain;
 	const clickable = osc8(linkTarget, linkTarget, hyperlinkEnabled);

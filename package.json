@@ -80,12 +80,12 @@
 	"description": "Markdown-native task manager and Kanban visualizer for any Git repo. Forked from MrLesk/Backlog.md.",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/ugudlado/Backlog.md.git"
+		"url": "git+https://github.com/ugudlado/backlog.git"
 	},
 	"bugs": {
-		"url": "https://github.com/ugudlado/Backlog.md/issues"
+		"url": "https://github.com/ugudlado/backlog/issues"
 	},
-	"homepage": "https://github.com/ugudlado/Backlog.md",
+	"homepage": "https://github.com/ugudlado/backlog",
 	"keywords": [
 		"cli",
 		"markdown",

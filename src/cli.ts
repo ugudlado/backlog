@@ -363,7 +363,7 @@ async function requireProjectRoot(): Promise<string> {
 	}
 	const resolved = await resolveCliProjectRoot(runtimeCwd.cwd, projectName);
 	if (!resolved.ok) {
-		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
+		console.error("No Backlog project found. Run `backlog init` to initialize.");
 		process.exit(1);
 	}
 	// When the cwd is not a Backlog.md project, resolution falls back to the
@@ -371,7 +371,7 @@ async function requireProjectRoot(): Promise<string> {
 	// data from an unrelated project (only when they didn't pass --project).
 	if (resolved.viaGlobalCurrent && !projectName) {
 		console.error(
-			`Using global project "${resolved.projectName}" (current directory is not a Backlog.md project). ` +
+			`Using global project "${resolved.projectName}" (current directory is not a Backlog project). ` +
 				"Switch with `backlog project switch <name>` or pass `--project <name>`.",
 		);
 	}
@@ -545,7 +545,7 @@ if (shouldRunMigration) {
 const program = new Command();
 program
 	.name("backlog")
-	.description("Backlog.md - Project management CLI")
+	.description("Backlog - Project management CLI")
 	.version(version, "-v, --version", "display version number")
 	.option("--project <name>", "operate on the named global-store project (overrides the current selection)");
 
@@ -2608,7 +2608,7 @@ async function runServer(options: { port?: string; project?: string; open?: bool
 		cwd = resolve(options.project);
 		const found = await findBacklogRoot(cwd);
 		if (!found || found !== cwd) {
-			console.error(`--project must point at a Backlog.md project root (got: ${cwd})`);
+			console.error(`--project must point at a Backlog project root (got: ${cwd})`);
 			process.exit(1);
 		}
 	} else {

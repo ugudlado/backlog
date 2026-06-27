@@ -106,7 +106,7 @@ jobs:
               .bin = {backlog:"cli.js"} |
               .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","package.json","README.md","LICENSE"] |
               .scripts = {"postuninstall": "node postuninstall.cjs"} |
-              .repository = {"type":"git","url":"https://github.com/ugudlado/Backlog.md"} |
+              .repository = {"type":"git","url":"https://github.com/ugudlado/backlog"} |
               .optionalDependencies = {
                 "@ugudlado/backlog-linux-x64"  : "'$TAG'",
                 "@ugudlado/backlog-linux-arm64": "'$TAG'",
@@ -187,7 +187,7 @@ jobs:
             "files": ["backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"],
             "repository": {
               "type": "git",
-              "url": "https://github.com/ugudlado/Backlog.md"
+              "url": "https://github.com/ugudlado/backlog"
             }
           }
           EOF
