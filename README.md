@@ -1,42 +1,40 @@
-<h1 align="center">Backlog.md</h1>
+<h1 align="center">Backlog</h1>
 <p align="center">Markdown‑native Task Manager &amp; Kanban visualizer for any Git repository</p>
 
 <p align="center">
-<code>npm i -g backlog.md</code> or <code>bun add -g backlog.md</code> or <code>nix run github:ugudlado/Backlog.md</code>
+<code>npm i -g @ugudlado1/backlog</code> or <code>bun add -g @ugudlado1/backlog</code> or <code>nix run github:ugudlado/backlog</code>
 </p>
 
 ![Backlog demo GIF using: backlog board](./.github/backlog-v1.40.gif)
 
-
 ---
 
-> **Backlog.md** turns any folder with a Git repo into a **self‑contained project board**
+> **Backlog** turns any folder with a Git repo into a **self‑contained project board**
 > powered by plain Markdown files and a zero‑config CLI.
 > Built for **spec‑driven AI development** — structure your tasks so AI agents deliver predictable results.
 
 ## Features
 
-* 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file
+- 📝 **Markdown-native tasks** -- manage every issue as a plain `.md` file
 
-* 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex, Kiro & any other MCP or CLI compatible AI assistants
+- 🤖 **AI-Ready** -- Works with Claude Code, Gemini CLI, Codex, Kiro & any other MCP or CLI compatible AI assistants
 
-* 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
+- 📊 **Instant terminal Kanban** -- `backlog board` paints a live board in your shell
 
-* 🌐 **Modern web interface** -- `backlog server` launches a sleek web UI for visual task management; `backlog service` runs it as a launchd service on macOS
+- 🌐 **Modern web interface** -- `backlog server` launches a sleek web UI for visual task management; `backlog service` runs it as a launchd service on macOS
 
-* 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
+- 🔍 **Powerful search** -- fuzzy search across tasks, docs & decisions with `backlog search`
 
-* 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
-* ✅ **Definition of Done defaults** -- add a reusable checklist to every new task
+- 📋 **Rich query commands** -- view, list, filter, or archive tasks with ease
+- ✅ **Definition of Done defaults** -- add a reusable checklist to every new task
 
-* 📤 **Board export** -- `backlog board export` creates shareable markdown reports
+- 📤 **Board export** -- `backlog board export` creates shareable markdown reports
 
-* 🔒 **100 % private & offline** -- backlog lives entirely inside your repo and you can manage everything locally
+- 🔒 **100 % private & offline** -- backlog lives entirely inside your repo and you can manage everything locally
 
-* 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
+- 💻 **Cross-platform** -- runs on macOS, Linux, and Windows
 
-* 🆓 **MIT-licensed & open-source** -- free for personal or commercial use
-
+- 🆓 **MIT-licensed & open-source** -- free for personal or commercial use
 
 ---
 
@@ -44,8 +42,8 @@
 
 ```bash
 # Install
-bun i -g backlog.md
-# or: npm i -g backlog.md
+bun i -g @ugudlado1/backlog
+# or: npm i -g @ugudlado1/backlog
 
 # Configure the global store once (where all projects live)
 mkdir -p ~/.config/backlog
@@ -56,9 +54,10 @@ backlog init "My Awesome Project"
 ```
 
 The init wizard will ask how you want to connect AI tools:
+
 - **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor and adds workflow instructions for your agents.
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
-- **Skip** — no AI setup; use Backlog.md purely as a task manager.
+- **Skip** — no AI setup; use Backlog purely as a task manager.
 
 Every project is stored as a slot in the configured **global store** (`globalStore` in `~/.config/backlog/config.yml`) — one directory per project, keyed by name, not tied to any repo. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`). List and switch projects with `backlog project list` / `backlog project switch <name>`, or target one per command with `--project <name>`.
 
@@ -72,7 +71,8 @@ After running `backlog init` and choosing the MCP or CLI integration, work in th
 **Step 1 — Describe your idea.** Tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
 
 **🤖 Ask your AI Agent:**
-> I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog.md tasks.
+
+> I want to add a search feature to the web view that searches tasks, docs, and decisions. Please decompose this into small Backlog tasks.
 
 > [!NOTE]
 > **Review checkpoint #1** — read the task descriptions and acceptance criteria.
@@ -82,6 +82,7 @@ After running `backlog init` and choosing the MCP or CLI integration, work in th
 **Step 3 — Plan before coding.** Ask the agent to research and write an implementation plan in the task. Do this right before implementation so the plan reflects the current state of the codebase.
 
 **🤖 Ask your AI Agent:**
+
 > Work on BACK-10 only. Research the codebase and write an implementation plan in the task. Wait for my approval before coding.
 
 > [!NOTE]
@@ -98,7 +99,7 @@ If the output is not good enough: clear the plan/notes/final summary, refine the
 
 ### Working without AI agents
 
-Use Backlog.md as a standalone task manager from the terminal or browser.
+Use Backlog as a standalone task manager from the terminal or browser.
 
 ```bash
 # Create and refine tasks
@@ -114,7 +115,7 @@ backlog board
 backlog server --open
 ```
 
-You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog.md commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent. Tasks can record project-root-relative modified files and later be found with `backlog search --modified-file src/path.ts --plain`.
+You can switch between AI-assisted and manual workflows at any time — both operate on the same Markdown task files. It is recommended to modify tasks via Backlog commands (CLI/MCP/Web) rather than editing task files manually, so field types and metadata stay consistent. Tasks can record project-root-relative modified files and later be found with `backlog search --modified-file src/path.ts --plain`.
 
 **Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
 
@@ -149,9 +150,10 @@ backlog service uninstall          # stop and remove plist
 
 The service serves the current project (recorded in `~/.config/backlog/projects.yml`). Switch projects from the project switcher in the web UI; the selection survives restarts.
 
-Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog.md as a Service](SERVICE.md).
+Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog as a Service](SERVICE.md).
 
 **Features:**
+
 - Interactive Kanban board with drag-and-drop
 - Task creation and editing with rich forms
 - Interactive acceptance criteria editor with checklists
@@ -160,50 +162,50 @@ Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Bac
 - Task archiving with confirmation dialogs
 - Seamless CLI integration - all changes sync with markdown files
 
-![Web Interface Screenshot](./.github/web.jpeg)
+![Web Interface Screenshot](./.github/web.png)
 
 ---
 
 ## 🔧 MCP Integration (Model Context Protocol)
 
-The easiest way to connect Backlog.md to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.
-You can run `backlog init` (even if you already initialized Backlog.md) to set up MCP integration automatically, or follow the manual steps below.
+The easiest way to connect Backlog to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.
+You can run `backlog init` (even if you already initialized Backlog) to set up MCP integration automatically, or follow the manual steps below.
 
 ### Client guides
 
 <details>
   <summary><strong>Claude Code</strong></summary>
 
-  ```bash
-  claude mcp add backlog --scope user -- backlog mcp start
-  ```
+```bash
+claude mcp add backlog --scope user -- backlog mcp start
+```
 
 </details>
 
 <details>
   <summary><strong>Codex</strong></summary>
 
-  ```bash
-  codex mcp add backlog backlog mcp start
-  ```
+```bash
+codex mcp add backlog backlog mcp start
+```
 
 </details>
 
 <details>
   <summary><strong>Gemini CLI</strong></summary>
 
-  ```bash
-  gemini mcp add backlog -s user backlog mcp start
-  ```
+```bash
+gemini mcp add backlog -s user backlog mcp start
+```
 
 </details>
 
 <details>
   <summary><strong>Kiro</strong></summary>
 
-  ```bash
-  kiro-cli mcp add --scope global --name backlog --command backlog --args mcp,start
-  ```
+```bash
+kiro-cli mcp add --scope global --name backlog --command backlog --args mcp,start
+```
 
 </details>
 
@@ -229,12 +231,11 @@ If your IDE can't set the process working directory for MCP servers, set `BACKLO
 If your IDE supports custom args but not env vars, you can also use `["mcp", "start", "--cwd", "/absolute/path/to/your/project"]`.
 
 > [!IMPORTANT]
-> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.md.
+> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.
 > This step is not required when using `backlog init` as it adds these instructions automatically.
-> Backlog.md's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
+> Backlog's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
 
-
-Once connected, agents can read the Backlog.md workflow instructions via the resource `backlog://docs/task-workflow`.
+Once connected, agents can read the Backlog workflow instructions via the resource `backlog://docs/task-workflow`.
 Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the connection is working.
 
 ---
@@ -243,7 +244,7 @@ Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the c
 
 Full command reference — task management, search, board, docs, decisions, and more: **[CLI-INSTRUCTIONS.md](CLI-INSTRUCTIONS.md)**
 
-Quick examples: `backlog task create`, `backlog task list`, `backlog task edit`, `backlog search`, `backlog board`, `backlog server`, `backlog service start`.
+Quick examples: `backlog task create`, `backlog task list`, `backlog task edit`, `backlog search`, `backlog board`, `backlog server`, `backlog service start`, `backlog project switch` (switch between projects in the global store).
 
 Full help: `backlog --help`
 
@@ -251,7 +252,7 @@ Full help: `backlog --help`
 
 ## <img src="./.github/configuration-256.png" alt="Configuration" width="28" height="28" align="center"> Configuration
 
-Backlog.md merges the following layers (highest → lowest):
+Backlog merges the following layers (highest → lowest):
 
 1. CLI flags
 2. Project config file (`config.yml` inside the project's global-store slot)
@@ -260,34 +261,36 @@ Backlog.md merges the following layers (highest → lowest):
 ### Interactive wizard (`backlog init` advanced settings)
 
 When you run `backlog init` and answer "Yes" at the advanced settings prompt, an interactive wizard walks through the project configuration surface:
+
 - Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
 - Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
 
-Answering "No" applies the safe defaults that ship with Backlog.md (`defaultPort=6420`, `autoOpenBrowser=true`). When you revisit `backlog init`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
+Answering "No" applies the safe defaults that ship with Backlog (`defaultPort=6420`, `autoOpenBrowser=true`). When you revisit `backlog init`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
 
 Projects live in the global store, not in a Git repo. CLI, Web, and MCP workflows never depend on a Git repository.
 
 To change project config later, use the Web UI Settings page or edit the project config file directly (see below).
 
-### Machine-level config (`~/.config/backlog.md/config.yml`)
+### Machine-level config (`~/.config/backlog/config.yml`)
 
-Some settings live outside any project and apply across all repositories on the machine. Create or edit `~/.config/backlog.md/config.yml` directly — the CLI does not write to this file.
+Some settings live outside any project and apply across all repositories on the machine. Create or edit `~/.config/backlog/config.yml` directly — the CLI does not write to this file.
 
 **`globalStore`** — redirect all backlog storage to a single external directory instead of creating a `backlog/` folder inside each code repo:
 
 ```yaml
-# ~/.config/backlog.md/config.yml
+# ~/.config/backlog/config.yml
 globalStore: /path/to/my/backlog-store
 ```
 
 When `globalStore` is set:
+
 - `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
 - All task reads and writes go to the external slot — the code repo is never touched.
 - `git log` in your code repo stays clean.
-- The `globalStore` directory must exist before running `backlog init`. Backlog.md will not create it.
+- The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
-The current `globalStore` value (or `(not set)`) is whatever you have written in `~/.config/backlog.md/config.yml`.
+The current `globalStore` value (or `(not set)`) is whatever you have written in `~/.config/backlog/config.yml`.
 
 To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.
 
@@ -322,4 +325,4 @@ Forked from [MrLesk/Backlog.md](https://github.com/MrLesk/Backlog.md) by Alex Ga
 
 ### License
 
-Backlog.md is released under the **MIT License** – do anything, just give credit. See [LICENSE](LICENSE).
+Backlog is released under the **MIT License** – do anything, just give credit. See [LICENSE](LICENSE).

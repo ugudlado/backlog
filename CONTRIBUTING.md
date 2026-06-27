@@ -1,6 +1,6 @@
-# Contributing to Backlog.md
+# Contributing to Backlog
 
-Thank you for your interest in contributing to Backlog.md. This project is managed using the Backlog.md workflow and we welcome community involvement.
+Thank you for your interest in contributing to Backlog. This project is managed using the Backlog workflow and we welcome community involvement.
 
 ## Opening Issues
 

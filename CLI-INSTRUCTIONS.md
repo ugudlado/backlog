@@ -1,6 +1,6 @@
 # CLI Reference
 
-Full command reference for Backlog.md. For getting started, see [README.md](README.md).
+Full command reference for Backlog. For getting started, see [README.md](README.md).
 
 ## Project Setup
 
@@ -128,13 +128,6 @@ Find tasks across your entire backlog with fuzzy search:
 - **Interactive filters** -- refine your search in real-time with the TUI
 - **Live filtering** -- see results update as you type (no Enter needed)
 
-## Draft Workflow
-
-| Action      | Example                                              |
-|-------------|------------------------------------------------------|
-| Create draft task | `backlog task create "Feature" --draft` (creates task with `status: Draft`) |
-| Promote draft | `backlog task edit <id> --status "To Do"` |
-
 ## Dependency Management
 
 Manage task dependencies to create execution sequences and prevent circular relationships:
@@ -216,7 +209,7 @@ Full help: `backlog --help`
 Export your Kanban board to a clean, shareable markdown file:
 
 ```bash
-# Export to default Backlog.md file
+# Export to default Backlog file
 backlog board export
 
 # Export to custom file

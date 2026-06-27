@@ -31,23 +31,23 @@ These keys live in the project config file (`backlog/config.yml` or root `backlo
 
 > **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
 
-> **Date/Time Support**: Backlog.md supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility.
+> **Date/Time Support**: Backlog supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility.
 
-## Machine-level config (`~/.config/backlog.md/config.yml`)
+## Machine-level config (`~/.config/backlog/config.yml`)
 
-Some settings live outside any project and apply across all repositories on the machine. Create or edit `~/.config/backlog.md/config.yml` directly.
+Some settings live outside any project and apply across all repositories on the machine. Create or edit `~/.config/backlog/config.yml` directly.
 
 **`globalStore`** — redirect all backlog storage to a single external directory instead of creating a `backlog/` folder inside each code repo:
 
 ```yaml
-# ~/.config/backlog.md/config.yml
+# ~/.config/backlog/config.yml
 globalStore: /path/to/my/backlog-store
 ```
 
 When `globalStore` is set:
 - `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
 - All task reads and writes go to the external slot — the code repo is never touched.
-- The `globalStore` directory must exist before running `backlog init`. Backlog.md will not create it.
+- The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
 To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.

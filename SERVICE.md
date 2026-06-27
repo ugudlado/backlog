@@ -1,4 +1,4 @@
-# Running Backlog.md as a Service
+# Running Backlog as a Service
 
 `backlog server` runs the Web UI in the foreground. This is useful when you want a long-lived local dashboard that starts on boot and restarts on failure.
 
@@ -30,7 +30,7 @@ The server creates `<globalStore>/My Project/` and makes it current. It returns 
 
 ## macOS (`backlog service`)
 
-After `npm install -g backlog.md`:
+After `npm install -g @ugudlado1/backlog`:
 
 ```bash
 backlog service start              # default port 6420
@@ -63,7 +63,7 @@ One unit serves every project — it resolves the current project from the globa
 
 ```ini
 [Unit]
-Description=Backlog.md Web UI
+Description=Backlog Web UI
 After=network.target
 
 [Service]

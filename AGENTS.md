@@ -69,15 +69,15 @@ Use the globally installed `backlog` binary for all task commands. There is no C
 
 ## Core Structure
 
-- **CLI Tool**: Built with Bun and TypeScript as a global npm package (`npm i -g backlog.md`)
+- **CLI Tool**: Built with Bun and TypeScript as a global npm package (`npm i -g @ugudlado1/backlog`)
 - **Source Code**: Located in `/src` directory with modular TypeScript structure
 - **Task Management**: Uses markdown files in `backlog/` directory structure
 - **Workflow**: Git-integrated with task IDs referenced in commits and PRs
 
 ## Agent POV
 
-- Treat Backlog.md as a shipped CLI/MCP binary that may be used from other repositories where agents cannot inspect this source tree.
-- Backlog.md is not a supported JavaScript or TypeScript library API for external consumers. Do not treat exported source symbols, classes, or methods in `/src` as stable public interfaces unless they are explicitly documented in shipped CLI/MCP/instruction surfaces.
+- Treat Backlog as a shipped CLI/MCP binary that may be used from other repositories where agents cannot inspect this source tree.
+- Backlog is not a supported JavaScript or TypeScript library API for external consumers. Do not treat exported source symbols, classes, or methods in `/src` as stable public interfaces unless they are explicitly documented in shipped CLI/MCP/instruction surfaces.
 - When you decide what another agent can rely on, use only the public surface: MCP workflow resources, MCP tool descriptions/schemas, CLI help, and instruction files shipped with the project.
 - Do not assume external agents know internal implementation details, constants, or source-only conventions.
 - When reviewing changes, do not ask for compatibility shims just because a source-level method exists or was removed. Only preserve compatibility for behavior that is part of the documented CLI, MCP, config, or instruction contract.

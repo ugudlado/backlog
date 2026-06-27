@@ -1,11 +1,11 @@
 ---
 name: release-prep
-description: Cut a release of backlog.md to npm. Use when the user says "release", "publish", "cut a release", "ship a new version", or "bump the version". Covers the pre-flight checks and the tag that triggers the automated publish pipeline.
+description: Cut a release of @ugudlado1/backlog to npm. Use when the user says "release", "publish", "cut a release", "ship a new version", or "bump the version". Covers the pre-flight checks and the tag that triggers the automated publish pipeline.
 ---
 
 # Release
 
-Releasing backlog.md is **tag-driven and CI-automated**. Pushing a `v*.*.*` tag
+Releasing @ugudlado1/backlog is **tag-driven and CI-automated**. Pushing a `v*.*.*` tag
 triggers `.github/workflows/release.yml`, which builds every platform binary,
 publishes the npm packages, creates the GitHub release, and syncs the version
 back to `main`. Your job is only the local pre-flight and cutting the tag —
@@ -53,7 +53,7 @@ on an end-user's machine after install. Never couple it to a release.
 ## What CI does (so you don't)
 
 `release.yml` on a `v*` tag: compiles binaries for linux/darwin/windows × x64/arm64,
-publishes the `backlog.md` shim + per-platform packages to npm, runs install-sanity
+publishes the `@ugudlado1/backlog` shim + per-platform packages to npm, runs install-sanity
 checks, creates the GitHub release with binaries attached, and commits the synced
 version to `main`. If a release fails, read the failing job in that workflow run —
 do not try to publish manually as a workaround.
