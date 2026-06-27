@@ -297,23 +297,25 @@ describe("agent-guidelines.md workspace decision tree (FR-2)", () => {
 	});
 });
 
-describe("agent-guidelines.md agents-update mention (FR-3)", () => {
-	it("guideline source mentions backlog agents --update-instructions as the refresh command", async () => {
+describe("agent-guidelines.md refresh-instructions mention (FR-3)", () => {
+	it("guideline source points to re-running backlog init to refresh instructions", async () => {
 		const path = join(__dirname, "../guidelines/agent-guidelines.md");
 		const content = await Bun.file(path).text();
 
-		// refresh command mention (FR-3)
-		expect(content).toContain("backlog agents --update-instructions");
+		// refresh command mention (FR-3): the `agents` command was removed; init is the refresh path
+		expect(content).toContain("Refreshing agent instructions");
+		expect(content).toContain("re-run `backlog init`");
+		expect(content).not.toContain("backlog agents --update-instructions");
 	});
 
-	it("addAgentInstructions renders the agents-update mention into CLAUDE.md and AGENTS.md", async () => {
+	it("addAgentInstructions renders the refresh mention into CLAUDE.md and AGENTS.md", async () => {
 		const dir = createUniqueTestDir("test-agent-instructions-update");
 		await mkdir(dir, { recursive: true });
 		try {
 			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
 			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
 				const text = await Bun.file(join(dir, name)).text();
-				expect(text).toContain("backlog agents --update-instructions");
+				expect(text).toContain("re-run `backlog init`");
 			}
 		} finally {
 			await safeCleanup(dir);

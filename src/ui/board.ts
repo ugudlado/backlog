@@ -145,7 +145,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[W]{/} Switch Project | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[S]{/} Stats | {cyan-fg}[W]{/} Switch Project | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -186,6 +186,7 @@ export async function renderBoardTui(
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
+		onShowStats?: () => void | Promise<void>;
 		onProjectSwitch?: (picked: import("../utils/global-store-scan.ts").GlobalStoreProject) => void | Promise<void>;
 		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[]) => void) => void;
 		filters?: {
@@ -1273,6 +1274,16 @@ export async function renderBoardTui(
 				clearFooterTimer();
 				screen.destroy();
 				await options.onProjectSwitch?.(picked);
+				resolve();
+			});
+		}
+
+		if (options?.onShowStats) {
+			screen.key(["s", "S"], async () => {
+				if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+				clearFooterTimer();
+				screen.destroy();
+				await options.onShowStats?.();
 				resolve();
 			});
 		}

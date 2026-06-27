@@ -20,8 +20,7 @@ as the task management system.
   with `backlog init <name>` or `backlog project create <name>`.
 - If the repo has CLAUDE.md or AGENTS.md, read those first; they contain the
   full backlog.md command reference.
-- If they are missing, run `backlog agents --update-instructions` (or
-  `backlog init <name>` for a fresh project) to install them.
+- If they are missing, run `backlog init <name>` to install them.
 - Select the project to act on: `backlog project list`, `backlog project switch
   <name>`, or `--project <name>` per command. Without it, commands use the
   current project.

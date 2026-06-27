@@ -11,13 +11,11 @@ import { registerMcpCommand } from "./commands/mcp.ts";
 import { registerProjectCommand } from "./commands/project.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { DEFAULT_STATUSES } from "./constants/index.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
-	addAgentInstructions,
 	Core,
 	type EnsureMcpGuidelinesResult,
 	ensureMcpGuidelines,
@@ -63,7 +61,6 @@ import {
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
-import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -2604,166 +2601,6 @@ boardCmd
 		}
 	});
 
-// Agents command group
-const agentsCmd = program.command("agents");
-
-agentsCmd
-	.description("manage agent instruction files")
-	.option(
-		"--update-instructions",
-		"update agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .github/copilot-instructions.md)",
-	)
-	.action(async (options) => {
-		if (!options.updateInstructions) {
-			agentsCmd.help();
-			return;
-		}
-		try {
-			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
-
-			// Check if backlog project is initialized
-			const config = await core.filesystem.loadConfig();
-			if (!config) {
-				console.error("No backlog project found. Initialize one first with: backlog init");
-				process.exit(1);
-			}
-
-			const selected = await clack.multiselect({
-				message: "Select agent instruction files to update (space toggles selections; enter confirms)",
-				required: false,
-				options: [
-					{ label: "CLAUDE.md (Claude Code)", value: "CLAUDE.md" },
-					{
-						label: "AGENTS.md (Codex, Jules, Amp, Cursor, Zed, Warp, Aider, GitHub, RooCode)",
-						value: "AGENTS.md",
-					},
-					{ label: "GEMINI.md (Google CLI)", value: "GEMINI.md" },
-					{ label: "Copilot (GitHub Copilot)", value: ".github/copilot-instructions.md" },
-				],
-			});
-			if (clack.isCancel(selected)) {
-				clack.log.info("Agent instruction update cancelled.");
-				return;
-			}
-
-			const files: AgentInstructionFile[] = Array.isArray(selected) ? (selected as AgentInstructionFile[]) : [];
-			if (files.length > 0) {
-				await addAgentInstructions(cwd, files);
-				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
-			} else {
-				console.log("No files selected for update.");
-			}
-		} catch (err) {
-			console.error("Failed to update agent instructions", err);
-			process.exitCode = 1;
-		}
-	});
-
-// Cleanup command for managing completed tasks
-program
-	.command("cleanup")
-	.description("move completed tasks to completed folder based on age")
-	.action(async () => {
-		try {
-			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
-
-			// Check if backlog project is initialized
-			const config = await core.filesystem.loadConfig();
-			if (!config) {
-				console.error("No backlog project found. Initialize one first with: backlog init");
-				process.exit(1);
-			}
-
-			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
-			const terminalStatus = getTerminalStatus(statuses);
-			if (!terminalStatus) {
-				console.log("No terminal status configured for cleanup.");
-				return;
-			}
-
-			const tasks = await core.queryTasks();
-			const terminalStatusTasks = tasks.filter((task) => isTerminalStatus(task.status, statuses));
-
-			if (terminalStatusTasks.length === 0) {
-				console.log(`No ${terminalStatus} tasks found to clean up.`);
-				return;
-			}
-
-			console.log(`Found ${terminalStatusTasks.length} tasks marked as ${terminalStatus}.`);
-
-			const ageOptions = [
-				{ title: "1 day", value: 1 },
-				{ title: "1 week", value: 7 },
-				{ title: "2 weeks", value: 14 },
-				{ title: "3 weeks", value: 21 },
-				{ title: "1 month", value: 30 },
-				{ title: "3 months", value: 90 },
-				{ title: "1 year", value: 365 },
-			];
-
-			const selectedAgePrompt = await clack.select({
-				message: "Move tasks to completed folder if they are older than:",
-				options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
-			});
-			const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
-
-			if (selectedAge === undefined) {
-				console.log("Cleanup cancelled.");
-				return;
-			}
-
-			// Get tasks older than selected period
-			const tasksToMove = await core.getTerminalStatusTasksByAge(selectedAge);
-
-			if (tasksToMove.length === 0) {
-				console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);
-				return;
-			}
-
-			console.log(
-				`\nFound ${tasksToMove.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
-			);
-			for (const task of tasksToMove.slice(0, 5)) {
-				const date = task.updatedDate || task.createdDate;
-				console.log(`  - ${task.id}: ${task.title} (${date})`);
-			}
-			if (tasksToMove.length > 5) {
-				console.log(`  ... and ${tasksToMove.length - 5} more`);
-			}
-
-			const confirmedPrompt = await clack.confirm({
-				message: `Move ${tasksToMove.length} tasks to completed folder?`,
-				initialValue: false,
-			});
-			const confirmed = clack.isCancel(confirmedPrompt) ? false : confirmedPrompt;
-
-			if (!confirmed) {
-				console.log("Cleanup cancelled.");
-				return;
-			}
-
-			// Move tasks to completed folder
-			let successCount = 0;
-
-			console.log("Moving tasks...");
-			for (const task of tasksToMove) {
-				const success = await core.completeTask(task.id);
-				if (success) {
-					successCount++;
-				} else {
-					console.error(`Failed to move task ${task.id}`);
-				}
-			}
-
-			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-		} catch (err) {
-			console.error("Failed to run cleanup", err);
-			process.exitCode = 1;
-		}
-	});
-
 // Server: long-running web UI process (used by `backlog service`, dev, scripts)
 async function runServer(options: { port?: string; project?: string; open?: boolean }): Promise<void> {
 	let cwd: string;
@@ -2839,30 +2676,6 @@ program
 			await runServer({ port: options.port, project: options.project, open: options.open !== false });
 		} catch (err) {
 			console.error("Failed to start server", err);
-			process.exitCode = 1;
-		}
-	});
-
-// Overview command for statistics
-program
-	.command("overview")
-	.description("display project statistics and metrics")
-	.action(async () => {
-		try {
-			const cwd = await requireProjectRoot();
-
-			// Import and run the overview command
-			const { runOverviewCommand } = await import("./commands/overview.ts");
-			await runWithProjectSwitch(cwd, async (core) => {
-				const config = await core.filesystem.loadConfig();
-				if (!config) {
-					console.error("No backlog project found. Initialize one first with: backlog init");
-					process.exit(1);
-				}
-				return await runOverviewCommand(core);
-			});
-		} catch (err) {
-			console.error("Failed to display project overview", err);
 			process.exitCode = 1;
 		}
 	});

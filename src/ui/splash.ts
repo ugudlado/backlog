@@ -84,7 +84,6 @@ export async function printSplash(opts: SplashOptions): Promise<void> {
 		lines.push(`  ${accent(color, "backlog task list --plain")}  ${dim(color, "List tasks (plain text)")}`);
 		lines.push(`  ${accent(color, "backlog board")}  ${dim(color, "Open the TUI Kanban board")}`);
 		lines.push(`  ${accent(color, "backlog browser")}  ${dim(color, "Start the web UI")}`);
-		lines.push(`  ${accent(color, "backlog overview")}  ${dim(color, "Show project statistics")}`);
 	}
 
 	lines.push("");

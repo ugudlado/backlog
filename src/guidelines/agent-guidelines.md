@@ -784,13 +784,9 @@ Linux and Windows are not supported by `backlog service`; use `backlog server` d
 
 ### Refreshing agent instructions
 
-If agent instruction files (CLAUDE.md, AGENTS.md, etc.) already exist in a repo and need to be updated to the latest version, run:
+If agent instruction files (CLAUDE.md, AGENTS.md, etc.) already exist in a repo and need to be updated to the latest version, re-run `backlog init` and select the desired instruction files.
 
-```bash
-backlog agents --update-instructions
-```
-
-This is idempotent — it replaces the Backlog.md block between the markers without touching surrounding content. For a fresh repo, run `backlog init` instead.
+This is idempotent — it replaces the Backlog.md block between the markers without touching surrounding content.
 
 ## Remember: The Golden Rule
 

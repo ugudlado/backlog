@@ -4,6 +4,7 @@
 
 import { box } from "neo-neo-bblessed";
 import type { Core } from "../core/backlog.ts";
+import { getTaskStatistics } from "../core/statistics.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import type { GlobalStoreProject } from "../utils/global-store-scan.ts";
@@ -13,6 +14,7 @@ import { applySharedTaskFilters, createTaskSearchIndex } from "../utils/task-sea
 import { watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { renderOverviewTui } from "./overview-tui.ts";
 import { pickProject } from "./project-switcher-picker.ts";
 import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
 import { createScreen } from "./tui.ts";
@@ -210,7 +212,7 @@ export async function loadTasksForUnifiedView(
 	}
 }
 
-type ViewResult = "switch" | "exit" | "switch-project";
+type ViewResult = "switch" | "exit" | "switch-project" | "stats";
 
 /**
  * Main unified view controller that handles Tab switching between views.
@@ -434,11 +436,16 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<Globa
 					result = "switch-project";
 				};
 
+				const onShowStats = () => {
+					result = "stats";
+				};
+
 				renderBoardTui(kanbanTasks, statuses, layout, maxColumnWidth, {
 					onTaskSelect: (task) => {
 						selectedTask = task;
 					},
 					onTabPress,
+					onShowStats,
 					onProjectSwitch,
 					filters: createKanbanSharedFilters(currentFilters),
 					availableLabels: getBoardAvailableLabels(),
@@ -490,7 +497,18 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<Globa
 			isInitialLoad = false;
 
 			// Handle the result
-			if (result === "switch") {
+			if (result === "stats") {
+				// Show project statistics, then return to the board.
+				const config = await options.core.filesystem.loadConfig();
+				const statistics = getTaskStatistics(getRenderableTasks(), kanbanStatuses);
+				const picked = await renderOverviewTui(statistics, config?.projectName || "Project");
+				if (picked) {
+					pickedProject = picked;
+					isRunning = false;
+				} else {
+					currentView = "kanban";
+				}
+			} else if (result === "switch") {
 				// User pressed Tab, switch to the next view
 				switch (currentView) {
 					case "task-list":
