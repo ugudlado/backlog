@@ -5,10 +5,10 @@ const { getPackageName } = require("../../scripts/resolveBinary.cjs");
 
 describe("getPackageName", () => {
 	it("maps win32 platform to windows package", () => {
-		expect(getPackageName("win32", "x64")).toBe("backlog.md-windows-x64");
+		expect(getPackageName("win32", "x64")).toBe("@ugudlado/backlog-windows-x64");
 	});
 
 	it("returns linux name unchanged", () => {
-		expect(getPackageName("linux", "arm64")).toBe("backlog.md-linux-arm64");
+		expect(getPackageName("linux", "arm64")).toBe("@ugudlado/backlog-linux-arm64");
 	});
 });

@@ -22,8 +22,8 @@ describe("CLI Splash (bare run)", () => {
 		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);
-		expect(out).toContain("Backlog.md v");
-		expect(out).toContain("Docs: https://backlog.md");
+		expect(out).toContain("Backlog v");
+		expect(out).toContain("Docs: https://github.com/ugudlado/backlog");
 		expect(out).toContain("backlog init");
 	});
 
@@ -60,8 +60,8 @@ describe("CLI Splash (bare run)", () => {
 		const result = await $`bun ${CLI_PATH} --plain`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
 		expect(result.exitCode).toBe(0);
-		expect(out).toContain("Backlog.md v");
-		expect(out).toContain("Docs: https://backlog.md");
+		expect(out).toContain("Backlog v");
+		expect(out).toContain("Docs: https://github.com/ugudlado/backlog");
 	});
 });
 

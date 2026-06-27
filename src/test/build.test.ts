@@ -47,7 +47,7 @@ describe("CLI packaging", () => {
 
 		const helpResult = await $`${OUTFILE} --help`.quiet();
 		const helpOutput = helpResult.stdout.toString();
-		expect(helpOutput).toContain("Backlog.md - Project management CLI");
+		expect(helpOutput).toContain("Backlog - Project management CLI");
 
 		// Also test version command
 		const versionResult = await $`${OUTFILE} --version`.quiet();
