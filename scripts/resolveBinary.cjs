@@ -21,7 +21,7 @@ function mapArch(arch = process.arch) {
 }
 
 function getPackageName(platform = process.platform, arch = process.arch) {
-	return `@ugudlado/backlog-${mapPlatform(platform)}-${mapArch(arch)}`;
+	return `@ugudlado1/backlog-${mapPlatform(platform)}-${mapArch(arch)}`;
 }
 
 function resolveBinaryPath(platform = process.platform, arch = process.arch) {

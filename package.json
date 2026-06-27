@@ -1,5 +1,5 @@
 {
-	"name": "@ugudlado/backlog",
+	"name": "@ugudlado1/backlog",
 	"version": "2.0.1",
 	"type": "module",
 	"module": "src/cli.ts",
@@ -12,11 +12,11 @@
 		"backlog": "scripts/cli.cjs"
 	},
 	"optionalDependencies": {
-		"@ugudlado/backlog-darwin-arm64": "*",
-		"@ugudlado/backlog-darwin-x64": "*",
-		"@ugudlado/backlog-linux-arm64": "*",
-		"@ugudlado/backlog-linux-x64": "*",
-		"@ugudlado/backlog-windows-x64": "*"
+		"@ugudlado1/backlog-darwin-arm64": "*",
+		"@ugudlado1/backlog-darwin-x64": "*",
+		"@ugudlado1/backlog-linux-arm64": "*",
+		"@ugudlado1/backlog-linux-x64": "*",
+		"@ugudlado1/backlog-windows-x64": "*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.12",

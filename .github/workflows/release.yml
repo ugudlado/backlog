@@ -108,11 +108,11 @@ jobs:
               .scripts = {"postuninstall": "node postuninstall.cjs"} |
               .repository = {"type":"git","url":"https://github.com/ugudlado/backlog"} |
               .optionalDependencies = {
-                "@ugudlado/backlog-linux-x64"  : "'$TAG'",
-                "@ugudlado/backlog-linux-arm64": "'$TAG'",
-                "@ugudlado/backlog-darwin-x64" : "'$TAG'",
-                "@ugudlado/backlog-darwin-arm64": "'$TAG'",
-                "@ugudlado/backlog-windows-x64": "'$TAG'"
+                "@ugudlado1/backlog-linux-x64"  : "'$TAG'",
+                "@ugudlado1/backlog-linux-arm64": "'$TAG'",
+                "@ugudlado1/backlog-darwin-x64" : "'$TAG'",
+                "@ugudlado1/backlog-darwin-arm64": "'$TAG'",
+                "@ugudlado1/backlog-windows-x64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v5
@@ -136,23 +136,23 @@ jobs:
       matrix:
         include:
           - target: bun-linux-x64-baseline
-            package: "@ugudlado/backlog-linux-x64"
+            package: "@ugudlado1/backlog-linux-x64"
             os: linux
             cpu: x64
           - target: bun-linux-arm64
-            package: "@ugudlado/backlog-linux-arm64"
+            package: "@ugudlado1/backlog-linux-arm64"
             os: linux
             cpu: arm64
           - target: bun-darwin-x64
-            package: "@ugudlado/backlog-darwin-x64"
+            package: "@ugudlado1/backlog-darwin-x64"
             os: darwin
             cpu: x64
           - target: bun-darwin-arm64
-            package: "@ugudlado/backlog-darwin-arm64"
+            package: "@ugudlado1/backlog-darwin-arm64"
             os: darwin
             cpu: arm64
           - target: bun-windows-x64-baseline
-            package: "@ugudlado/backlog-windows-x64"
+            package: "@ugudlado1/backlog-windows-x64"
             os: win32
             cpu: x64
     runs-on: ubuntu-latest
@@ -230,7 +230,7 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
-          PACKAGE_NAME="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado/backlog-${platform}-${arch}`);')"
+          PACKAGE_NAME="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado1/backlog-${platform}-${arch}`);')"
           BINARY_PATH="node_modules/${PACKAGE_NAME}/backlog"
 
           echo "Waiting for ${PACKAGE_NAME}@${VERSION} to become installable..."
@@ -270,11 +270,11 @@ jobs:
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
           PACKAGES=(
-            "@ugudlado/backlog-linux-x64"
-            "@ugudlado/backlog-linux-arm64"
-            "@ugudlado/backlog-darwin-x64"
-            "@ugudlado/backlog-darwin-arm64"
-            "@ugudlado/backlog-windows-x64"
+            "@ugudlado1/backlog-linux-x64"
+            "@ugudlado1/backlog-linux-arm64"
+            "@ugudlado1/backlog-darwin-x64"
+            "@ugudlado1/backlog-darwin-arm64"
+            "@ugudlado1/backlog-windows-x64"
           )
 
           for pkg in "${PACKAGES[@]}"; do
@@ -311,7 +311,7 @@ jobs:
             throw "Unsupported runner arch: $Arch"
           }
 
-          $PackageName = "@ugudlado/backlog-windows-$Arch"
+          $PackageName = "@ugudlado1/backlog-windows-$Arch"
           $BinaryPath = Join-Path -Path "node_modules/$PackageName" -ChildPath "backlog.exe"
 
           Write-Host "Waiting for $PackageName@$Version to become installable..."
@@ -370,7 +370,7 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
-          EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado/backlog-${platform}-${arch}`);')"
+          EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado1/backlog-${platform}-${arch}`);')"
           echo "Waiting for backlog.md@${VERSION} install + ${EXPECTED_PACKAGE} optional dependency..."
 
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
@@ -416,7 +416,7 @@ jobs:
             throw "Unsupported runner arch: $Arch"
           }
 
-          $ExpectedPackage = "@ugudlado/backlog-windows-$Arch"
+          $ExpectedPackage = "@ugudlado1/backlog-windows-$Arch"
           Write-Host "Waiting for backlog.md@$Version install + $ExpectedPackage optional dependency..."
 
           for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
