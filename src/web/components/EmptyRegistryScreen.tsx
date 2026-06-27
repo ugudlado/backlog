@@ -37,7 +37,7 @@ const EmptyRegistryScreen: React.FC<EmptyRegistryScreenProps> = ({ onWorkspaceAd
 		<div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
 			<div className="w-full max-w-xl bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 space-y-6">
 				<header className="space-y-2">
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">No Backlog.md projects yet</h1>
+					<h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">No Backlog projects yet</h1>
 					<p className="text-sm text-gray-600 dark:text-gray-300">
 						Create a project below — its tasks are stored in the configured global store. You can also run{" "}
 						<code className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">

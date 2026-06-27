@@ -557,7 +557,7 @@ program
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
 	)
 	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
-	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog.md (mcp, cli, or none)")
+	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog (mcp, cli, or none)")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
@@ -735,7 +735,7 @@ program
 							integrationTipShown = true;
 						}
 						const integrationPrompt = await clack.select({
-							message: "How would you like your AI tools to connect to Backlog.md?",
+							message: "How would you like your AI tools to connect to Backlog?",
 							initialValue: "mcp",
 							options: [
 								{
@@ -747,7 +747,7 @@ program
 									value: "cli",
 								},
 								{
-									label: "Skip for now (I am not using Backlog.md with AI tools)",
+									label: "Skip for now (I am not using Backlog with AI tools)",
 									value: "none",
 								},
 							],
@@ -1106,7 +1106,7 @@ program
 
 				// Log Claude agent result from shared init
 				if (integrationMode === "cli" && initResult.mcpResults?.claudeAgent) {
-					clack.log.info(`Claude Code Backlog.md agent ${initResult.mcpResults.claudeAgent}`);
+					clack.log.info(`Claude Code Backlog agent ${initResult.mcpResults.claudeAgent}`);
 				}
 			} catch (err) {
 				console.error("Failed to initialize project", err);

@@ -389,7 +389,7 @@ export class BacklogServer {
 			this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]);
 
 			const url = `http://localhost:${finalPort}`;
-			console.log(`🚀 Backlog.md browser interface running at ${url}`);
+			console.log(`🚀 Backlog browser interface running at ${url}`);
 			console.log(`🔌 MCP over HTTP endpoint: ${url}/mcp`);
 			console.log(`📊 Project: ${this.projectName}`);
 			if (this.authToken) {

@@ -20,7 +20,7 @@ const Navigation: React.FC<NavigationProps> = ({projectName, onProjectSwitched})
 						rel="noopener noreferrer"
 						className="hidden md:inline text-sm text-stone-600 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-300 hover:underline transition-colors duration-200 shrink-0"
 					>
-						Backlog.md
+						Backlog
 					</a>
 				</div>
 				<div className="flex items-center gap-2 sm:gap-3 shrink-0">
