@@ -1,5 +1,5 @@
 ---
-name: release
+name: release-prep
 description: Cut a release of backlog.md to npm. Use when the user says "release", "publish", "cut a release", "ship a new version", or "bump the version". Covers the pre-flight checks and the tag that triggers the automated publish pipeline.
 ---
 
