@@ -4,11 +4,11 @@ const { spawn } = require("node:child_process");
 
 // Platform-specific packages to uninstall
 const platformPackages = [
-	"backlog.md-linux-x64",
-	"backlog.md-linux-arm64",
-	"backlog.md-darwin-x64",
-	"backlog.md-darwin-arm64",
-	"backlog.md-windows-x64",
+	"@ugudlado/backlog-linux-x64",
+	"@ugudlado/backlog-linux-arm64",
+	"@ugudlado/backlog-darwin-x64",
+	"@ugudlado/backlog-darwin-arm64",
+	"@ugudlado/backlog-windows-x64",
 ];
 
 // Detect package manager

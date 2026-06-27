@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Local end-to-end install of backlog.md from this checkout.
+# Local end-to-end install of @ugudlado/backlog from this checkout.
 #
 # Mirrors the release pipeline: builds dist/backlog, packs both the platform
 # sub-package and the main shim package as .tgz files, and installs them
 # globally so `backlog --version` resolves to the locally-built code.
 #
 # To uninstall:
-#   npm rm -g backlog.md backlog.md-<os>-<arch>
+#   npm rm -g @ugudlado/backlog @ugudlado/backlog-<os>-<arch>
 
 set -euo pipefail
 
@@ -24,7 +24,11 @@ case "$(uname -m)" in
 	*) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
 esac
 
-PKG="backlog.md-${OS}-${ARCH}"
+PKG="@ugudlado/backlog-${OS}-${ARCH}"
+MAIN="@ugudlado/backlog"
+# npm pack flattens "@scope/name" -> "scope-name" in the .tgz filename.
+PKG_FILE="ugudlado-backlog-${OS}-${ARCH}"
+MAIN_FILE="ugudlado-backlog"
 STAGE=".local-install"
 VERSION="0.0.0-local"
 
@@ -53,7 +57,7 @@ cp -f LICENSE README.md "$STAGE/main/" 2>/dev/null || true
 
 cat > "$STAGE/main/package.json" <<EOF
 {
-  "name": "backlog.md",
+  "name": "$MAIN",
   "version": "$VERSION",
   "bin": { "backlog": "cli.cjs" },
   "files": ["cli.cjs", "resolveBinary.cjs", "postuninstall.cjs", "package.json", "README.md", "LICENSE"],
@@ -69,13 +73,13 @@ EOF
 echo "==> Packing tarballs"
 ( cd "$STAGE/platform" && npm pack --silent ) >/dev/null
 ( cd "$STAGE/main"     && npm pack --silent ) >/dev/null
-PLATFORM_TGZ="$(ls "$STAGE"/platform/${PKG}-${VERSION}.tgz)"
-MAIN_TGZ="$(ls "$STAGE"/main/backlog.md-${VERSION}.tgz)"
+PLATFORM_TGZ="$(ls "$STAGE"/platform/${PKG_FILE}-${VERSION}.tgz)"
+MAIN_TGZ="$(ls "$STAGE"/main/${MAIN_FILE}-${VERSION}.tgz)"
 echo "  platform: $PLATFORM_TGZ"
 echo "  main:     $MAIN_TGZ"
 
 echo "==> Removing any previous global install"
-npm rm -g backlog.md "$PKG" 2>/dev/null || true
+npm rm -g "$MAIN" "$PKG" 2>/dev/null || true
 
 echo "==> Installing platform package globally"
 npm i -g "$PLATFORM_TGZ"
@@ -89,4 +93,4 @@ echo "  $(command -v backlog)"
 echo "  $(backlog --version 2>&1 || true)"
 echo
 echo "To remove:"
-echo "  npm rm -g backlog.md $PKG"
+echo "  npm rm -g $MAIN $PKG"

@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 env:
   BUN_VERSION: 1.3.11
@@ -86,6 +85,8 @@ jobs:
   npm-publish:
     needs: [build, verify-platform-packages]
     runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Prepare npm package
@@ -105,25 +106,20 @@ jobs:
               .bin = {backlog:"cli.js"} |
               .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","package.json","README.md","LICENSE"] |
               .scripts = {"postuninstall": "node postuninstall.cjs"} |
-              .repository = {"type":"git","url":"https://github.com/MrLesk/Backlog.md"} |
+              .repository = {"type":"git","url":"https://github.com/ugudlado/Backlog.md"} |
               .optionalDependencies = {
-                "backlog.md-linux-x64"  : "'$TAG'",
-                "backlog.md-linux-arm64": "'$TAG'",
-                "backlog.md-darwin-x64" : "'$TAG'",
-                "backlog.md-darwin-arm64": "'$TAG'",
-                "backlog.md-windows-x64": "'$TAG'"
+                "@ugudlado/backlog-linux-x64"  : "'$TAG'",
+                "@ugudlado/backlog-linux-arm64": "'$TAG'",
+                "@ugudlado/backlog-darwin-x64" : "'$TAG'",
+                "@ugudlado/backlog-darwin-arm64": "'$TAG'",
+                "@ugudlado/backlog-windows-x64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Configure npm for trusted publishing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install -g npm@11.6.0
-          npm --version
-      - name: Dry run trusted publish
+          registry-url: https://registry.npmjs.org
+      - name: Dry run publish
         run: |
           cd dist
           npm publish --access public --dry-run
@@ -134,27 +130,29 @@ jobs:
 
   publish-binaries:
     needs: build
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     strategy:
       matrix:
         include:
           - target: bun-linux-x64-baseline
-            package: backlog.md-linux-x64
+            package: "@ugudlado/backlog-linux-x64"
             os: linux
             cpu: x64
           - target: bun-linux-arm64
-            package: backlog.md-linux-arm64
+            package: "@ugudlado/backlog-linux-arm64"
             os: linux
             cpu: arm64
           - target: bun-darwin-x64
-            package: backlog.md-darwin-x64
+            package: "@ugudlado/backlog-darwin-x64"
             os: darwin
             cpu: x64
           - target: bun-darwin-arm64
-            package: backlog.md-darwin-arm64
+            package: "@ugudlado/backlog-darwin-arm64"
             os: darwin
             cpu: arm64
           - target: bun-windows-x64-baseline
-            package: backlog.md-windows-x64
+            package: "@ugudlado/backlog-windows-x64"
             os: win32
             cpu: x64
     runs-on: ubuntu-latest
@@ -189,7 +187,7 @@ jobs:
             "files": ["backlog${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"],
             "repository": {
               "type": "git",
-              "url": "https://github.com/MrLesk/Backlog.md"
+              "url": "https://github.com/ugudlado/Backlog.md"
             }
           }
           EOF
@@ -201,12 +199,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Configure npm for trusted publishing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install -g npm@11.6.0
-          npm --version
+          registry-url: https://registry.npmjs.org
       - name: Dry run platform publish
         run: |
           cd pkg
@@ -237,7 +230,7 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
-          PACKAGE_NAME="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`backlog.md-${platform}-${arch}`);')"
+          PACKAGE_NAME="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado/backlog-${platform}-${arch}`);')"
           BINARY_PATH="node_modules/${PACKAGE_NAME}/backlog"
 
           echo "Waiting for ${PACKAGE_NAME}@${VERSION} to become installable..."
@@ -277,11 +270,11 @@ jobs:
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
           PACKAGES=(
-            "backlog.md-linux-x64"
-            "backlog.md-linux-arm64"
-            "backlog.md-darwin-x64"
-            "backlog.md-darwin-arm64"
-            "backlog.md-windows-x64"
+            "@ugudlado/backlog-linux-x64"
+            "@ugudlado/backlog-linux-arm64"
+            "@ugudlado/backlog-darwin-x64"
+            "@ugudlado/backlog-darwin-arm64"
+            "@ugudlado/backlog-windows-x64"
           )
 
           for pkg in "${PACKAGES[@]}"; do
@@ -318,7 +311,7 @@ jobs:
             throw "Unsupported runner arch: $Arch"
           }
 
-          $PackageName = "backlog.md-windows-$Arch"
+          $PackageName = "@ugudlado/backlog-windows-$Arch"
           $BinaryPath = Join-Path -Path "node_modules/$PackageName" -ChildPath "backlog.exe"
 
           Write-Host "Waiting for $PackageName@$Version to become installable..."
@@ -377,7 +370,7 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
-          EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`backlog.md-${platform}-${arch}`);')"
+          EXPECTED_PACKAGE="$(node -e 'const map = { win32: "windows", darwin: "darwin", linux: "linux" }; const platform = map[process.platform]; const arch = process.arch; if (!platform || !["x64","arm64"].includes(arch)) { process.exit(1); } process.stdout.write(`@ugudlado/backlog-${platform}-${arch}`);')"
           echo "Waiting for backlog.md@${VERSION} install + ${EXPECTED_PACKAGE} optional dependency..."
 
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
@@ -423,7 +416,7 @@ jobs:
             throw "Unsupported runner arch: $Arch"
           }
 
-          $ExpectedPackage = "backlog.md-windows-$Arch"
+          $ExpectedPackage = "@ugudlado/backlog-windows-$Arch"
           Write-Host "Waiting for backlog.md@$Version install + $ExpectedPackage optional dependency..."
 
           for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
