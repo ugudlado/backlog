@@ -16,6 +16,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { apiClient } from './lib/api';
+import { getToken } from './lib/auth.ts';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
@@ -366,7 +367,9 @@ function App() {
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
+    const token = getToken();
+    const wsUrl = `${protocol}//${window.location.host}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    const ws = new WebSocket(wsUrl);
     ws.onmessage = (event) => {
       if (event.data === "tasks-updated") {
         refreshData();

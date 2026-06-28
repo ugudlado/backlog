@@ -118,7 +118,7 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
-	// Set once at startup from BACKLOG_TOKEN env var and the backlog_tokens config array.
+	// Set once at startup from BACKLOG_TOKEN env var and the server_tokens config array.
 	// Empty set = no auth required.
 	private readonly authTokens: Set<string> = new Set(getAcceptedTokens());
 
@@ -130,7 +130,11 @@ export class BacklogServer {
 	private checkAuth(req: Request): Response | null {
 		if (this.authTokens.size === 0) return null;
 		const header = req.headers.get("Authorization") ?? "";
-		const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+		// Browsers can't set headers on `new WebSocket()`, so the WS client passes
+		// the token as a `?token=` query param. Bearer header is preferred for HTTP.
+		const token = header.startsWith("Bearer ")
+			? header.slice(7).trim()
+			: (new URL(req.url).searchParams.get("token") ?? "").trim();
 		if (!this.authTokens.has(token)) {
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
 		}
@@ -216,7 +220,7 @@ export class BacklogServer {
 		}
 	}
 
-	async start(port?: number, openBrowser = true): Promise<void> {
+	async start(port?: number, openBrowser = false): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
 			console.log("Server already running");
@@ -229,8 +233,8 @@ export class BacklogServer {
 		const finalPort = port ?? config?.defaultPort ?? 6420;
 		this.projectName = config?.projectName || "Untitled Project";
 
-		// Check if browser should open (config setting or CLI override)
-		// Default to true if autoOpenBrowser is not explicitly set to false
+		// Check if browser should open. Opening is opt-in: the caller must pass
+		// openBrowser (e.g. `backlog server --open`) AND config must not disable it.
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		// Set up config watcher to broadcast changes
@@ -398,7 +402,7 @@ export class BacklogServer {
 				console.log(`🔒 API auth: bearer token required (${this.authTokens.size} token(s) accepted)`);
 			} else {
 				console.log(
-					"⚠️  API auth: none — set backlog_tokens in ~/.config/backlog/config.yml or BACKLOG_TOKEN before exposing publicly",
+					"⚠️  API auth: none — set server_tokens in ~/.config/backlog/config.yml or BACKLOG_TOKEN before exposing publicly",
 				);
 			}
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";

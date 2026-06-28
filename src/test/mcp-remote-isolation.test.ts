@@ -18,7 +18,7 @@ describe("createMcpServer remote config isolation", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 		await writeFile(
 			join(machineConfigDir, "config.yml"),
-			"backlog_url: http://remote.example:6420\nbacklog_token: test-token\n",
+			"backlog_url: http://remote.example:6420\nclient_token: test-token\n",
 		);
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
 		clearMachineConfigCache();
