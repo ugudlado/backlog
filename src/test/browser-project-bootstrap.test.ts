@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, normalize, resolve } from "node:path";
 import {
 	ensureProjectsFileExists,
 	getMachineConfigDir,
@@ -53,12 +54,14 @@ describe("ensureProjectsFileExists", () => {
 describe("machine-config-dir override precedence", () => {
 	it("explicit override beats env var beats default", () => {
 		const prev = process.env.BACKLOG_MACHINE_CONFIG_DIR;
+		const explicitPath = join(process.cwd(), "from-explicit");
+		const envPath = join(process.cwd(), "from-env");
 		try {
-			process.env.BACKLOG_MACHINE_CONFIG_DIR = "/from/env";
-			expect(getMachineConfigDir("/from/explicit")).toBe("/from/explicit");
-			expect(getMachineConfigDir()).toBe("/from/env");
+			process.env.BACKLOG_MACHINE_CONFIG_DIR = envPath;
+			expect(getMachineConfigDir(explicitPath)).toBe(normalize(resolve(explicitPath)));
+			expect(getMachineConfigDir()).toBe(normalize(resolve(envPath)));
 			delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
-			expect(getMachineConfigDir()).toMatch(/\.config\/backlog$/);
+			expect(getMachineConfigDir()).toBe(normalize(join(homedir(), ".config", "backlog")));
 		} finally {
 			if (prev === undefined) {
 				delete process.env.BACKLOG_MACHINE_CONFIG_DIR;

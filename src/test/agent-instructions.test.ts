@@ -367,7 +367,7 @@ describe("backlog-md skill bundle (source)", () => {
 
 	it("SKILL.md has YAML frontmatter with name: backlog-md and a description field", async () => {
 		const path = join(__dirname, "../guidelines/skills/backlog-md/SKILL.md");
-		const content = await Bun.file(path).text();
+		const content = (await Bun.file(path).text()).replace(/\r\n/g, "\n");
 
 		// Must start with a YAML frontmatter block
 		expect(content.startsWith("---")).toBe(true);
