@@ -58,6 +58,8 @@ const INSTRUCTIONS =
 
 type ServerInitOptions = {
 	debug?: boolean;
+	/** When true, always bootstrap MCP from local project files (embedded server MCP). */
+	forceLocal?: boolean;
 };
 
 type ServerRequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -530,7 +532,7 @@ export class McpServer extends Core {
  * handler can then query client roots to find the correct project.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
-	if (isRemoteMode()) {
+	if (isRemoteMode() && !options.forceLocal) {
 		const config = await remoteGetConfig();
 		const server = new McpServer(projectRoot, INSTRUCTIONS);
 		registerWorkflowResources(server);

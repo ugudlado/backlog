@@ -241,7 +241,7 @@ export class BacklogServer {
 
 		try {
 			await this.ensureServicesReady();
-			this.mcpServer = await createMcpServer(this.projectPath);
+			this.mcpServer = await createMcpServer(this.projectPath, { forceLocal: true });
 
 			const serveOptions = {
 				port: finalPort,
