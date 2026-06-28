@@ -7,6 +7,8 @@ export interface MachineConfig {
 	globalStore: string | null;
 	backlogUrl: string | null;
 	backlogToken: string | null;
+	/** Accepted tokens for the embedded server. Includes backlogToken if set. */
+	backlogTokens: string[];
 }
 
 const MACHINE_CONFIG_FILENAME = "config.yml";
@@ -15,6 +17,7 @@ const EMPTY_MACHINE_CONFIG: MachineConfig = {
 	globalStore: null,
 	backlogUrl: null,
 	backlogToken: null,
+	backlogTokens: [],
 };
 
 /** Module-level cache keyed by resolved override string. */
@@ -47,13 +50,22 @@ function parseBacklogUrl(raw: string): string | null {
 	}
 }
 
+/** Returns the `- item` value if the line is a YAML block-list entry, else null. */
+function parseListItem(rawLine: string): string | null {
+	const trimmed = rawLine.trim();
+	if (!trimmed.startsWith("- ") && trimmed !== "-") return null;
+	return stripYamlQuotes(trimmed.slice(1).trim());
+}
+
 function parseMachineConfigYaml(content: string): MachineConfig {
 	let globalStore: string | null = null;
 	let backlogUrl: string | null = null;
 	let backlogToken: string | null = null;
+	let backlogTokens: string[] = [];
 
-	for (const rawLine of content.split(/\r?\n/)) {
-		const line = rawLine.trim();
+	const lines = content.split(/\r?\n/);
+	for (let i = 0; i < lines.length; i++) {
+		const line = (lines[i] ?? "").trim();
 		if (!line || line.startsWith("#")) continue;
 
 		const colonIdx = line.indexOf(":");
@@ -61,6 +73,25 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 
 		const key = line.slice(0, colonIdx).trim();
 		const raw = stripYamlQuotes(line.slice(colonIdx + 1).trim());
+
+		// Block array: key with empty value, items follow as `- item` lines.
+		if ((key === "backlog_tokens" || key === "backlogTokens") && !raw) {
+			const items: string[] = [];
+			while (i + 1 < lines.length) {
+				const next = lines[i + 1] ?? "";
+				if (!next.trim() || next.trim().startsWith("#")) {
+					i++;
+					continue;
+				}
+				const item = parseListItem(next);
+				if (item === null) break; // next top-level key
+				if (item) items.push(item);
+				i++;
+			}
+			backlogTokens = items;
+			continue;
+		}
+
 		if (!raw) continue;
 
 		if (key === "globalStore") {
@@ -83,7 +114,9 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 		}
 	}
 
-	return { globalStore, backlogUrl, backlogToken };
+	// Singular token is always an accepted token; dedupe in case it's also listed.
+	const accepted = backlogToken ? [backlogToken, ...backlogTokens] : backlogTokens;
+	return { globalStore, backlogUrl, backlogToken, backlogTokens: [...new Set(accepted)] };
 }
 
 /**

@@ -37,6 +37,18 @@ export function getRemoteToken(): string | undefined {
 	return config.backlogToken?.trim() || undefined;
 }
 
+/**
+ * All tokens the embedded server should accept: BACKLOG_TOKEN env var plus every
+ * entry in the `backlog_tokens` config array (and the singular `backlog_token`).
+ * Used server-side only; clients send a single token via getRemoteToken().
+ */
+export function getAcceptedTokens(): string[] {
+	const config = readMachineConfig();
+	const fromEnv = process.env[BACKLOG_TOKEN_ENV]?.trim();
+	const all = fromEnv ? [fromEnv, ...config.backlogTokens] : config.backlogTokens;
+	return [...new Set(all.filter(Boolean))];
+}
+
 export function isRemoteMode(): boolean {
 	return Boolean(getRemoteUrl());
 }

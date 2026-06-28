@@ -13,7 +13,7 @@ import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { pathExistsAsDirectory, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
-import { getRemoteToken } from "../utils/remote-backend.ts";
+import { getAcceptedTokens } from "../utils/remote-backend.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -118,8 +118,9 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
-	// Set once at startup from BACKLOG_TOKEN env var or machine config. Empty string = no auth required.
-	private readonly authToken: string = getRemoteToken() ?? "";
+	// Set once at startup from BACKLOG_TOKEN env var and the backlog_tokens config array.
+	// Empty set = no auth required.
+	private readonly authTokens: Set<string> = new Set(getAcceptedTokens());
 
 	constructor(projectPath: string) {
 		this.projectPath = projectPath;
@@ -127,10 +128,10 @@ export class BacklogServer {
 	}
 
 	private checkAuth(req: Request): Response | null {
-		if (!this.authToken) return null;
+		if (this.authTokens.size === 0) return null;
 		const header = req.headers.get("Authorization") ?? "";
 		const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-		if (token !== this.authToken) {
+		if (!this.authTokens.has(token)) {
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
 		}
 		return null;
@@ -393,11 +394,11 @@ export class BacklogServer {
 			console.log(`🚀 Backlog browser interface running at ${url}`);
 			console.log(`🔌 MCP over HTTP endpoint: ${url}/mcp`);
 			console.log(`📊 Project: ${this.projectName}`);
-			if (this.authToken) {
-				console.log("🔒 API auth: bearer token required (backlog_token or BACKLOG_TOKEN is set)");
+			if (this.authTokens.size > 0) {
+				console.log(`🔒 API auth: bearer token required (${this.authTokens.size} token(s) accepted)`);
 			} else {
 				console.log(
-					"⚠️  API auth: none — set backlog_token in ~/.config/backlog/config.yml or BACKLOG_TOKEN before exposing publicly",
+					"⚠️  API auth: none — set backlog_tokens in ~/.config/backlog/config.yml or BACKLOG_TOKEN before exposing publicly",
 				);
 			}
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";

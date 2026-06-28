@@ -39,7 +39,7 @@ afterEach(async () => {
 	await rm(TMP_DIR, { recursive: true, force: true });
 });
 
-const emptyConfig = { globalStore: null, backlogUrl: null, backlogToken: null };
+const emptyConfig = { globalStore: null, backlogUrl: null, backlogToken: null, backlogTokens: [] };
 
 describe("readMachineConfig", () => {
 	it("returns empty config when config file is absent", () => {
@@ -88,6 +88,25 @@ describe("readMachineConfig", () => {
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.backlogUrl).toBe("https://host/backlog");
 		expect(config.backlogToken).toBe("abc");
+	});
+
+	it("parses backlog_tokens as a YAML block array", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_tokens:\n  - alice\n  - bob\n  - ci\n");
+		const config = readMachineConfig(TMP_DIR);
+		expect(config.backlogTokens).toEqual(["alice", "bob", "ci"]);
+	});
+
+	it("merges singular backlog_token into backlogTokens and dedupes", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: alice\nbacklog_tokens:\n  - alice\n  - bob\n");
+		const config = readMachineConfig(TMP_DIR);
+		expect(config.backlogTokens).toEqual(["alice", "bob"]);
+	});
+
+	it("stops the block array at the next top-level key", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_tokens:\n  - alice\nbacklog_url: http://h:6420\n");
+		const config = readMachineConfig(TMP_DIR);
+		expect(config.backlogTokens).toEqual(["alice"]);
+		expect(config.backlogUrl).toBe("http://h:6420");
 	});
 
 	it("strips YAML quotes from values", async () => {
