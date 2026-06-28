@@ -13,6 +13,7 @@ import type { SearchPriorityFilter, Task, TaskUpdateInput } from "../types/index
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { pathExistsAsDirectory, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
+import { getRemoteToken } from "../utils/remote-backend.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -117,8 +118,8 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
-	// Set once at startup from BACKLOG_TOKEN env var. Empty string = no auth required.
-	private readonly authToken: string = process.env.BACKLOG_TOKEN?.trim() ?? "";
+	// Set once at startup from BACKLOG_TOKEN env var or machine config. Empty string = no auth required.
+	private readonly authToken: string = getRemoteToken() ?? "";
 
 	constructor(projectPath: string) {
 		this.projectPath = projectPath;
@@ -393,9 +394,11 @@ export class BacklogServer {
 			console.log(`🔌 MCP over HTTP endpoint: ${url}/mcp`);
 			console.log(`📊 Project: ${this.projectName}`);
 			if (this.authToken) {
-				console.log("🔒 API auth: bearer token required (BACKLOG_TOKEN is set)");
+				console.log("🔒 API auth: bearer token required (backlog_token or BACKLOG_TOKEN is set)");
 			} else {
-				console.log("⚠️  API auth: none — set BACKLOG_TOKEN=<secret> before exposing publicly");
+				console.log(
+					"⚠️  API auth: none — set backlog_token in ~/.config/backlog/config.yml or BACKLOG_TOKEN before exposing publicly",
+				);
 			}
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
 			console.log(`⏹️  Press ${stopKey} to stop the server`);
