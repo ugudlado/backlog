@@ -19,6 +19,8 @@ permissions:
 jobs:
   try:
     runs-on: macos-latest
+    # npm trusted-publisher config requires this environment in the OIDC claim.
+    environment: backlog-npm
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
