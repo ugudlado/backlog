@@ -8,6 +8,7 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
+import { clearToken, getToken } from "./auth.ts";
 
 const API_BASE = "/api";
 
@@ -126,16 +127,26 @@ export class ApiClient {
 				const controller = new AbortController();
 				const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+				const token = getToken();
 				const response = await fetch(url, {
 					...options,
 					signal: controller.signal,
 					headers: {
 						"Content-Type": "application/json",
+						...(token ? { Authorization: `Bearer ${token}` } : {}),
 						...options.headers,
 					},
 				});
 
 				clearTimeout(timeoutId);
+
+				// Token rejected: drop it and bounce back to the login screen.
+				// Return early so we don't also throw while the reload is in flight.
+				if (response.status === 401) {
+					clearToken();
+					window.location.reload();
+					return response;
+				}
 
 				if (!response.ok) {
 					let errorData: unknown = null;
@@ -336,57 +347,30 @@ export class ApiClient {
 	}
 
 	async fetchStatuses(): Promise<string[]> {
-		const response = await fetch(`${API_BASE}/statuses`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch statuses");
-		}
-		return response.json();
+		return this.fetchJson<string[]>(`${API_BASE}/statuses`);
 	}
 
 	async fetchConfig(): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch config");
-		}
-		return response.json();
+		return this.fetchJson<BacklogConfig>(`${API_BASE}/config`);
 	}
 
 	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`, {
+		return this.fetchJson<BacklogConfig>(`${API_BASE}/config`, {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(config),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to update config");
-		}
-		return response.json();
 	}
 
 	async fetchMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch milestones");
-		}
-		return response.json();
+		return this.fetchJson<Milestone[]>(`${API_BASE}/milestones`);
 	}
 
 	async fetchArchivedMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones/archived`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch archived milestones");
-		}
-		return response.json();
+		return this.fetchJson<Milestone[]>(`${API_BASE}/milestones/archived`);
 	}
 
 	async fetchMilestone(id: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch milestone");
-		}
-		return response.json();
+		return this.fetchJson<Milestone>(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
 	}
 
 	async createMilestone(
@@ -394,18 +378,10 @@ export class ApiClient {
 		description?: string,
 		dates?: { startDate?: string | null; endDate?: string | null },
 	): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones`, {
+		return this.fetchJson<Milestone>(`${API_BASE}/milestones`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify({ title, description, ...(dates ?? {}) }),
 		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to create milestone");
-		}
-		return response.json();
 	}
 
 	async updateMilestone(
@@ -413,47 +389,30 @@ export class ApiClient {
 		title: string,
 		dates?: { startDate?: string | null; endDate?: string | null },
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
-			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
+		return this.fetchJson<{ success: boolean; milestone?: Milestone | null; message?: string }>(
+			`${API_BASE}/milestones/${encodeURIComponent(id)}`,
+			{
+				method: "PUT",
+				body: JSON.stringify({ title, ...(dates ?? {}) }),
 			},
-			body: JSON.stringify({ title, ...(dates ?? {}) }),
-		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to update milestone");
-		}
-		return response.json();
+		);
 	}
 
 	async removeMilestone(
 		id: string,
 		options: { taskHandling?: "clear" | "keep" | "reassign"; reassignTo?: string } = {},
 	): Promise<{ success: boolean; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+		return this.fetchJson<{ success: boolean; message?: string }>(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "DELETE",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(options),
 		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to remove milestone");
-		}
-		return response.json();
 	}
 
 	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
-			method: "POST",
-		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to archive milestone");
-		}
-		return response.json();
+		return this.fetchJson<{ success: boolean; milestone?: Milestone | null }>(
+			`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`,
+			{ method: "POST" },
+		);
 	}
 
 	async fetchStatistics(): Promise<
@@ -491,6 +450,11 @@ export class ApiClient {
 		return this.fetchJson<ProjectsResponse>(`${API_BASE}/projects/${encodeURIComponent(id)}`, {
 			method: "DELETE",
 		});
+	}
+
+	async fetchVersion(): Promise<string> {
+		const data = await this.fetchJson<{ version: string }>(`${API_BASE}/version`);
+		return data.version;
 	}
 }
 

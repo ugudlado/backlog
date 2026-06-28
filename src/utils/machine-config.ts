@@ -6,9 +6,10 @@ import { getMachineConfigDir } from "./projects-index.ts";
 export interface MachineConfig {
 	globalStore: string | null;
 	backlogUrl: string | null;
-	backlogToken: string | null;
-	/** Accepted tokens for the embedded server. Includes backlogToken if set. */
-	backlogTokens: string[];
+	/** Token this machine sends to a remote server (config key: `client_token`). */
+	clientToken: string | null;
+	/** Tokens the embedded server accepts (config key: `server_tokens`). Includes clientToken if set. */
+	serverTokens: string[];
 }
 
 const MACHINE_CONFIG_FILENAME = "config.yml";
@@ -16,8 +17,8 @@ const MACHINE_CONFIG_FILENAME = "config.yml";
 const EMPTY_MACHINE_CONFIG: MachineConfig = {
 	globalStore: null,
 	backlogUrl: null,
-	backlogToken: null,
-	backlogTokens: [],
+	clientToken: null,
+	serverTokens: [],
 };
 
 /** Module-level cache keyed by resolved override string. */
@@ -60,8 +61,8 @@ function parseListItem(rawLine: string): string | null {
 function parseMachineConfigYaml(content: string): MachineConfig {
 	let globalStore: string | null = null;
 	let backlogUrl: string | null = null;
-	let backlogToken: string | null = null;
-	let backlogTokens: string[] = [];
+	let clientToken: string | null = null;
+	let serverTokens: string[] = [];
 
 	const lines = content.split(/\r?\n/);
 	for (let i = 0; i < lines.length; i++) {
@@ -75,7 +76,7 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 		const raw = stripYamlQuotes(line.slice(colonIdx + 1).trim());
 
 		// Block array: key with empty value, items follow as `- item` lines.
-		if ((key === "backlog_tokens" || key === "backlogTokens") && !raw) {
+		if (key === "server_tokens" && !raw) {
 			const items: string[] = [];
 			while (i + 1 < lines.length) {
 				const next = lines[i + 1] ?? "";
@@ -88,7 +89,7 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 				if (item) items.push(item);
 				i++;
 			}
-			backlogTokens = items;
+			serverTokens = items;
 			continue;
 		}
 
@@ -109,14 +110,14 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 			continue;
 		}
 
-		if (key === "backlog_token" || key === "backlogToken") {
-			backlogToken = raw;
+		if (key === "client_token") {
+			clientToken = raw;
 		}
 	}
 
-	// Singular token is always an accepted token; dedupe in case it's also listed.
-	const accepted = backlogToken ? [backlogToken, ...backlogTokens] : backlogTokens;
-	return { globalStore, backlogUrl, backlogToken, backlogTokens: [...new Set(accepted)] };
+	// The client token is always an accepted server token; dedupe in case it's also listed.
+	const accepted = clientToken ? [clientToken, ...serverTokens] : serverTokens;
+	return { globalStore, backlogUrl, clientToken, serverTokens: [...new Set(accepted)] };
 }
 
 /**

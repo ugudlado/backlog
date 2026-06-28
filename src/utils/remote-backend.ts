@@ -3,7 +3,7 @@
  *
  * Resolution order (first match wins):
  *   URL:   BACKLOG_URL env var → backlog_url in ~/.config/backlog/config.yml
- *   Token: BACKLOG_TOKEN env var → backlog_token in ~/.config/backlog/config.yml
+ *   Token: BACKLOG_TOKEN env var → client_token in ~/.config/backlog/config.yml
  *
  * When configured, commands proxy requests to the hosted server's REST API
  * instead of reading local files.
@@ -34,18 +34,18 @@ export function getRemoteToken(): string | undefined {
 	if (fromEnv) return fromEnv;
 
 	const config = readMachineConfig();
-	return config.backlogToken?.trim() || undefined;
+	return config.clientToken?.trim() || undefined;
 }
 
 /**
  * All tokens the embedded server should accept: BACKLOG_TOKEN env var plus every
- * entry in the `backlog_tokens` config array (and the singular `backlog_token`).
+ * entry in the `server_tokens` config array (and the singular `client_token`).
  * Used server-side only; clients send a single token via getRemoteToken().
  */
 export function getAcceptedTokens(): string[] {
 	const config = readMachineConfig();
 	const fromEnv = process.env[BACKLOG_TOKEN_ENV]?.trim();
-	const all = fromEnv ? [fromEnv, ...config.backlogTokens] : config.backlogTokens;
+	const all = fromEnv ? [fromEnv, ...config.serverTokens] : config.serverTokens;
 	return [...new Set(all.filter(Boolean))];
 }
 
@@ -89,7 +89,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 
 	if (response.status === 401) {
 		throw new RemoteBackendError(
-			"Authentication required. Set backlog_token in ~/.config/backlog/config.yml or BACKLOG_TOKEN.",
+			"Authentication required. Set client_token in ~/.config/backlog/config.yml or BACKLOG_TOKEN.",
 			401,
 		);
 	}

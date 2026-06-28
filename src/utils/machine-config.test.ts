@@ -39,7 +39,7 @@ afterEach(async () => {
 	await rm(TMP_DIR, { recursive: true, force: true });
 });
 
-const emptyConfig = { globalStore: null, backlogUrl: null, backlogToken: null, backlogTokens: [] };
+const emptyConfig = { globalStore: null, backlogUrl: null, clientToken: null, serverTokens: [] };
 
 describe("readMachineConfig", () => {
 	it("returns empty config when config file is absent", () => {
@@ -58,7 +58,7 @@ describe("readMachineConfig", () => {
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.globalStore).toBe("/tmp/my-store");
 		expect(config.backlogUrl).toBeNull();
-		expect(config.backlogToken).toBeNull();
+		expect(config.clientToken).toBeNull();
 	});
 
 	it("expands tilde in globalStore path", async () => {
@@ -73,39 +73,38 @@ describe("readMachineConfig", () => {
 		expect(config.globalStore).toBeNull();
 	});
 
-	it("parses backlog_url and backlog_token", async () => {
+	it("parses backlog_url and client_token", async () => {
 		await writeFile(
 			join(TMP_DIR, "config.yml"),
-			"backlog_url: http://server.example:6420/\nbacklog_token: secret-token\n",
+			"backlog_url: http://server.example:6420/\nclient_token: secret-token\n",
 		);
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.backlogUrl).toBe("http://server.example:6420");
-		expect(config.backlogToken).toBe("secret-token");
+		expect(config.clientToken).toBe("secret-token");
 	});
 
-	it("accepts camelCase backlogUrl and backlogToken", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlogUrl: https://host/backlog\nbacklogToken: abc\n");
+	it("accepts camelCase backlogUrl", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlogUrl: https://host/backlog\n");
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.backlogUrl).toBe("https://host/backlog");
-		expect(config.backlogToken).toBe("abc");
 	});
 
-	it("parses backlog_tokens as a YAML block array", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlog_tokens:\n  - alice\n  - bob\n  - ci\n");
+	it("parses server_tokens as a YAML block array", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "server_tokens:\n  - alice\n  - bob\n  - ci\n");
 		const config = readMachineConfig(TMP_DIR);
-		expect(config.backlogTokens).toEqual(["alice", "bob", "ci"]);
+		expect(config.serverTokens).toEqual(["alice", "bob", "ci"]);
 	});
 
-	it("merges singular backlog_token into backlogTokens and dedupes", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: alice\nbacklog_tokens:\n  - alice\n  - bob\n");
+	it("merges singular client_token into serverTokens and dedupes", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "client_token: alice\nserver_tokens:\n  - alice\n  - bob\n");
 		const config = readMachineConfig(TMP_DIR);
-		expect(config.backlogTokens).toEqual(["alice", "bob"]);
+		expect(config.serverTokens).toEqual(["alice", "bob"]);
 	});
 
 	it("stops the block array at the next top-level key", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlog_tokens:\n  - alice\nbacklog_url: http://h:6420\n");
+		await writeFile(join(TMP_DIR, "config.yml"), "server_tokens:\n  - alice\nbacklog_url: http://h:6420\n");
 		const config = readMachineConfig(TMP_DIR);
-		expect(config.backlogTokens).toEqual(["alice"]);
+		expect(config.serverTokens).toEqual(["alice"]);
 		expect(config.backlogUrl).toBe("http://h:6420");
 	});
 
@@ -166,14 +165,14 @@ describe("remote config resolution", () => {
 	});
 
 	it("prefers BACKLOG_TOKEN over machine config", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: from-config\n");
+		await writeFile(join(TMP_DIR, "config.yml"), "client_token: from-config\n");
 		process.env[BACKLOG_TOKEN_ENV] = "from-env";
 		clearMachineConfigCache();
 		expect(getRemoteToken()).toBe("from-env");
 	});
 
-	it("falls back to backlog_token from machine config", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: from-config\n");
+	it("falls back to client_token from machine config", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "client_token: from-config\n");
 		clearMachineConfigCache();
 		expect(getRemoteToken()).toBe("from-config");
 	});

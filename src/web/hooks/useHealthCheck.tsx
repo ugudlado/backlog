@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getToken } from "../lib/auth.ts";
 
 const RECONNECT_DELAY = 5000; // 5 seconds
 
@@ -28,8 +29,9 @@ export function useHealthCheck() {
 
 		try {
 			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-			const wsUrl = `${protocol}//${window.location.host}`;
-			
+			const token = getToken();
+			const wsUrl = `${protocol}//${window.location.host}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+
 			const ws = new WebSocket(wsUrl);
 			wsRef.current = ws;
 

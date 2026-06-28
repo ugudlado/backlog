@@ -1,9 +1,9 @@
 // Version utility for web UI
+import { apiClient } from "../lib/api.ts";
+
 export async function getWebVersion(): Promise<string> {
 	try {
-		const response = await fetch("/api/version");
-		const data = await response.json();
-		return data.version;
+		return await apiClient.fetchVersion();
 	} catch {
 		// If API call fails, just return empty string - UI can decide what to show
 		return "";

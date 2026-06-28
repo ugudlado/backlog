@@ -50,13 +50,13 @@ When `globalStore` is set:
 - The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
-**`backlog_url` / `backlog_token`** — point the CLI and MCP at a remote Backlog server instead of local files:
+**`backlog_url` / `client_token`** — point the CLI and MCP at a remote Backlog server instead of local files:
 
 ```yaml
 # ~/.config/backlog/config.yml
 globalStore: ~/.config/backlog/workspaces
 backlog_url: http://your-server:6420
-backlog_token: your-secret-token   # optional; required when the server sets BACKLOG_TOKEN
+client_token: your-secret-token   # optional; required when the server sets BACKLOG_TOKEN
 ```
 
 When `backlog_url` is set, `backlog task list`, `backlog search`, `backlog mcp start`, and other supported commands proxy to the server's REST API. Environment variables override config for one-off use:
@@ -64,6 +64,15 @@ When `backlog_url` is set, `backlog task list`, `backlog search`, `backlog mcp s
 | Setting | Config key | Env override |
 |---------|------------|--------------|
 | Server URL | `backlog_url` | `BACKLOG_URL` |
-| Auth token | `backlog_token` | `BACKLOG_TOKEN` |
+| Auth token (client sends) | `client_token` | `BACKLOG_TOKEN` |
+
+**`server_tokens`** — when this machine *runs* the server (web UI / REST API), the tokens it will accept. Any client presenting one of these is authorized. `client_token` is automatically accepted too, and `BACKLOG_TOKEN` is added at runtime:
+
+```yaml
+# ~/.config/backlog/config.yml
+server_tokens:
+  - your-secret-token
+  - another-clients-token
+```
 
 To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.
