@@ -60,4 +60,4 @@ jobs:
         run: |
           cd pkg
           echo 'registry=https://registry.npmjs.org/' > .npmrc
-          npm publish --access public
+          npm publish --access public --tag oidc-test
