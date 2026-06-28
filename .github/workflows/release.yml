@@ -99,6 +99,7 @@ jobs:
           cp scripts/cli.cjs dist/cli.js
           cp scripts/resolveBinary.cjs dist/resolveBinary.cjs
           cp scripts/postuninstall.cjs dist/postuninstall.cjs
+          cp scripts/postinstall.cjs dist/postinstall.cjs
           chmod +x dist/cli.js
       - name: Create npm-ready package.json
         shell: bash
@@ -107,8 +108,8 @@ jobs:
           jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.type) |
               .version = "'$TAG'" |
               .bin = {backlog:"cli.js"} |
-              .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","package.json","README.md","LICENSE"] |
-              .scripts = {"postuninstall": "node postuninstall.cjs"} |
+              .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","postinstall.cjs","package.json","README.md","LICENSE"] |
+              .scripts = {"postinstall": "node postinstall.cjs", "postuninstall": "node postuninstall.cjs"} |
               .repository = {"type":"git","url":"https://github.com/ugudlado/backlog"} |
               .optionalDependencies = {
                 "@ugudlado1/backlog-linux-x64"  : "'$TAG'",
