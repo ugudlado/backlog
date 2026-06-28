@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, initTestGitRepo, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -22,9 +21,7 @@ describe("Definition of Done", () => {
 		TEST_DIR = createUniqueTestDir("test-definition-of-done");
 		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await initTestGitRepo({ cwd: TEST_DIR });
 
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "DoD Test Project");

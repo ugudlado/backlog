@@ -11,7 +11,7 @@ import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/i
 import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, initTestGitRepo, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -25,9 +25,7 @@ async function createProject(projectRoot: string, projectName: string): Promise<
 
 	const bootstrap = new McpServer(projectRoot, "Bootstrap");
 	await bootstrap.filesystem.ensureBacklogStructure();
-	await $`git init -b main`.cwd(projectRoot).quiet();
-	await $`git config user.name "Test User"`.cwd(projectRoot).quiet();
-	await $`git config user.email test@example.com`.cwd(projectRoot).quiet();
+	await initTestGitRepo({ cwd: projectRoot });
 	await initializeTestProject(bootstrap, projectName);
 	await bootstrap.stop();
 }

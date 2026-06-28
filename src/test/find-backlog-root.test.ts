@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "bun";
 import { clearProjectRootCache, findBacklogRoot } from "../utils/find-backlog-root.ts";
+import { initTestGitRepo } from "./test-utils.ts";
 
 describe("findBacklogRoot", () => {
 	let testDir: string;
@@ -87,7 +87,7 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should prefer backlog/ directory over git root", async () => {
-		await $`git init`.cwd(testDir).quiet();
+		await initTestGitRepo({ cwd: testDir });
 
 		// Create backlog with config in a subfolder (simulating monorepo)
 		const projectFolder = join(testDir, "packages", "my-project");
@@ -102,7 +102,7 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should find git root with backlog as fallback", async () => {
-		await $`git init`.cwd(testDir).quiet();
+		await initTestGitRepo({ cwd: testDir });
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Test\n");
 
@@ -115,7 +115,7 @@ describe("findBacklogRoot", () => {
 
 	it("should not use git root if it has no backlog setup", async () => {
 		// Initialize git repo WITHOUT backlog
-		await $`git init`.cwd(testDir).quiet();
+		await initTestGitRepo({ cwd: testDir });
 
 		// Create subfolder
 		const subfolder = join(testDir, "src");
@@ -126,13 +126,13 @@ describe("findBacklogRoot", () => {
 	});
 
 	it("should handle nested git repos - find nearest backlog root", async () => {
-		await $`git init`.cwd(testDir).quiet();
+		await initTestGitRepo({ cwd: testDir });
 		await mkdir(join(testDir, "backlog", "tasks"), { recursive: true });
 		await writeFile(join(testDir, "backlog", "config.yml"), "project_name: Outer\n");
 
 		const innerProject = join(testDir, "packages", "inner");
 		await mkdir(innerProject, { recursive: true });
-		await $`git init`.cwd(innerProject).quiet();
+		await initTestGitRepo({ cwd: innerProject });
 		await mkdir(join(innerProject, "backlog", "tasks"), { recursive: true });
 		await writeFile(join(innerProject, "backlog", "config.yml"), "project_name: Inner\n");
 

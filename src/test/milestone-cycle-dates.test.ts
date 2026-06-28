@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../index.ts";
 import { parseMilestone } from "../markdown/parser.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, initTestGitRepo, safeCleanup } from "./test-utils.ts";
 
 /**
  * Cycle dates (BACK-481.4): a milestone with start_date/end_date acts as a
@@ -17,9 +16,7 @@ describe("Milestone cycle dates round-trip", () => {
 		const dir = createUniqueTestDir("test-milestone-cycle-dates");
 		try {
 			await mkdir(dir, { recursive: true });
-			await $`git init -b main`.cwd(dir).quiet();
-			await $`git config user.name "Test User"`.cwd(dir).quiet();
-			await $`git config user.email test@example.com`.cwd(dir).quiet();
+			await initTestGitRepo({ cwd: dir });
 
 			const core = new Core(dir);
 			await initializeTestProject(core, "Cycle Dates Project");
@@ -57,9 +54,7 @@ describe("Milestone cycle dates round-trip", () => {
 		const dir = createUniqueTestDir("test-milestone-set-dates");
 		try {
 			await mkdir(dir, { recursive: true });
-			await $`git init -b main`.cwd(dir).quiet();
-			await $`git config user.name "Test User"`.cwd(dir).quiet();
-			await $`git config user.email test@example.com`.cwd(dir).quiet();
+			await initTestGitRepo({ cwd: dir });
 
 			const core = new Core(dir);
 			await initializeTestProject(core, "Set Dates Project");

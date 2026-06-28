@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { $ } from "bun";
+import { initTestGitRepo } from "../test/test-utils.ts";
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 import { clearProjectRootCache } from "./find-backlog-root.ts";
 import { clearMachineConfigCache } from "./machine-config.ts";
@@ -19,12 +19,6 @@ let globalStoreDir: string;
 
 const origEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 
-async function initGitRepo(dir: string): Promise<void> {
-	await $`git init ${dir}`.quiet();
-	await $`git -C ${dir} config user.email "test@example.com"`.quiet();
-	await $`git -C ${dir} config user.name "Test"`.quiet();
-}
-
 beforeEach(async () => {
 	const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	repoDir = join(TMP_BASE, `repo-${id}`);
@@ -35,7 +29,7 @@ beforeEach(async () => {
 	await mkdir(machineConfigDir, { recursive: true });
 	await mkdir(globalStoreDir, { recursive: true });
 
-	await initGitRepo(repoDir);
+	await initTestGitRepo(repoDir);
 
 	process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
 	clearMachineConfigCache();

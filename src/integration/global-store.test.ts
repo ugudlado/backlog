@@ -16,6 +16,7 @@ import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { initTestGitRepo } from "../test/test-utils.ts";
 import { readProjectsIndex } from "../utils/projects-index.ts";
 
 const TMP_BASE = join(tmpdir(), "backlog-integration-test");
@@ -47,9 +48,7 @@ beforeEach(async () => {
 	await mkdir(machineConfigDir, { recursive: true });
 	await mkdir(globalStoreDir, { recursive: true });
 
-	await $`git init ${repoDir}`.quiet();
-	await $`git -C ${repoDir} config user.email "test@example.com"`.quiet();
-	await $`git -C ${repoDir} config user.name "Test"`.quiet();
+	await initTestGitRepo(repoDir);
 
 	// Resolve symlinks (macOS /tmp -> /private/tmp)
 	repoDir = await realpath(repoDir);

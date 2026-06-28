@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { createTestGlobalStore } from "./test-utils.ts";
+import { createTestGlobalStore, initTestGitRepo } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -14,9 +14,7 @@ describe("init Claude agent default", () => {
 		TEST_DIR = join(process.cwd(), `.tmp-test-init-claude-${Math.random().toString(36).slice(2)}`);
 		await rm(TEST_DIR, { recursive: true, force: true });
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await initTestGitRepo({ cwd: TEST_DIR });
 		initEnv = (await createTestGlobalStore(TEST_DIR)).env;
 	});
 

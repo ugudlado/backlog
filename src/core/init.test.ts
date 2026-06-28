@@ -8,6 +8,7 @@ import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { initTestGitRepo } from "../test/test-utils.ts";
 import { clearProjectRootCache } from "../utils/find-backlog-root.ts";
 import { clearMachineConfigCache } from "../utils/machine-config.ts";
 import { Core } from "./backlog.ts";
@@ -20,12 +21,6 @@ let machineConfigDir: string;
 let globalStoreDir: string;
 
 const origEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
-
-async function initGitRepo(dir: string): Promise<void> {
-	await $`git init ${dir}`.quiet();
-	await $`git -C ${dir} config user.email "test@example.com"`.quiet();
-	await $`git -C ${dir} config user.name "Test"`.quiet();
-}
 
 async function dirExists(path: string): Promise<boolean> {
 	try {
@@ -62,7 +57,7 @@ beforeEach(async () => {
 	await mkdir(machineConfigDir, { recursive: true });
 	await mkdir(globalStoreDir, { recursive: true });
 
-	await initGitRepo(repoDir);
+	await initTestGitRepo(repoDir);
 	// Resolve symlinks for macOS
 	repoDir = await realpath(repoDir);
 	globalStoreDir = await realpath(globalStoreDir);

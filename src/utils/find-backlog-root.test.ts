@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "bun";
+import { initTestGitRepo } from "../test/test-utils.ts";
 import { clearProjectRootCache, findBacklogRoot } from "./find-backlog-root.ts";
 import { clearMachineConfigCache } from "./machine-config.ts";
 
@@ -30,9 +30,7 @@ beforeEach(async () => {
 	await mkdir(machineConfigDir, { recursive: true });
 	await mkdir(globalStoreDir, { recursive: true });
 
-	await $`git init ${repoDir}`.quiet();
-	await $`git -C ${repoDir} config user.email "test@example.com"`.quiet();
-	await $`git -C ${repoDir} config user.name "Test"`.quiet();
+	await initTestGitRepo(repoDir);
 	// Resolve symlinks (e.g., /tmp → /private/tmp on macOS) so path comparisons work
 	repoDir = await realpath(repoDir);
 

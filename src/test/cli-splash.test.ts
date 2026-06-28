@@ -34,9 +34,7 @@ describe("CLI Splash (bare run)", () => {
 		// with an isolated machine config so init has a global store to read.
 		const { env, machineConfigDir } = await createTestGlobalStore(TEST_DIR);
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await initTestGitRepo({ cwd: TEST_DIR });
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Splash Test");
 
@@ -65,4 +63,4 @@ describe("CLI Splash (bare run)", () => {
 	});
 });
 
-import { createTestGlobalStore, initializeTestProject } from "./test-utils.ts";
+import { createTestGlobalStore, initializeTestProject, initTestGitRepo } from "./test-utils.ts";

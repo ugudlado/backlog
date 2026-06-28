@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import {
 	MCP_TASK_CREATION_GUIDE,
 	MCP_TASK_EXECUTION_GUIDE,
@@ -12,7 +11,7 @@ import { createMcpServer, McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, initTestGitRepo, safeCleanup } from "./test-utils.ts";
 
 // Helpers to extract text from MCP responses (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -32,9 +31,7 @@ async function bootstrapServer(): Promise<McpServer> {
 	const server = new McpServer(TEST_DIR, "Test instructions");
 
 	await server.filesystem.ensureBacklogStructure();
-	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+	await initTestGitRepo({ cwd: TEST_DIR });
 
 	await initializeTestProject(server, "Test Project");
 
@@ -199,9 +196,7 @@ describe("McpServer bootstrap", () => {
 
 		const bootstrap = new McpServer(TEST_DIR, "Bootstrap instructions");
 		await bootstrap.filesystem.ensureBacklogStructure();
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await initTestGitRepo({ cwd: TEST_DIR });
 		await initializeTestProject(bootstrap, "Factory Project");
 		await bootstrap.stop();
 

@@ -21,6 +21,29 @@ export function createUniqueTestDir(prefix: string): string {
 }
 
 /**
+ * Initialize a git repo for tests without copying husky hooks from the dev environment.
+ */
+export async function initTestGitRepo(target: string | { cwd: string; branch?: string }): Promise<void> {
+	const { mkdirSync } = await import("node:fs");
+	const { $ } = await import("bun");
+	const env = { ...process.env, HUSKY: "0" };
+	const templateDir = join(process.cwd(), "tmp", "empty-git-template");
+	mkdirSync(templateDir, { recursive: true });
+
+	if (typeof target === "string") {
+		await $`git init --template=${templateDir} -b main ${target}`.env(env).quiet();
+		await $`git -C ${target} config user.email test@example.com`.env(env).quiet();
+		await $`git -C ${target} config user.name Test`.env(env).quiet();
+		return;
+	}
+
+	const branch = target.branch ?? "main";
+	await $`git init --template=${templateDir} -b ${branch}`.cwd(target.cwd).env(env).quiet();
+	await $`git config user.email test@example.com`.cwd(target.cwd).env(env).quiet();
+	await $`git config user.name Test`.cwd(target.cwd).env(env).quiet();
+}
+
+/**
  * Backlog stores tasks in a configured global store. Tests that run `backlog
  * init` need one. This writes an isolated machine-config dir with `globalStore`
  * set under `parentDir` and returns the dir plus an env object to pass to CLI

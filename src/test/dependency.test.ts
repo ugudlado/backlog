@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 
@@ -14,9 +13,7 @@ describe("Task Dependencies", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "backlog-dependency-test-"));
 
 		// Initialize git repository first using the same pattern as other tests
-		await $`git init -b main`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
+		await initTestGitRepo({ cwd: tempDir });
 
 		core = new Core(tempDir);
 		await initializeTestProject(core, "test-project");
@@ -275,4 +272,4 @@ describe("Task Dependencies", () => {
 	});
 });
 
-import { initializeTestProject } from "./test-utils.ts";
+import { initializeTestProject, initTestGitRepo } from "./test-utils.ts";

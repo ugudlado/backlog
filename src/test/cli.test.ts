@@ -10,6 +10,7 @@ import {
 	createUniqueTestDir,
 	initializeGlobalTestProject,
 	initializeTestProject,
+	initTestGitRepo,
 	safeCleanup,
 } from "./test-utils.ts";
 
@@ -50,9 +51,7 @@ describe("CLI Integration", () => {
 
 		it("should initialize backlog project in existing git repo", async () => {
 			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			// Initialize backlog project using Core (simulating CLI)
 			const core = new Core(TEST_DIR);
@@ -71,9 +70,7 @@ describe("CLI Integration", () => {
 
 		it("should create all required directories", async () => {
 			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Directory Test");
@@ -101,9 +98,7 @@ describe("CLI Integration", () => {
 
 		it("should handle project names with special characters", async () => {
 			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const core = new Core(TEST_DIR);
 			const specialProjectName = "My-Project_2024 (v1.0)";
@@ -114,9 +109,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should accept optional project name parameter", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			// Test the CLI implementation by directly using the Core functionality
 			const core = new Core(TEST_DIR);
@@ -128,9 +121,7 @@ describe("CLI Integration", () => {
 
 		it("should create agent instruction files when requested", async () => {
 			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			// Simulate the agent instructions being added
 			const core = new Core(TEST_DIR);
@@ -164,9 +155,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should allow skipping agent instructions with 'none' selection", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`
 				.cwd(TEST_DIR)
@@ -182,9 +171,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should print minimal summary when advanced settings are skipped", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --agent-instructions none`
 				.cwd(TEST_DIR)
@@ -199,9 +186,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should support MCP integration mode via flag", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`
 				.cwd(TEST_DIR)
@@ -219,9 +204,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should default to MCP integration when no mode is specified", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).env(initEnv).text();
 
@@ -231,9 +214,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should allow skipping AI integration via flag", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`
 				.cwd(TEST_DIR)
@@ -249,9 +230,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should reject MCP integration when agent instruction flags are provided", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			let failed = false;
 			let combinedOutput = "";
@@ -271,9 +250,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should ignore 'none' when other agent instructions are provided", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`
 				.cwd(TEST_DIR)
@@ -285,9 +262,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should error on invalid agent instruction value", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await initTestGitRepo({ cwd: TEST_DIR });
 
 			let failed = false;
 			try {

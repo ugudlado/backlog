@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
-import { createTestGlobalStore, createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createTestGlobalStore, createUniqueTestDir, initTestGitRepo, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
@@ -125,9 +125,7 @@ describe("CLI init without Git", () => {
 	});
 
 	test("filesystem-only mode ignores stale Git branches before explicit config loading", async () => {
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await initTestGitRepo({ cwd: TEST_DIR });
 		await Bun.write(join(TEST_DIR, "README.md"), "parent repo\n");
 		await $`git add README.md`.cwd(TEST_DIR).quiet();
 		await $`git commit -m initial`.cwd(TEST_DIR).quiet();
