@@ -50,4 +50,20 @@ When `globalStore` is set:
 - The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
+**`backlog_url` / `backlog_token`** — point the CLI and MCP at a remote Backlog server instead of local files:
+
+```yaml
+# ~/.config/backlog/config.yml
+globalStore: ~/.config/backlog/workspaces
+backlog_url: http://your-server:6420
+backlog_token: your-secret-token   # optional; required when the server sets BACKLOG_TOKEN
+```
+
+When `backlog_url` is set, `backlog task list`, `backlog search`, `backlog mcp start`, and other supported commands proxy to the server's REST API. Environment variables override config for one-off use:
+
+| Setting | Config key | Env override |
+|---------|------------|--------------|
+| Server URL | `backlog_url` | `BACKLOG_URL` |
+| Auth token | `backlog_token` | `BACKLOG_TOKEN` |
+
 To override the config directory path (useful in tests or CI), set the `BACKLOG_MACHINE_CONFIG_DIR` environment variable.
