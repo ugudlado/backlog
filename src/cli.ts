@@ -43,10 +43,12 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import {
 	isRemoteMode,
+	remoteSearch,
 	remoteTaskArchive,
 	remoteTaskCreate,
 	remoteTaskEdit,
 	remoteTaskList,
+	remoteTaskNext,
 	remoteTaskView,
 } from "./utils/remote-backend.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
@@ -1306,6 +1308,43 @@ program
 	.option("--limit <number>", "limit total results returned")
 	.option("--plain", "print plain text output instead of interactive UI")
 	.action(async (query: string | undefined, options) => {
+		if (isRemoteMode()) {
+			const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
+			let limit: number | undefined;
+			if (options.limit !== undefined) {
+				const parsed = Number.parseInt(String(options.limit), 10);
+				if (Number.isNaN(parsed) || parsed <= 0) {
+					console.error("--limit must be a positive integer");
+					process.exitCode = 1;
+					return;
+				}
+				limit = parsed;
+			}
+
+			const searchResults = await remoteSearch({
+				query: query ?? "",
+				status: options.status,
+				priority: options.priority as SearchPriorityFilter | undefined,
+				modifiedFiles: modifiedFileFilters,
+				limit,
+			}).catch((err: Error) => {
+				console.error(`Remote error: ${err.message}`);
+				process.exitCode = 1;
+				return null;
+			});
+			if (!searchResults) return;
+
+			const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+			if (usePlainOutput) {
+				printSearchResults(searchResults);
+				return;
+			}
+
+			console.log("Remote search requires --plain output.");
+			printSearchResults(searchResults);
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const searchService = await core.getSearchService();
@@ -2252,6 +2291,25 @@ taskCmd
 	.option("--status <name>", "status lane to pick from (default: Ready)")
 	.option("--agent <handle>", "assign the claimed task to this handle")
 	.action(async (options: { status?: string; agent?: string }) => {
+		if (isRemoteMode()) {
+			try {
+				const result = await remoteTaskNext({ status: options.status, agent: options.agent });
+				if (!result) {
+					console.error(`No tasks found with status "${options.status ?? "Ready"}".`);
+					process.exit(1);
+				}
+				const { task, previousStatus } = result;
+				console.log(`${task.id} — ${task.title}`);
+				console.log(`${previousStatus} → In Progress`);
+				console.log("");
+				console.log(formatTaskPlainText(task));
+			} catch (err) {
+				console.error(err instanceof Error ? err.message : String(err));
+				process.exit(1);
+			}
+			return;
+		}
+
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
