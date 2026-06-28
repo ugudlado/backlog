@@ -85,6 +85,8 @@ jobs:
   npm-publish:
     needs: [build, verify-platform-packages]
     runs-on: ubuntu-latest
+    # Required by the npm trusted-publisher config (OIDC claim must include it).
+    environment: backlog-npm
     permissions:
       contents: read
       id-token: write
@@ -132,6 +134,8 @@ jobs:
 
   publish-binaries:
     needs: build
+    # Required by the npm trusted-publisher config (OIDC claim must include it).
+    environment: backlog-npm
     permissions:
       contents: read
       id-token: write
