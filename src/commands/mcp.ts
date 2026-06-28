@@ -8,6 +8,7 @@
 import type { Command } from "commander";
 import { createMcpServer } from "../mcp/server.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
+import { isRemoteMode } from "../utils/remote-backend.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
 
 type StartOptions = {
@@ -37,7 +38,10 @@ function registerStartCommand(mcpCmd: Command): void {
 		.action(async (options: StartOptions) => {
 			try {
 				const runtimeCwd = await resolveRuntimeCwd({ cwd: options.cwd });
-				const projectRoot = (await findBacklogRoot(runtimeCwd.cwd)) ?? runtimeCwd.cwd;
+				let projectRoot = runtimeCwd.cwd;
+				if (!isRemoteMode()) {
+					projectRoot = (await findBacklogRoot(runtimeCwd.cwd)) ?? runtimeCwd.cwd;
+				}
 				const server = await createMcpServer(projectRoot, { debug: options.debug });
 
 				await server.connect();

@@ -23,6 +23,7 @@ import {
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { getRemoteUrl, isRemoteMode, remoteGetConfig } from "../utils/remote-backend.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
@@ -529,6 +530,20 @@ export class McpServer extends Core {
  * handler can then query client roots to find the correct project.
  */
 export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
+	if (isRemoteMode()) {
+		const config = await remoteGetConfig();
+		const server = new McpServer(projectRoot, INSTRUCTIONS);
+		registerWorkflowResources(server);
+		registerWorkflowTools(server);
+		registerTaskTools(server, config);
+
+		if (options.debug) {
+			console.error(`MCP server initialised in remote mode (${getRemoteUrl()}).`);
+		}
+
+		return server;
+	}
+
 	// We need to check config first to determine which instructions to use
 	const tempCore = new Core(projectRoot);
 	await tempCore.ensureConfigLoaded();

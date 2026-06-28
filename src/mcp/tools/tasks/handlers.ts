@@ -8,6 +8,19 @@ import {
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
+import {
+	isRemoteMode,
+	RemoteBackendError,
+	remoteGetConfig,
+	remoteSearch,
+	remoteTaskArchive,
+	remoteTaskComplete,
+	remoteTaskCreate,
+	remoteTaskEdit,
+	remoteTaskList,
+	remoteTaskNext,
+	remoteTaskView,
+} from "../../../utils/remote-backend.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -56,6 +69,22 @@ export type TaskSearchArgs = {
 export class TaskHandlers {
 	constructor(private readonly core: McpServer) {}
 
+	private wrapRemoteError(error: unknown): never {
+		if (error instanceof RemoteBackendError) {
+			const code = error.status === 401 ? "OPERATION_FAILED" : "OPERATION_FAILED";
+			throw new BacklogToolError(error.message, code);
+		}
+		throw error;
+	}
+
+	private async loadRemoteConfig() {
+		try {
+			return await remoteGetConfig();
+		} catch (error) {
+			this.wrapRemoteError(error);
+		}
+	}
+
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
 		const [activeMilestones, archivedMilestones] = await Promise.all([
 			this.core.filesystem.listMilestones(),
@@ -77,6 +106,14 @@ export class TaskHandlers {
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
+		if (isRemoteMode()) {
+			try {
+				return await remoteTaskView(id);
+			} catch (error) {
+				this.wrapRemoteError(error);
+			}
+		}
+
 		const task = await this.core.getTask(id);
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${id}`, "TASK_NOT_FOUND");
@@ -84,7 +121,83 @@ export class TaskHandlers {
 		return task;
 	}
 
+	private formatGroupedTaskList(
+		tasks: Task[],
+		statuses: string[],
+		limit?: number,
+	): Array<{ type: "text"; text: string }> {
+		const canonicalByLower = new Map<string, string>();
+		for (const status of statuses) {
+			canonicalByLower.set(status.toLowerCase(), status);
+		}
+
+		const grouped = new Map<string, Task[]>();
+		for (const task of tasks) {
+			const rawStatus = (task.status ?? "").trim();
+			const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) ?? rawStatus;
+			const bucketKey = canonicalStatus || "";
+			const existing = grouped.get(bucketKey) ?? [];
+			existing.push(task);
+			grouped.set(bucketKey, existing);
+		}
+
+		const orderedStatuses = [
+			...statuses.filter((status) => grouped.has(status)),
+			...Array.from(grouped.keys()).filter((status) => !statuses.includes(status)),
+		];
+
+		const contentItems: Array<{ type: "text"; text: string }> = [];
+		let remaining = typeof limit === "number" && limit >= 0 ? limit : undefined;
+		for (const status of orderedStatuses) {
+			const bucket = grouped.get(status) ?? [];
+			const sortedBucket = sortByOrdinalAndPriority(bucket);
+			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
+			if (remaining !== undefined) {
+				remaining -= limitedBucket.length;
+			}
+			if (limitedBucket.length === 0) {
+				continue;
+			}
+			const sectionLines: string[] = [`${status || "No Status"}:`];
+			for (const task of limitedBucket) {
+				sectionLines.push(this.formatTaskSummaryLine(task));
+			}
+			contentItems.push({
+				type: "text",
+				text: sectionLines.join("\n"),
+			});
+		}
+
+		return contentItems;
+	}
+
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const createdTask = await remoteTaskCreate({
+					title: args.title,
+					description: args.description,
+					status: args.status,
+					priority: args.priority,
+					assignee: args.assignee,
+					labels: args.labels,
+					milestone: args.milestone,
+					parentTaskId: args.parentTaskId,
+					dependencies: args.dependencies,
+					references: args.references,
+					documentation: args.documentation,
+					modifiedFiles: args.modifiedFiles,
+					acceptanceCriteria: args.acceptanceCriteria,
+					definitionOfDoneAdd: args.definitionOfDoneAdd,
+					disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+					finalSummary: args.finalSummary,
+				});
+				return await formatTaskCallResult(createdTask);
+			} catch (error) {
+				this.wrapRemoteError(error);
+			}
+		}
+
 		try {
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
@@ -133,6 +246,40 @@ export class TaskHandlers {
 	}
 
 	async listTasks(args: TaskListArgs = {}): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const config = await this.loadRemoteConfig();
+				const tasks = await remoteTaskList({
+					status: args.status,
+					assignee: args.assignee,
+					milestone: args.milestone,
+					labels: args.labels,
+				});
+
+				let filtered = tasks;
+				if (args.search?.trim()) {
+					const query = args.search.trim().toLowerCase();
+					filtered = filtered.filter(
+						(task) =>
+							task.title.toLowerCase().includes(query) || (task.description ?? "").toLowerCase().includes(query),
+					);
+				}
+
+				if (filtered.length === 0) {
+					return { content: [{ type: "text", text: "No tasks found." }] };
+				}
+
+				const contentItems = this.formatGroupedTaskList(filtered, config.statuses ?? [], args.limit);
+				if (contentItems.length === 0) {
+					return { content: [{ type: "text", text: "No tasks found." }] };
+				}
+
+				return { content: contentItems };
+			} catch (error) {
+				this.wrapRemoteError(error);
+			}
+		}
+
 		const filters: TaskListFilter = {};
 		if (args.status) {
 			filters.status = args.status;
@@ -171,55 +318,17 @@ export class TaskHandlers {
 		}
 
 		const config = await this.core.filesystem.loadConfig();
-		const statuses = config?.statuses ?? [];
-
-		const canonicalByLower = new Map<string, string>();
-		for (const status of statuses) {
-			canonicalByLower.set(status.toLowerCase(), status);
-		}
-
-		const grouped = new Map<string, Task[]>();
-		for (const task of filteredByLabels) {
-			const rawStatus = (task.status ?? "").trim();
-			const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) ?? rawStatus;
-			const bucketKey = canonicalStatus || "";
-			const existing = grouped.get(bucketKey) ?? [];
-			existing.push(task);
-			grouped.set(bucketKey, existing);
-		}
-
-		const orderedStatuses = [
-			...statuses.filter((status) => grouped.has(status)),
-			...Array.from(grouped.keys()).filter((status) => !statuses.includes(status)),
-		];
-
-		const contentItems: Array<{ type: "text"; text: string }> = [];
-		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
-		for (const status of orderedStatuses) {
-			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortByOrdinalAndPriority(bucket);
-			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
-			if (remaining !== undefined) {
-				remaining -= limitedBucket.length;
-			}
-			if (limitedBucket.length === 0) {
-				continue;
-			}
-			const sectionLines: string[] = [`${status || "No Status"}:`];
-			for (const task of limitedBucket) {
-				sectionLines.push(this.formatTaskSummaryLine(task));
-			}
-			contentItems.push({
-				type: "text",
-				text: sectionLines.join("\n"),
-			});
-		}
+		const contentItems = this.formatGroupedTaskList(filteredByLabels, config?.statuses ?? [], args.limit);
 
 		if (contentItems.length === 0) {
-			contentItems.push({
-				type: "text",
-				text: "No tasks found.",
-			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: "No tasks found.",
+					},
+				],
+			};
 		}
 
 		return {
@@ -232,6 +341,40 @@ export class TaskHandlers {
 		const modifiedFiles = args.modifiedFiles?.map((file) => file.trim()).filter((file) => file.length > 0);
 		if (!query && (!modifiedFiles || modifiedFiles.length === 0)) {
 			throw new BacklogToolError("Search query or modifiedFiles filter is required", "VALIDATION_ERROR");
+		}
+
+		if (isRemoteMode()) {
+			try {
+				const results = await remoteSearch({
+					query,
+					status: args.status,
+					priority: args.priority,
+					modifiedFiles,
+					limit: args.limit,
+				});
+				const taskResults = results.filter((result) => result.type === "task").map((result) => result.task);
+				if (taskResults.length === 0) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `No tasks found for "${query || modifiedFiles?.join(", ")}".`,
+							},
+						],
+					};
+				}
+
+				const lines: string[] = ["Tasks:"];
+				for (const task of taskResults) {
+					lines.push(this.formatTaskSummaryLine(task, { includeStatus: true }));
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+				};
+			} catch (error) {
+				this.wrapRemoteError(error);
+			}
 		}
 
 		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
@@ -274,6 +417,15 @@ export class TaskHandlers {
 	}
 
 	async viewTask(args: { id: string }): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const task = await remoteTaskView(args.id);
+				return await formatTaskCallResult(task);
+			} catch (error) {
+				this.wrapRemoteError(error);
+			}
+		}
+
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
@@ -282,6 +434,25 @@ export class TaskHandlers {
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const task = await this.loadTaskOrThrow(args.id);
+				if (this.isDoneStatus(task.status)) {
+					throw new BacklogToolError(
+						`Task ${task.id} is Done. Done tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
+						"VALIDATION_ERROR",
+					);
+				}
+				await remoteTaskArchive(task.id);
+				return await formatTaskCallResult(task);
+			} catch (error) {
+				if (error instanceof BacklogToolError) {
+					throw error;
+				}
+				this.wrapRemoteError(error);
+			}
+		}
+
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
@@ -305,6 +476,25 @@ export class TaskHandlers {
 	}
 
 	async completeTask(args: { id: string }): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const task = await this.loadTaskOrThrow(args.id);
+				if (!this.isDoneStatus(task.status)) {
+					throw new BacklogToolError(
+						`Task ${task.id} is not Done. Set status to "Done" with task_edit before completing it.`,
+						"VALIDATION_ERROR",
+					);
+				}
+				await remoteTaskComplete(task.id);
+				return await formatTaskCallResult(task, [`Completed task ${task.id}.`]);
+			} catch (error) {
+				if (error instanceof BacklogToolError) {
+					throw error;
+				}
+				this.wrapRemoteError(error);
+			}
+		}
+
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
@@ -351,6 +541,24 @@ export class TaskHandlers {
 	}
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
+				if (rawOrdinal === null) {
+					throw new BacklogToolError("Ordinal must be a non-negative number.", "VALIDATION_ERROR");
+				}
+
+				const updateInput = buildTaskUpdateInput(args);
+				const updatedTask = await remoteTaskEdit(args.id, updateInput);
+				return await formatTaskCallResult(updatedTask);
+			} catch (error) {
+				if (error instanceof BacklogToolError) {
+					throw error;
+				}
+				this.wrapRemoteError(error);
+			}
+		}
+
 		try {
 			const rawOrdinal = (args as { ordinal?: unknown }).ordinal;
 			if (rawOrdinal === null) {
@@ -372,6 +580,23 @@ export class TaskHandlers {
 	}
 
 	async nextTask(args: { status?: string; agent?: string }): Promise<CallToolResult> {
+		if (isRemoteMode()) {
+			try {
+				const result = await remoteTaskNext({ status: args.status, agent: args.agent });
+				if (!result) {
+					const displayStatus = args.status ?? "Ready";
+					throw new BacklogToolError(`No tasks found with status "${displayStatus}".`, "OPERATION_FAILED");
+				}
+				const { task, previousStatus } = result;
+				return await formatTaskCallResult(task, [`Claimed task ${task.id}.`, `${previousStatus} → In Progress`]);
+			} catch (error) {
+				if (error instanceof BacklogToolError) {
+					throw error;
+				}
+				this.wrapRemoteError(error);
+			}
+		}
+
 		let result: Awaited<ReturnType<typeof this.core.claimTask>>;
 		try {
 			result = await this.core.claimTask({ status: args.status, agent: args.agent });
