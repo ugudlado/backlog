@@ -116,12 +116,10 @@ jobs:
                 "@ugudlado1/backlog-windows-x64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
-      # No registry-url: it makes setup-node write an .npmrc with an (empty)
-      # NODE_AUTH_TOKEN, which shadows OIDC trusted publishing. Omit it so npm
-      # authenticates via OIDC instead. https://docs.npmjs.com/trusted-publishers/
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
       - name: Upgrade npm for trusted publishing (OIDC)
         run: npm install -g npm@latest
       - name: Dry run publish
@@ -205,14 +203,19 @@ jobs:
         shell: bash
         run: |
           chmod +x pkg/backlog
-      # No registry-url: it makes setup-node write an .npmrc with an (empty)
-      # NODE_AUTH_TOKEN, which shadows OIDC trusted publishing. Omit it so npm
-      # authenticates via OIDC instead. https://docs.npmjs.com/trusted-publishers/
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
       - name: Upgrade npm for trusted publishing (OIDC)
         run: npm install -g npm@latest
+      - name: Diagnose OIDC publish env
+        run: |
+          node --version
+          npm --version
+          echo "NODE_AUTH_TOKEN set? [${NODE_AUTH_TOKEN:+yes}]"
+          echo "--- ./.npmrc ---"; cat .npmrc 2>/dev/null || echo "(none)"
+          echo "--- ~/.npmrc ---"; cat ~/.npmrc 2>/dev/null || echo "(none)"
       - name: Dry run platform publish
         run: |
           cd pkg
