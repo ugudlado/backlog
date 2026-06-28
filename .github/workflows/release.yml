@@ -119,14 +119,15 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      # Don't pass registry-url: setup-node would write an .npmrc containing
+      # _authToken=${NODE_AUTH_TOKEN} (empty), which shadows OIDC. Configure
+      # only the registry ourselves so npm uses OIDC trusted publishing.
       - name: Upgrade npm for trusted publishing (OIDC)
         run: npm install -g npm@latest
-      # No --dry-run: it can't perform OIDC auth, so it fails ENEEDAUTH and
-      # blocks the real publish. The real publish is the only OIDC test.
       - name: Publish to npm
         run: |
           cd dist
+          echo 'registry=https://registry.npmjs.org/' > .npmrc
           npm publish --access public
 
   publish-binaries:
@@ -204,12 +205,15 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      # Don't pass registry-url: setup-node would write an .npmrc containing
+      # _authToken=${NODE_AUTH_TOKEN} (empty), which shadows OIDC. Configure
+      # only the registry ourselves so npm uses OIDC trusted publishing.
       - name: Upgrade npm for trusted publishing (OIDC)
         run: npm install -g npm@latest
       - name: Publish platform package
         run: |
           cd pkg
+          echo 'registry=https://registry.npmjs.org/' > .npmrc
           npm publish --access public
 
   verify-platform-packages:
