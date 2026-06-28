@@ -1,0 +1,63 @@
+name: oidc-test
+
+# THROWAWAY: minimal single-package OIDC publish test. Manually triggered.
+# Delete once trusted publishing works in release.yml.
+# Run with: gh workflow run oidc-test.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      do_publish:
+        description: "Actually publish (false = build + diagnostics only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  try:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.3.11
+      - run: bun install --frozen-lockfile
+      - name: Build darwin-x64 binary
+        run: |
+          mkdir -p pkg
+          bun build src/cli.ts --compile --minify --target=bun-darwin-x64 \
+            --define __EMBEDDED_VERSION__="\"0.0.0-oidc-test\"" --outfile=pkg/backlog
+          chmod +x pkg/backlog
+          cp LICENSE README.md pkg/ 2>/dev/null || true
+      - name: Write package.json
+        run: |
+          VER="0.0.0-oidc-test.${{ github.run_number }}"
+          cat > pkg/package.json <<EOF
+          {
+            "name": "@ugudlado1/backlog-darwin-x64",
+            "version": "${VER}",
+            "os": ["darwin"],
+            "cpu": ["x64"],
+            "files": ["backlog","package.json","LICENSE"],
+            "repository": { "type": "git", "url": "https://github.com/ugudlado/backlog" }
+          }
+          EOF
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Diagnostics
+        run: |
+          node --version
+          npm --version
+          echo "oidc-url present? [${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}]"
+          echo "NODE_AUTH_TOKEN set? [${NODE_AUTH_TOKEN:+yes}]"
+          echo "NPM_CONFIG_USERCONFIG=[${NPM_CONFIG_USERCONFIG:-unset}]"
+      - name: Publish via OIDC
+        if: ${{ inputs.do_publish }}
+        run: |
+          cd pkg
+          echo 'registry=https://registry.npmjs.org/' > .npmrc
+          npm publish --access public
