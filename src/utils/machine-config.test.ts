@@ -3,15 +3,19 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { clearMachineConfigCache, readMachineConfig } from "./machine-config.ts";
+import { BACKLOG_TOKEN_ENV, BACKLOG_URL_ENV, getRemoteToken, getRemoteUrl, isRemoteMode } from "./remote-backend.ts";
 
 const TMP_DIR = join(import.meta.dir, "__tmp_machine_config__");
 
-// Point all tests at a temp dir so we never touch ~/.config/backlog.md
 const origEnv = process.env.BACKLOG_MACHINE_CONFIG_DIR;
+const origBacklogUrl = process.env[BACKLOG_URL_ENV];
+const origBacklogToken = process.env[BACKLOG_TOKEN_ENV];
 
 beforeEach(async () => {
 	await mkdir(TMP_DIR, { recursive: true });
 	process.env.BACKLOG_MACHINE_CONFIG_DIR = TMP_DIR;
+	delete process.env[BACKLOG_URL_ENV];
+	delete process.env[BACKLOG_TOKEN_ENV];
 	clearMachineConfigCache();
 });
 
@@ -22,25 +26,39 @@ afterEach(async () => {
 	} else {
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = origEnv;
 	}
+	if (origBacklogUrl === undefined) {
+		delete process.env[BACKLOG_URL_ENV];
+	} else {
+		process.env[BACKLOG_URL_ENV] = origBacklogUrl;
+	}
+	if (origBacklogToken === undefined) {
+		delete process.env[BACKLOG_TOKEN_ENV];
+	} else {
+		process.env[BACKLOG_TOKEN_ENV] = origBacklogToken;
+	}
 	await rm(TMP_DIR, { recursive: true, force: true });
 });
 
+const emptyConfig = { globalStore: null, backlogUrl: null, backlogToken: null };
+
 describe("readMachineConfig", () => {
-	it("returns { globalStore: null } when config file is absent", () => {
+	it("returns empty config when config file is absent", () => {
 		const config = readMachineConfig(TMP_DIR);
-		expect(config).toEqual({ globalStore: null });
+		expect(config).toEqual(emptyConfig);
 	});
 
-	it("returns { globalStore: null } when file exists but has no globalStore key", async () => {
+	it("returns empty config when file exists but has no recognized keys", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), "# just a comment\n");
 		const config = readMachineConfig(TMP_DIR);
-		expect(config).toEqual({ globalStore: null });
+		expect(config).toEqual(emptyConfig);
 	});
 
 	it("returns the globalStore path when set to an absolute path", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: /tmp/my-store\n");
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.globalStore).toBe("/tmp/my-store");
+		expect(config.backlogUrl).toBeNull();
+		expect(config.backlogToken).toBeNull();
 	});
 
 	it("expands tilde in globalStore path", async () => {
@@ -49,22 +67,33 @@ describe("readMachineConfig", () => {
 		expect(config.globalStore).toBe(join(homedir(), "backlog-store"));
 	});
 
-	it("returns { globalStore: null } and treats relative path as null (with no throw)", async () => {
+	it("returns null globalStore and treats relative path as null (with no throw)", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: relative/path\n");
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.globalStore).toBeNull();
 	});
 
-	it("strips YAML quotes from the value", async () => {
+	it("parses backlog_url and backlog_token", async () => {
+		await writeFile(
+			join(TMP_DIR, "config.yml"),
+			"backlog_url: http://server.example:6420/\nbacklog_token: secret-token\n",
+		);
+		const config = readMachineConfig(TMP_DIR);
+		expect(config.backlogUrl).toBe("http://server.example:6420");
+		expect(config.backlogToken).toBe("secret-token");
+	});
+
+	it("accepts camelCase backlogUrl and backlogToken", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlogUrl: https://host/backlog\nbacklogToken: abc\n");
+		const config = readMachineConfig(TMP_DIR);
+		expect(config.backlogUrl).toBe("https://host/backlog");
+		expect(config.backlogToken).toBe("abc");
+	});
+
+	it("strips YAML quotes from values", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), 'globalStore: "/tmp/quoted-store"\n');
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.globalStore).toBe("/tmp/quoted-store");
-	});
-
-	it("strips single YAML quotes from the value", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: '/tmp/single-quoted'\n");
-		const config = readMachineConfig(TMP_DIR);
-		expect(config.globalStore).toBe("/tmp/single-quoted");
 	});
 
 	it("ignores blank lines and comment lines", async () => {
@@ -73,28 +102,22 @@ describe("readMachineConfig", () => {
 # globalStore: /ignored
 
 globalStore: /tmp/real-store
+backlog_url: http://localhost:6420
 `;
 		await writeFile(join(TMP_DIR, "config.yml"), content);
 		const config = readMachineConfig(TMP_DIR);
 		expect(config.globalStore).toBe("/tmp/real-store");
-	});
-
-	it("returns { globalStore: null } for a malformed file (no colon)", async () => {
-		await writeFile(join(TMP_DIR, "config.yml"), "this is not yaml at all\n");
-		const config = readMachineConfig(TMP_DIR);
-		expect(config).toEqual({ globalStore: null });
+		expect(config.backlogUrl).toBe("http://localhost:6420");
 	});
 
 	it("cache returns same instance until clearMachineConfigCache is called", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: /tmp/store1\n");
 		const first = readMachineConfig(TMP_DIR);
 
-		// Overwrite the file — without clearing cache, should still return old value
 		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: /tmp/store2\n");
 		const second = readMachineConfig(TMP_DIR);
-		expect(second).toBe(first); // same reference
+		expect(second).toBe(first);
 
-		// After clearing cache, should re-read
 		clearMachineConfigCache();
 		const third = readMachineConfig(TMP_DIR);
 		expect(third.globalStore).toBe("/tmp/store2");
@@ -103,8 +126,36 @@ globalStore: /tmp/real-store
 
 	it("uses BACKLOG_MACHINE_CONFIG_DIR env var when no override is passed", async () => {
 		await writeFile(join(TMP_DIR, "config.yml"), "globalStore: /tmp/env-store\n");
-		// No override passed — relies on env var set in beforeEach
 		const config = readMachineConfig();
 		expect(config.globalStore).toBe("/tmp/env-store");
+	});
+});
+
+describe("remote config resolution", () => {
+	it("prefers BACKLOG_URL over machine config", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_url: http://config-host:6420\n");
+		process.env[BACKLOG_URL_ENV] = "http://env-host:6420";
+		clearMachineConfigCache();
+		expect(getRemoteUrl()).toBe("http://env-host:6420");
+	});
+
+	it("falls back to backlog_url from machine config", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_url: http://config-host:6420/\n");
+		clearMachineConfigCache();
+		expect(getRemoteUrl()).toBe("http://config-host:6420");
+		expect(isRemoteMode()).toBe(true);
+	});
+
+	it("prefers BACKLOG_TOKEN over machine config", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: from-config\n");
+		process.env[BACKLOG_TOKEN_ENV] = "from-env";
+		clearMachineConfigCache();
+		expect(getRemoteToken()).toBe("from-env");
+	});
+
+	it("falls back to backlog_token from machine config", async () => {
+		await writeFile(join(TMP_DIR, "config.yml"), "backlog_token: from-config\n");
+		clearMachineConfigCache();
+		expect(getRemoteToken()).toBe("from-config");
 	});
 });

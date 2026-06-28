@@ -5,9 +5,17 @@ import { getMachineConfigDir } from "./projects-index.ts";
 
 export interface MachineConfig {
 	globalStore: string | null;
+	backlogUrl: string | null;
+	backlogToken: string | null;
 }
 
 const MACHINE_CONFIG_FILENAME = "config.yml";
+
+const EMPTY_MACHINE_CONFIG: MachineConfig = {
+	globalStore: null,
+	backlogUrl: null,
+	backlogToken: null,
+};
 
 /** Module-level cache keyed by resolved override string. */
 const cache = new Map<string, MachineConfig>();
@@ -25,8 +33,24 @@ function expandHome(p: string): string {
 	return p;
 }
 
+function parseBacklogUrl(raw: string): string | null {
+	try {
+		const parsed = new URL(raw);
+		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+			console.warn(`[backlog] machine config: backlog_url must use http or https (got: ${raw}). Ignoring.`);
+			return null;
+		}
+		return raw.replace(/\/$/, "");
+	} catch {
+		console.warn(`[backlog] machine config: backlog_url must be a valid http(s) URL (got: ${raw}). Ignoring.`);
+		return null;
+	}
+}
+
 function parseMachineConfigYaml(content: string): MachineConfig {
 	let globalStore: string | null = null;
+	let backlogUrl: string | null = null;
+	let backlogToken: string | null = null;
 
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -36,22 +60,30 @@ function parseMachineConfigYaml(content: string): MachineConfig {
 		if (colonIdx === -1) continue;
 
 		const key = line.slice(0, colonIdx).trim();
-		if (key !== "globalStore") continue;
-
 		const raw = stripYamlQuotes(line.slice(colonIdx + 1).trim());
 		if (!raw) continue;
 
-		const expanded = expandHome(raw);
-		if (!isAbsolute(expanded)) {
-			console.warn(`[backlog] machine config: globalStore must be an absolute path (got: ${raw}). Ignoring.`);
+		if (key === "globalStore") {
+			const expanded = expandHome(raw);
+			if (!isAbsolute(expanded)) {
+				console.warn(`[backlog] machine config: globalStore must be an absolute path (got: ${raw}). Ignoring.`);
+				continue;
+			}
+			globalStore = expanded;
 			continue;
 		}
 
-		globalStore = expanded;
-		break;
+		if (key === "backlog_url" || key === "backlogUrl") {
+			backlogUrl = parseBacklogUrl(raw);
+			continue;
+		}
+
+		if (key === "backlog_token" || key === "backlogToken") {
+			backlogToken = raw;
+		}
 	}
 
-	return { globalStore };
+	return { globalStore, backlogUrl, backlogToken };
 }
 
 /**
@@ -73,7 +105,7 @@ export function readMachineConfig(override?: string): MachineConfig {
 	try {
 		content = readFileSync(configPath, "utf8");
 	} catch {
-		const result: MachineConfig = { globalStore: null };
+		const result = { ...EMPTY_MACHINE_CONFIG };
 		cache.set(cacheKey, result);
 		return result;
 	}
