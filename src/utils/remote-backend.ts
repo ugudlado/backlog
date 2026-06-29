@@ -81,7 +81,16 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 	try {
 		response = await fetch(url, {
 			...options,
-			headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers },
+			// ponytail: skip free-ngrok's HTML interstitial, which otherwise replaces JSON
+			// for non-browser clients and surfaces as "socket closed unexpectedly". Harmless
+			// on non-ngrok hosts. Drop once the backend is served via a tunnel without an
+			// interstitial (Tailscale Funnel / cloudflared / paid ngrok).
+			headers: {
+				"Content-Type": "application/json",
+				"ngrok-skip-browser-warning": "1",
+				...authHeaders(),
+				...options.headers,
+			},
 		});
 	} catch (err) {
 		throw new RemoteBackendError(`Could not reach ${url}: ${(err as Error).message}`);
