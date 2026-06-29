@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -121,6 +121,29 @@ function stripGuidelineSection(
 	return { content: result, removed, firstIndex };
 }
 
+/**
+ * Removes any Backlog.md guideline block (default + mcp markers) previously
+ * injected into the given file. If the file is left empty, it's deleted;
+ * otherwise the remaining user content is written back. No-op if absent.
+ * Used to migrate CLAUDE.md off the old inject-the-block behavior on re-init.
+ */
+async function removeGuidelineBlock(filePath: string): Promise<void> {
+	if (!existsSync(filePath)) return;
+	const fileName = filePath.split(/[\\/]/).pop() ?? "CLAUDE.md";
+	let content = process.platform === "win32" ? readFileSync(filePath, "utf-8") : await Bun.file(filePath).text();
+	const original = content;
+	for (const kind of ["default", "mcp"] as GuidelineMarkerKind[]) {
+		const stripped = stripGuidelineSection(content, fileName, kind);
+		if (stripped.removed) content = stripped.content;
+	}
+	if (content === original) return;
+	if (content.trim() === "") {
+		await rm(filePath, { force: true });
+	} else {
+		await Bun.write(filePath, content);
+	}
+}
+
 export async function addAgentInstructions(
 	projectRoot: string,
 	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
@@ -135,6 +158,16 @@ export async function addAgentInstructions(
 
 	const paths: string[] = [];
 	for (const name of files) {
+		// Claude gets the guidelines as an on-demand skill (installed below), not an
+		// injected CLAUDE.md block — so it doesn't bloat every prompt. Other agents
+		// have no skill mechanism and keep the injected guidelines.
+		if (name === "CLAUDE.md") {
+			// Migration: an older init injected the block into CLAUDE.md. On re-init,
+			// strip it so the user isn't left with both the stale block and the skill.
+			await removeGuidelineBlock(join(projectRoot, "CLAUDE.md"));
+			continue;
+		}
+
 		const content = await loadContent(mapping[name]);
 		const filePath = join(projectRoot, name);
 		let finalContent = "";
@@ -179,8 +212,9 @@ export async function addAgentInstructions(
 		paths.push(filePath);
 	}
 
+	// Claude integration installs the skill bundle (not an injected block, and not
+	// the agent — the agent is opt-in via init's separate installClaudeAgent flag).
 	if (files.includes("CLAUDE.md")) {
-		await installClaudeAgent(projectRoot);
 		await installClaudeSkill(projectRoot);
 	}
 }
@@ -269,8 +303,12 @@ export async function installClaudeAgent(projectRoot: string): Promise<void> {
 }
 
 /**
- * Installs the Claude Code backlog skill bundle to the project's .claude/skills directory
+ * Installs the Claude Code backlog skill bundle to the project's .claude/skills directory.
+ * Ships the full command reference as reference.md alongside SKILL.md so the skill is
+ * self-contained — it loads on demand and never needs the CLAUDE.md guidelines block.
  */
 export async function installClaudeSkill(projectRoot: string): Promise<void> {
-	await writeFile(join(projectRoot, ".claude", "skills", "backlog-md", "SKILL.md"), CLAUDE_SKILL_CONTENT);
+	const skillDir = join(projectRoot, ".claude", "skills", "backlog-md");
+	await writeFile(join(skillDir, "SKILL.md"), CLAUDE_SKILL_CONTENT);
+	await writeFile(join(skillDir, "reference.md"), CLAUDE_GUIDELINES);
 }
