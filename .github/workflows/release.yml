@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
-          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+          jq --tab ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
       - name: Prime Bun cache for baseline target (Windows workaround)
         if: ${{ contains(matrix.target, 'baseline') && contains(matrix.target, 'windows') }}
         shell: bash
@@ -518,7 +518,9 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
-          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+          # --tab: keep the project's tab indentation (jq defaults to 2 spaces,
+          # which breaks `biome check` on the next release). See line ~50 too.
+          jq --tab ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
       - name: Commit version bump
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
