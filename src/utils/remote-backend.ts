@@ -115,6 +115,43 @@ export async function remoteGetConfig(): Promise<BacklogConfig> {
 	return apiFetch<BacklogConfig>("/api/config");
 }
 
+// ─── Projects ───────────────────────────────────────────────────────────────
+
+export interface RemoteProject {
+	id: string;
+	/** Display name, derived from the project path basename (matches the web UI). */
+	name: string;
+	path: string;
+}
+
+export interface RemoteProjectList {
+	projects: RemoteProject[];
+	currentId: string | null;
+}
+
+/** Lists the projects registered on the remote server (GET /api/projects). */
+export async function remoteListProjects(): Promise<RemoteProjectList> {
+	const payload = await apiFetch<{ projects: Array<{ id: string; path: string }>; currentId: string | null }>(
+		"/api/projects",
+	);
+	// The server returns only {id, path}; derive the display name from the path
+	// basename, the same label the web UI shows.
+	const projects = payload.projects.map((p) => ({
+		id: p.id,
+		name: p.path.split(/[/\\]/).filter(Boolean).pop() ?? p.id,
+		path: p.path,
+	}));
+	return { projects, currentId: payload.currentId };
+}
+
+/** Sets the remote server's current project (PATCH /api/projects/:id {current:true}). */
+export async function remoteSetCurrentProject(id: string): Promise<void> {
+	await apiFetchVoid(`/api/projects/${encodeURIComponent(id)}`, {
+		method: "PATCH",
+		body: JSON.stringify({ current: true }),
+	});
+}
+
 export async function remoteGetStatuses(): Promise<string[]> {
 	return apiFetch<string[]>("/api/statuses");
 }
