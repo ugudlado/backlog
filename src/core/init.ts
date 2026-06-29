@@ -307,11 +307,15 @@ export async function initializeProject(
 		}
 	}
 
-	// Handle CLI integration - agent instruction files
+	// Handle CLI integration - agent instruction files.
+	// addAgentInstructions injects guidelines for AGENTS.md/GEMINI/Copilot but, for
+	// CLAUDE.md, installs the on-demand skill (.claude/skills/backlog-md/) instead of
+	// an injected block — so it doesn't bloat every prompt.
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
 			await addAgentInstructions(projectRoot, agentInstructions);
-			mcpResults.agentFiles = `Created: ${agentInstructions.join(", ")}`;
+			const created = agentInstructions.map((f) => (f === "CLAUDE.md" ? ".claude/skills/backlog-md/" : f)).join(", ");
+			mcpResults.agentFiles = `Created: ${created}`;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			mcpResults.agentFiles = `Failed: ${message}`;

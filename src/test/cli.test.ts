@@ -131,25 +131,30 @@ describe("CLI Integration", () => {
 			const { addAgentInstructions } = await import("../index.ts");
 			await addAgentInstructions(TEST_DIR);
 
-			// Verify agent files were created
+			// Verify agent files were created. Claude gets the skill bundle instead
+			// of an injected CLAUDE.md (so it doesn't bloat every prompt).
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			// .cursorrules removed; Cursor now uses AGENTS.md
 			const geminiFile = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
 			const copilotFile = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
+			const skillFile = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).exists();
+			const referenceFile = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "reference.md")).exists();
 
 			expect(agentsFile).toBe(true);
-			expect(claudeFile).toBe(true);
+			expect(claudeFile).toBe(false);
+			expect(skillFile).toBe(true);
+			expect(referenceFile).toBe(true);
 			expect(geminiFile).toBe(true);
 			expect(copilotFile).toBe(true);
 
 			// Verify content
 			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
-			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+			const skillContent = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).text();
 			const geminiContent = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
 			const copilotContent = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 			expect(agentsContent.length).toBeGreaterThan(0);
-			expect(claudeContent.length).toBeGreaterThan(0);
+			expect(skillContent.length).toBeGreaterThan(0);
 			expect(geminiContent.length).toBeGreaterThan(0);
 			expect(copilotContent.length).toBeGreaterThan(0);
 		});

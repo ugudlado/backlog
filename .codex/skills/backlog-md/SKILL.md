@@ -24,9 +24,7 @@ as the task management system.
   the `BACKLOG_TOKEN` env var, which overrides it) as a bearer token; the server
   accepts any token in its `server_tokens` list. `BACKLOG_URL` / `BACKLOG_TOKEN`
   env vars override config when set. See ADVANCED-CONFIG.md for the full model.
-- If the repo has CLAUDE.md or AGENTS.md, read those first; they contain the
-  full backlog.md command reference.
-- If they are missing, run `backlog init <name>` to install them.
+- For the full command reference, read `reference.md` in this skill directory.
 - Select the project to act on: `backlog project list`, `backlog project switch
   <name>`, or `--project <name>` per command. Without it, commands use the
   current project.
@@ -44,5 +42,5 @@ Trigger on user phrases like "manage backlog tasks", "list backlog tasks",
 
 ## Discovery
 
-Run `backlog --help` for the full CLI surface, or read the in-repo
-CLAUDE.md / AGENTS.md for the canonical workflow guide.
+Run `backlog --help` for the full CLI surface, or read `reference.md` in this
+skill directory for the canonical workflow guide.

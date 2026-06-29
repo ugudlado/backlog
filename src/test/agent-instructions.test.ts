@@ -35,7 +35,6 @@ describe("addAgentInstructions", () => {
 	it("creates guideline files when none exist", async () => {
 		await addAgentInstructions(TEST_DIR);
 		const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
-		const claude = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 		const gemini = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
 		const copilot = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
 
@@ -44,9 +43,12 @@ describe("addAgentInstructions", () => {
 		expect(agents).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 		expect(agents).toContain(await _loadAgentGuideline(AGENT_GUIDELINES));
 
-		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
-		expect(claude).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-		expect(claude).toContain(await _loadAgentGuideline(CLAUDE_GUIDELINES));
+		// Claude gets the skill bundle, NOT an injected CLAUDE.md block.
+		expect(await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists()).toBe(false);
+		const skill = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).text();
+		expect(skill).toContain("name: backlog-md");
+		const reference = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "reference.md")).text();
+		expect(reference).toContain(await _loadAgentGuideline(CLAUDE_GUIDELINES));
 
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(gemini).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
@@ -92,39 +94,29 @@ describe("addAgentInstructions", () => {
 	});
 
 	it("does not duplicate content when run multiple times (idempotent)", async () => {
-		// First run
+		// AGENTS.md is injected and must stay idempotent across runs.
 		await addAgentInstructions(TEST_DIR);
-		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+		const firstRun = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 
 		// Second run - should not duplicate content
 		await addAgentInstructions(TEST_DIR);
-		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+		const secondRun = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 
 		expect(firstRun).toBe(secondRun);
 	});
 
-	it("preserves existing content and adds Backlog.md content only once", async () => {
+	it("leaves an existing CLAUDE.md untouched (skill install, not injection)", async () => {
 		const existingContent = "# My Existing Claude Instructions\n\nThis is my custom content.\n";
 		await Bun.write(join(TEST_DIR, "CLAUDE.md"), existingContent);
 
-		// First run
 		await addAgentInstructions(TEST_DIR, ["CLAUDE.md"]);
-		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
+		const after = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
 
-		// Second run - should not duplicate Backlog.md content
-		await addAgentInstructions(TEST_DIR, ["CLAUDE.md"]);
-		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-
-		expect(firstRun).toBe(secondRun);
-		expect(firstRun).toContain(existingContent);
-		expect(firstRun).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
-		expect(firstRun).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
-
-		// Count occurrences of the marker to ensure it's only there once
-		const startMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length;
-		const endMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES END -->/g) || []).length;
-		expect(startMarkerCount).toBe(1);
-		expect(endMarkerCount).toBe(1);
+		// CLAUDE.md is not modified; the guidelines go to the skill bundle instead.
+		expect(after).toBe(existingContent);
+		expect(after).not.toContain("<!-- BACKLOG.MD GUIDELINES START -->");
+		const skillExists = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).exists();
+		expect(skillExists).toBe(true);
 	});
 
 	it("handles different file types with appropriate markers", async () => {
@@ -234,13 +226,13 @@ describe("agent-guidelines.md projects section", () => {
 		expect(content).toContain("backlog project switch");
 	});
 
-	it("addAgentInstructions emits the projects section into CLAUDE.md and AGENTS.md", async () => {
+	it("emits the projects section into AGENTS.md (injected) and the Claude skill reference", async () => {
 		const dir = createUniqueTestDir("test-agent-instructions-projects");
 		await mkdir(dir, { recursive: true });
 		try {
 			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
-			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
-				const text = await Bun.file(join(dir, name)).text();
+			for (const p of ["AGENTS.md", ".claude/skills/backlog-md/reference.md"]) {
+				const text = await Bun.file(join(dir, p)).text();
 				expect(text).toContain("## Projects");
 				expect(text).toContain("backlog project list");
 				expect(text).toContain("backlog project switch");
@@ -270,13 +262,13 @@ describe("agent-guidelines.md server & service section (FR-1)", () => {
 		expect(content).toContain("backlog service uninstall");
 	});
 
-	it("addAgentInstructions renders server & service section into CLAUDE.md and AGENTS.md", async () => {
+	it("renders server & service section into AGENTS.md (injected) and the Claude skill reference", async () => {
 		const dir = createUniqueTestDir("test-agent-instructions-server");
 		await mkdir(dir, { recursive: true });
 		try {
 			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
-			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
-				const text = await Bun.file(join(dir, name)).text();
+			for (const p of ["AGENTS.md", ".claude/skills/backlog-md/reference.md"]) {
+				const text = await Bun.file(join(dir, p)).text();
 				expect(text).toContain("## Server & Service");
 				expect(text).toContain("backlog service start");
 				expect(text).toContain("backlog service status");
@@ -308,13 +300,13 @@ describe("agent-guidelines.md refresh-instructions mention (FR-3)", () => {
 		expect(content).not.toContain("backlog agents --update-instructions");
 	});
 
-	it("addAgentInstructions renders the refresh mention into CLAUDE.md and AGENTS.md", async () => {
+	it("renders the refresh mention into AGENTS.md (injected) and the Claude skill reference", async () => {
 		const dir = createUniqueTestDir("test-agent-instructions-update");
 		await mkdir(dir, { recursive: true });
 		try {
 			await addAgentInstructions(dir, ["CLAUDE.md", "AGENTS.md"]);
-			for (const name of ["CLAUDE.md", "AGENTS.md"]) {
-				const text = await Bun.file(join(dir, name)).text();
+			for (const p of ["AGENTS.md", ".claude/skills/backlog-md/reference.md"]) {
+				const text = await Bun.file(join(dir, p)).text();
 				expect(text).toContain("re-run `backlog init`");
 			}
 		} finally {
@@ -460,16 +452,18 @@ describe("addAgentInstructions installs the skill bundle", () => {
 		}
 	});
 
-	it("writes both the sub-agent file and the skill bundle in one call", async () => {
+	it("writes the skill bundle (SKILL.md + reference.md), not the sub-agent", async () => {
 		await addAgentInstructions(testDir);
 
-		// Existing sub-agent must still be written (regression guard)
-		const agentPath = join(testDir, ".claude", "agents", "project-manager-backlog.md");
-		expect(await Bun.file(agentPath).exists()).toBe(true);
-
-		// New skill bundle must also be written (FR-9, AC-5)
+		// Skill bundle is written: SKILL.md plus the self-contained reference.
 		const skillPath = join(testDir, ".claude", "skills", "backlog-md", "SKILL.md");
 		expect(await Bun.file(skillPath).exists()).toBe(true);
+		const referencePath = join(testDir, ".claude", "skills", "backlog-md", "reference.md");
+		expect(await Bun.file(referencePath).exists()).toBe(true);
+
+		// The sub-agent is NOT auto-installed — it's opt-in via init's installClaudeAgent flag.
+		const agentPath = join(testDir, ".claude", "agents", "project-manager-backlog.md");
+		expect(await Bun.file(agentPath).exists()).toBe(false);
 	});
 
 	it("skill bundle content matches the embedded constant", async () => {
@@ -487,5 +481,38 @@ describe("addAgentInstructions installs the skill bundle", () => {
 		await addAgentInstructions(testDir);
 		const second = await Bun.file(skillPath).text();
 		expect(second).toBe(first);
+	});
+
+	it("migrates: strips a stale injected block from CLAUDE.md, keeps user content, installs skill", async () => {
+		// Simulate an existing user whose CLAUDE.md was injected by an older init.
+		const claudePath = join(testDir, "CLAUDE.md");
+		const userContent = "# My Project\n\nMy own notes.\n";
+		await Bun.write(
+			claudePath,
+			`${userContent}\n<!-- BACKLOG.MD GUIDELINES START -->\nold injected guidelines\n<!-- BACKLOG.MD GUIDELINES END -->\n`,
+		);
+
+		await addAgentInstructions(testDir, ["CLAUDE.md"]);
+
+		// Stale block gone, user's own content preserved.
+		const after = await Bun.file(claudePath).text();
+		expect(after).not.toContain("BACKLOG.MD GUIDELINES");
+		expect(after).toContain("My own notes.");
+		// And the skill is installed instead.
+		expect(await Bun.file(join(testDir, ".claude", "skills", "backlog-md", "SKILL.md")).exists()).toBe(true);
+	});
+
+	it("migrates: deletes CLAUDE.md when it contained only the injected block", async () => {
+		const claudePath = join(testDir, "CLAUDE.md");
+		await Bun.write(
+			claudePath,
+			"<!-- BACKLOG.MD GUIDELINES START -->\nold injected guidelines\n<!-- BACKLOG.MD GUIDELINES END -->\n",
+		);
+
+		await addAgentInstructions(testDir, ["CLAUDE.md"]);
+
+		// Nothing but the block existed, so the file is removed (not left empty).
+		expect(await Bun.file(claudePath).exists()).toBe(false);
+		expect(await Bun.file(join(testDir, ".claude", "skills", "backlog-md", "SKILL.md")).exists()).toBe(true);
 	});
 });
