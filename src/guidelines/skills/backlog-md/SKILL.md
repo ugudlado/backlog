@@ -19,9 +19,11 @@ as the task management system.
   `~/.config/backlog/config.yml`), one slot per project keyed by name. Create
   with `backlog init <name>` or `backlog project create <name>`.
 - To query a remote Backlog server instead of local files, set `backlog_url`
-  (and optional `client_token`) in `~/.config/backlog/config.yml`. CLI and MCP
-  share the same resolution — env vars `BACKLOG_URL` / `BACKLOG_TOKEN` override
-  config when set.
+  (and optional `client_token`) in `~/.config/backlog/config.yml`. CLI, MCP, and
+  the web UI all authenticate the same way: the client sends `client_token` (or
+  the `BACKLOG_TOKEN` env var, which overrides it) as a bearer token; the server
+  accepts any token in its `server_tokens` list. `BACKLOG_URL` / `BACKLOG_TOKEN`
+  env vars override config when set. See ADVANCED-CONFIG.md for the full model.
 - If the repo has CLAUDE.md or AGENTS.md, read those first; they contain the
   full backlog.md command reference.
 - If they are missing, run `backlog init <name>` to install them.
