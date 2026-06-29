@@ -1,6 +1,7 @@
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
 import { readProjectsIndex, setCurrentProjectId } from "../utils/projects-index.ts";
+import { isRemoteMode, remoteListProjects, remoteSetCurrentProject } from "../utils/remote-backend.ts";
 
 async function runAction(fn: () => Promise<void>): Promise<void> {
 	try {
@@ -20,13 +21,19 @@ export function registerProjectCommand(program: Command): void {
 		.option("--plain", "emit JSON output")
 		.action((opts: { plain?: boolean }) =>
 			runAction(async () => {
-				const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
-				const index = await readProjectsIndex();
-				const projects = await scanGlobalStoreProjects();
+				// Remote mode: list the server's projects, mirroring task commands.
+				const { projects, current } = isRemoteMode()
+					? await remoteListProjects().then((r) => ({ projects: r.projects, current: r.currentId }))
+					: await (async () => {
+							const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
+							const index = await readProjectsIndex();
+							return { projects: await scanGlobalStoreProjects(), current: index.current ?? null };
+						})();
+
 				if (opts.plain) {
 					console.log(
 						JSON.stringify({
-							current: index.current ?? null,
+							current: current ?? null,
 							projects: projects.map((p) => ({ id: p.id, name: p.name })),
 						}),
 					);
@@ -37,7 +44,7 @@ export function registerProjectCommand(program: Command): void {
 					return;
 				}
 				for (const p of projects) {
-					const marker = p.id === index.current ? "*" : " ";
+					const marker = p.id === current ? "*" : " ";
 					console.log(`${marker} ${p.name}\t${p.id}`);
 				}
 			}),
@@ -48,6 +55,18 @@ export function registerProjectCommand(program: Command): void {
 		.description("set the current project by name (or id)")
 		.action((name: string) =>
 			runAction(async () => {
+				// Remote mode: switch the server's current project, mirroring task commands.
+				if (isRemoteMode()) {
+					const { projects } = await remoteListProjects();
+					const match = projects.find((p) => p.name === name || p.id === name);
+					if (!match) {
+						console.error(`No project named "${name}".`);
+						process.exit(1);
+					}
+					await remoteSetCurrentProject(match.id);
+					console.log(`Switched to project ${match.name}`);
+					return;
+				}
 				const { scanGlobalStoreProjects } = await import("../utils/global-store-scan.ts");
 				const match = (await scanGlobalStoreProjects()).find((p) => p.name === name || p.id === name);
 				if (!match) {
@@ -65,6 +84,10 @@ export function registerProjectCommand(program: Command): void {
 		.option("--prefix <prefix>", "custom task prefix, letters only (default: task)")
 		.action((name: string, opts: { prefix?: string }) =>
 			runAction(async () => {
+				if (isRemoteMode()) {
+					console.error("`project create` is not supported in remote mode. Create projects on the server directly.");
+					process.exit(1);
+				}
 				let taskPrefix = opts.prefix;
 				if (!taskPrefix && process.stdin.isTTY) {
 					const entered = await clack.text({
@@ -107,6 +130,10 @@ export function registerProjectCommand(program: Command): void {
 		.description("archive a project (moves its data to the global store's .archive; not destroyed)")
 		.action((name: string) =>
 			runAction(async () => {
+				if (isRemoteMode()) {
+					console.error("`project delete` is not supported in remote mode. Manage projects on the server directly.");
+					process.exit(1);
+				}
 				const { scanGlobalStoreProjects, archiveGlobalStoreProject } = await import("../utils/global-store-scan.ts");
 				const match = (await scanGlobalStoreProjects()).find((p) => p.name === name || p.id === name);
 				if (!match) {

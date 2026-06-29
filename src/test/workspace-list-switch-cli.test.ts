@@ -132,3 +132,72 @@ describe("backlog project list + switch CLI integration", () => {
 		expect(result.stderr).toContain('No project named "Ghost"');
 	});
 });
+
+describe("backlog project list/switch in remote mode", () => {
+	let base: string;
+	let cliConfigDir: string;
+	let serverConfigDir: string;
+	let serverStore: string;
+	let server: import("../server/index.ts").BacklogServer;
+	const port = 7671;
+	let env: NodeJS.ProcessEnv;
+	const origMachineConfig = process.env.BACKLOG_MACHINE_CONFIG_DIR;
+
+	beforeEach(async () => {
+		base = tmpRoot("remote");
+		// The server (in-process) and the CLI subprocess get SEPARATE machine
+		// configs so the server lists its own isolated global store, not the dev
+		// machine's. The CLI config has backlog_url (remote mode); the server
+		// config has a globalStore holding one slot.
+		cliConfigDir = join(base, "cli-config");
+		serverConfigDir = join(base, "server-config");
+		serverStore = join(base, "server-store");
+		await mkdir(cliConfigDir, { recursive: true });
+		await mkdir(serverConfigDir, { recursive: true });
+		await mkdir(serverStore, { recursive: true });
+		await makeSlot(serverStore, "RemoteProj", "remoteproj-1");
+
+		await writeFile(join(cliConfigDir, "config.yml"), `backlog_url: http://localhost:${port}\nclient_token: secret\n`);
+		await writeFile(join(serverConfigDir, "config.yml"), `globalStore: ${serverStore}\n`);
+		env = { BACKLOG_MACHINE_CONFIG_DIR: cliConfigDir, BACKLOG_TOKEN: "secret" };
+
+		// Point THIS process (the server) at the server config + token.
+		process.env.BACKLOG_MACHINE_CONFIG_DIR = serverConfigDir;
+		process.env.BACKLOG_TOKEN = "secret";
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
+		const { BacklogServer } = await import("../server/index.ts");
+		server = new BacklogServer(join(serverStore, "RemoteProj"));
+		await server.start(port, false);
+	});
+
+	afterEach(async () => {
+		await server.stop();
+		delete process.env.BACKLOG_TOKEN;
+		if (origMachineConfig === undefined) delete process.env.BACKLOG_MACHINE_CONFIG_DIR;
+		else process.env.BACKLOG_MACHINE_CONFIG_DIR = origMachineConfig;
+		const { clearMachineConfigCache } = await import("../utils/machine-config.ts");
+		clearMachineConfigCache();
+		await rm(base, { recursive: true, force: true });
+	});
+
+	it("list shows the server's project, not local global-store ones", async () => {
+		const result = await runCli(["project", "list", "--plain"], env);
+		expect(result.exitCode).toBe(0);
+		const parsed = JSON.parse(result.stdout);
+		// The server's single global-store project is listed (name = path basename).
+		expect(parsed.projects.some((p: { name: string }) => p.name === "RemoteProj")).toBe(true);
+	});
+
+	it("create is blocked in remote mode", async () => {
+		const result = await runCli(["project", "create", "Foo"], env);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("not supported in remote mode");
+	});
+
+	it("delete is blocked in remote mode", async () => {
+		const result = await runCli(["project", "delete", "Foo"], env);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("not supported in remote mode");
+	});
+});
