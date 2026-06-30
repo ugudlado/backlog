@@ -2,6 +2,7 @@
 
 const { spawn } = require("node:child_process");
 const { resolveBinaryPath } = require("./resolveBinary.cjs");
+const { envWithProxyBypass } = require("./proxyBypass.cjs");
 
 let binaryPath;
 try {
@@ -24,10 +25,13 @@ const cleanedArgs = rawArgs.filter((arg) => {
 	}
 });
 
-// Spawn the binary with cleaned arguments
+// Spawn the binary with cleaned arguments. envWithProxyBypass strips proxy vars
+// only when the configured backlog host matches NO_PROXY (Bun's fetch ignores
+// NO_PROXY itself); otherwise the env is passed through unchanged.
 const child = spawn(binaryPath, cleanedArgs, {
 	stdio: "inherit",
 	windowsHide: true,
+	env: envWithProxyBypass(process.env),
 });
 
 // Handle exit

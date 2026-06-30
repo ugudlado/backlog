@@ -52,6 +52,7 @@ EOF
 
 cp scripts/cli.cjs "$STAGE/main/cli.cjs"
 cp scripts/resolveBinary.cjs "$STAGE/main/resolveBinary.cjs"
+cp scripts/proxyBypass.cjs "$STAGE/main/proxyBypass.cjs"
 cp scripts/postuninstall.cjs "$STAGE/main/postuninstall.cjs"
 cp scripts/postinstall.cjs "$STAGE/main/postinstall.cjs"
 cp -f LICENSE README.md "$STAGE/main/" 2>/dev/null || true
@@ -61,7 +62,7 @@ cat > "$STAGE/main/package.json" <<EOF
   "name": "$MAIN",
   "version": "$VERSION",
   "bin": { "backlog": "cli.cjs" },
-  "files": ["cli.cjs", "resolveBinary.cjs", "postuninstall.cjs", "postinstall.cjs", "package.json", "README.md", "LICENSE"],
+  "files": ["cli.cjs", "resolveBinary.cjs", "proxyBypass.cjs", "postuninstall.cjs", "postinstall.cjs", "package.json", "README.md", "LICENSE"],
   "optionalDependencies": {
     "$PKG": "$VERSION"
   },
