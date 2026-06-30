@@ -1,4 +1,4 @@
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, normalize, resolve } from "node:path";
@@ -132,9 +132,15 @@ export async function withRegistryLock<T>(
 
 /** User-level machine config (BACK-462). */
 export const MACHINE_CONFIG_DIR_NAME = "backlog";
-export const PROJECTS_FILE = "projects.yml";
-/** Legacy filename, migrated to PROJECTS_FILE on first access. */
-const LEGACY_PROJECTS_FILE = "workspaces.yml";
+/**
+ * The active-project pointer (`current:`) now lives in the machine config.yml
+ * alongside globalStore/backlog_url/tokens, rather than in its own file. On
+ * first access the legacy `projects.yml` (and its predecessor `workspaces.yml`)
+ * is folded in and removed.
+ */
+export const PROJECTS_FILE = "config.yml";
+/** Legacy standalone pointer files, folded into config.yml on first access. */
+const LEGACY_PROJECTS_FILES = ["projects.yml", "workspaces.yml"] as const;
 
 export interface ProjectsIndex {
 	/** The active project's id. Projects are discovered by scanning the global store. */
@@ -159,25 +165,43 @@ export function getMachineConfigDir(override?: string): string {
 }
 
 export function getProjectsFilePath(override?: string): string {
-	const dir = getMachineConfigDir(override);
-	const target = join(dir, PROJECTS_FILE);
-	// One-time migration: if only the legacy workspaces.yml exists, rename it.
-	// This is a pointer/cache file, so a best-effort rename is safe.
-	if (!existsSync(target)) {
-		const legacy = join(dir, LEGACY_PROJECTS_FILE);
-		if (existsSync(legacy)) {
-			try {
-				renameSync(legacy, target);
-			} catch {
-				// If the rename fails, fall through; the file will be recreated.
-			}
-		}
-	}
-	return target;
+	return join(getMachineConfigDir(override), PROJECTS_FILE);
 }
 
 /**
- * Minimal YAML reader for projects.yml. Only the `current:` pointer is read;
+ * Best-effort one-time fold-in: if config.yml has no `current:` but a legacy
+ * standalone pointer file does, copy that pointer into config.yml and delete
+ * the legacy file. Runs on read so existing installs don't lose their active
+ * project on upgrade. Failures are swallowed — the pointer is a cache.
+ */
+function migrateLegacyPointer(dir: string): void {
+	const target = join(dir, PROJECTS_FILE);
+	let configText = "";
+	try {
+		configText = readFileSync(target, "utf8");
+	} catch {
+		// config.yml may not exist yet; treat as empty.
+	}
+	if (/^\s*current\s*:/m.test(configText)) return; // already has a pointer
+
+	for (const name of LEGACY_PROJECTS_FILES) {
+		const legacy = join(dir, name);
+		if (!existsSync(legacy)) continue;
+		try {
+			const legacyCurrent = parseProjectsYaml(readFileSync(legacy, "utf8")).current;
+			if (legacyCurrent) {
+				writeFileSync(target, setCurrentLine(configText, legacyCurrent), "utf8");
+			}
+			rmSync(legacy, { force: true });
+			return; // first existing legacy file wins
+		} catch {
+			// Leave the legacy file in place; nothing was lost.
+		}
+	}
+}
+
+/**
+ * Minimal YAML reader for the machine config.yml. Only the `current:` pointer is read;
  * any legacy `projects:`/`workspaces:` list lines from older files are ignored
  * (projects are now discovered by scanning the global store).
  */
@@ -206,13 +230,28 @@ function stripYamlQuotes(s: string): string {
 }
 
 /**
- * Writes projects.yml with a stable, comment-header format. Only the active
- * project pointer is persisted; projects are discovered by scanning the store.
+ * Surgically sets (or clears) the `current:` pointer in raw config.yml text,
+ * leaving every other line — comments, blank lines, unrelated keys — byte-for-byte
+ * untouched. Used instead of a parse-and-reserialize so the user's hand-edited
+ * machine config (globalStore, tokens, …) survives a project switch.
+ *
+ * - `id` set: replace an existing top-level `current:` line, or append one.
+ * - `id` undefined/empty: remove any existing `current:` line.
  */
-export function serializeProjectsYaml(index: ProjectsIndex): string {
-	const header = "# Backlog.md machine-wide pointer to the active project.\n";
-	const body = index.current ? `current: ${quoteYamlPath(index.current)}\n` : "";
-	return `${header}\n${body}`;
+export function setCurrentLine(content: string, id: string | undefined): string {
+	const currentRe = /^[ \t]*current[ \t]*:.*$/m;
+	if (!id) {
+		// Drop the line (and a trailing newline) if present.
+		return content.replace(/^[ \t]*current[ \t]*:.*(?:\r?\n)?/m, "");
+	}
+	const line = `current: ${quoteYamlPath(id)}`;
+	if (currentRe.test(content)) {
+		return content.replace(currentRe, line);
+	}
+	if (content.length === 0) {
+		return `${line}\n`;
+	}
+	return content.endsWith("\n") ? `${content}${line}\n` : `${content}\n${line}\n`;
 }
 
 function quoteYamlPath(p: string): string {
@@ -223,6 +262,8 @@ function quoteYamlPath(p: string): string {
 }
 
 export async function readProjectsIndex(override?: string): Promise<ProjectsIndex> {
+	const dir = getMachineConfigDir(override);
+	migrateLegacyPointer(dir);
 	const filePath = getProjectsFilePath(override);
 	try {
 		const content = await readFile(filePath, "utf8");
@@ -240,16 +281,28 @@ export async function writeProjectsIndex(index: ProjectsIndex, override?: string
 	const dir = getMachineConfigDir(override);
 	await mkdir(dir, { recursive: true });
 	const filePath = getProjectsFilePath(override);
+	// Read-modify-write: preserve every other key/comment in config.yml and only
+	// touch the `current:` line. Falls back to empty text if config.yml is absent.
+	let existing = "";
+	try {
+		existing = await readFile(filePath, "utf8");
+	} catch (e) {
+		const code = e && typeof e === "object" && "code" in e ? String((e as NodeJS.ErrnoException).code) : "";
+		if (code !== "ENOENT") throw e;
+	}
+	const next = setCurrentLine(existing, index.current);
+	if (next === existing) return; // no-op; don't churn the file
 	// Atomic write: a kill mid-write leaves the tmp file behind but never a
-	// truncated projects.yml that the parser would silently treat as empty.
+	// truncated config.yml.
 	const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-	await writeFile(tmpPath, serializeProjectsYaml(index), "utf8");
+	await writeFile(tmpPath, next, "utf8");
 	await rename(tmpPath, filePath);
 }
 
 /**
- * Ensures `<machine-config-dir>/projects.yml` exists when missing.
- * Idempotent — keeps an existing `current` pointer untouched.
+ * Ensures the machine `config.yml` exists when missing, seeding it with a header
+ * comment. Idempotent — an existing config (and any `current:` pointer in it) is
+ * left untouched.
  */
 export async function ensureProjectsFileExists(override?: string): Promise<void> {
 	const filePath = getProjectsFilePath(override);
@@ -262,7 +315,9 @@ export async function ensureProjectsFileExists(override?: string): Promise<void>
 			throw e;
 		}
 	}
-	await writeProjectsIndex({}, override);
+	const dir = getMachineConfigDir(override);
+	await mkdir(dir, { recursive: true });
+	await writeFile(filePath, "# Backlog.md machine config\n", "utf8");
 }
 
 export async function pathExistsAsDirectory(p: string): Promise<boolean> {

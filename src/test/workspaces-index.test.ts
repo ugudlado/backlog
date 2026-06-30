@@ -2,24 +2,55 @@ import { describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
-import { parseProjectsYaml, serializeProjectsYaml, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
+import { parseProjectsYaml, setCurrentLine, toAbsoluteProjectRoot } from "../utils/projects-index.ts";
 
-describe("parseProjectsYaml / serializeProjectsYaml", () => {
-	it("round-trips the `current` pointer", () => {
-		const yaml = serializeProjectsYaml({ current: "ef567890" });
-		expect(yaml).toContain("current: ef567890");
-		expect(parseProjectsYaml(yaml)).toEqual({ current: "ef567890" });
+describe("parseProjectsYaml", () => {
+	it("reads the `current` pointer", () => {
+		expect(parseProjectsYaml("current: ef567890\n")).toEqual({ current: "ef567890" });
 	});
 
-	it("omits the `current` line when unset and round-trips the empty index", () => {
-		const yaml = serializeProjectsYaml({});
-		expect(yaml).not.toContain("current:");
-		expect(parseProjectsYaml(yaml)).toEqual({});
+	it("returns an empty index when `current` is absent", () => {
+		expect(parseProjectsYaml("globalStore: /tmp/x\n")).toEqual({});
 	});
 
 	it("ignores legacy `projects:`/`workspaces:` list lines (back-compat)", () => {
 		const legacy = ["workspaces:", "  - path: /tmp/a", "    id: abcd1234", "current: ef567890", ""].join("\n");
 		expect(parseProjectsYaml(legacy)).toEqual({ current: "ef567890" });
+	});
+});
+
+describe("setCurrentLine", () => {
+	const config = ["# Backlog.md machine config", "globalStore: ~/.config/backlog/workspaces", "client_token: abc"].join(
+		"\n",
+	);
+
+	it("appends `current:` when absent, preserving every other line", () => {
+		const out = setCurrentLine(`${config}\n`, "proj-1");
+		expect(out).toContain("# Backlog.md machine config");
+		expect(out).toContain("globalStore: ~/.config/backlog/workspaces");
+		expect(out).toContain("client_token: abc");
+		expect(out).toContain("current: proj-1");
+		expect(parseProjectsYaml(out)).toEqual({ current: "proj-1" });
+	});
+
+	it("replaces an existing `current:` line in place without touching others", () => {
+		const withCurrent = `${config}\ncurrent: old-id\n`;
+		const out = setCurrentLine(withCurrent, "new-id");
+		expect(out).toContain("current: new-id");
+		expect(out).not.toContain("old-id");
+		expect(out).toContain("client_token: abc");
+	});
+
+	it("removes the `current:` line when cleared, leaving the rest intact", () => {
+		const withCurrent = `${config}\ncurrent: old-id\n`;
+		const out = setCurrentLine(withCurrent, undefined);
+		expect(out).not.toContain("current:");
+		expect(out).toContain("client_token: abc");
+		expect(parseProjectsYaml(out)).toEqual({});
+	});
+
+	it("seeds a file from empty content", () => {
+		expect(setCurrentLine("", "proj-1")).toBe("current: proj-1\n");
 	});
 });
 

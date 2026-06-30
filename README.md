@@ -148,7 +148,7 @@ backlog service stop               # stop, leave plist on disk
 backlog service uninstall          # stop and remove plist
 ```
 
-The service serves the current project (recorded in `~/.config/backlog/projects.yml`). Switch projects from the project switcher in the web UI; the selection survives restarts.
+The service serves the current project (recorded as `current:` in `~/.config/backlog/config.yml`). Switch projects from the project switcher in the web UI; the selection survives restarts.
 
 Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Backlog as a Service](SERVICE.md).
 

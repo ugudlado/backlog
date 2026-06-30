@@ -689,10 +689,11 @@ Backlog.md stores every project in a configured **global store** — set
 `globalStore` in `~/.config/backlog/config.yml` (override the config dir via
 `BACKLOG_MACHINE_CONFIG_DIR`). Each project is one slot directory at
 `<globalStore>/<name>/` (a flat `config.yml` + `tasks/`), keyed by name and
-discovered by scanning the store. Projects are **not** tied to repos; a machine
-file `~/.config/backlog/projects.yml` records only the `current` pointer (the
-project the long-running `backlog server` / MCP server fall back to). Never edit
-it by hand.
+discovered by scanning the store. Projects are **not** tied to repos; the
+machine `~/.config/backlog/config.yml` records the `current` pointer (the
+project the long-running `backlog server` / MCP server fall back to) alongside
+`globalStore` and tokens. Switch projects via the CLI/web UI rather than editing
+the pointer by hand.
 
 Create a project with `backlog init <name>` or `backlog project create <name>`.
 

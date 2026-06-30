@@ -11,7 +11,7 @@ import {
 } from "../utils/projects-index.ts";
 
 describe("ensureProjectsFileExists", () => {
-	it("creates an empty projects.yml when missing", async () => {
+	it("creates the machine config.yml when missing", async () => {
 		const base = join(process.cwd(), `tmp-ensure-ws-${Date.now()}`);
 		const prevMachine = process.env.BACKLOG_MACHINE_CONFIG_DIR;
 		process.env.BACKLOG_MACHINE_CONFIG_DIR = join(base, ".config", "backlog.md");
