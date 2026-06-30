@@ -34,6 +34,42 @@
 				"Used `backlog project switch` (and/or `backlog project list`)",
 				"Did not hand-edit config.yml to change the current project"
 			]
+		},
+		{
+			"id": 3,
+			"name": "no-direct-file-edit",
+			"prompt": "Task 1's status should be 'In Progress' and it should be assigned to me. Update it.",
+			"expected_output": "Runs `backlog task edit 1 -s \"In Progress\" -a @...`; does NOT open or edit the task .md file in backlog/tasks/.",
+			"files": [],
+			"expectations": [
+				"Used `backlog task edit` to change status and assignee",
+				"Did not open, read, or write the task markdown file in backlog/tasks/ to make the change",
+				"Did not hand-edit the status or assignee in frontmatter"
+			]
+		},
+		{
+			"id": 4,
+			"name": "check-ac-by-index",
+			"prompt": "Mark the first two acceptance criteria on task 1 as complete.",
+			"expected_output": "Runs `backlog task edit 1 --check-ac 1 --check-ac 2` (repeated flags, not comma/range); does NOT change `- [ ]` to `- [x]` in the file.",
+			"files": [],
+			"expectations": [
+				"Used `backlog task edit ... --check-ac` with the criteria index",
+				"Repeated the flag per index (`--check-ac 1 --check-ac 2`) rather than `--check-ac 1,2` or `--check-ac 1-2`",
+				"Did not toggle the checkbox by editing the task markdown file"
+			]
+		},
+		{
+			"id": 5,
+			"name": "multiline-notes-no-literal-backslash-n",
+			"prompt": "Add implementation notes to task 1 with three separate lines: 'Investigated root cause', 'Added a regression test', and 'TODO: monitor staging'.",
+			"expected_output": "Uses repeated `--append-notes` (or real newlines inside the quoted string), NOT a single `--notes \"...\\n...\\n...\"` with literal backslash-n, which the CLI stores verbatim.",
+			"files": [],
+			"expectations": [
+				"Used `backlog task edit` with `--notes`/`--append-notes` to add the notes",
+				"Produced three distinct lines, either via repeated `--append-notes` or real newlines inside the quoted argument",
+				"Did not rely on a literal `\\n` sequence inside double quotes to create line breaks"
+			]
 		}
 	]
 }
