@@ -1,14 +1,11 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_FILES } from "../constants/index.ts";
-import { parseBacklogConfigMetadata } from "./backlog-directory.ts";
 import { readMachineConfig } from "./machine-config.ts";
 
 /**
- * A global-store project, discovered by scanning `<globalStore>/*` rather than
- * the workspace registry. The slot directory IS the data directory (flat
- * `config.yml` + `tasks/` inside), so global projects need no registry path —
- * the scan is their source of truth.
+ * A global-store project, discovered by scanning `<globalStore>/*`. The folder
+ * name IS the project — its `tasks/` are rendered directly. No per-project
+ * config file is required; `id` and `name` are the folder name.
  */
 export interface GlobalStoreProject {
 	id: string;
@@ -18,10 +15,10 @@ export interface GlobalStoreProject {
 }
 
 /**
- * Enumerate global-store projects by scanning the configured globalStore. Each
- * immediate subdirectory with a readable `config.yml` is a project. Returns an
- * empty list when globalStore is unset or unreadable — callers fall back to the
- * registry, so local-mode workspaces are unaffected.
+ * Enumerate global-store projects by scanning the configured globalStore. Every
+ * immediate subdirectory (except dot-dirs like `.archive`) is a project, keyed
+ * by its folder name. Returns an empty list when globalStore is unset or
+ * unreadable — callers fall back to the registry, so local-mode is unaffected.
  */
 export async function scanGlobalStoreProjects(): Promise<GlobalStoreProject[]> {
 	const { globalStore } = readMachineConfig();
@@ -30,23 +27,9 @@ export async function scanGlobalStoreProjects(): Promise<GlobalStoreProject[]> {
 	// withFileTypes gives isDirectory() for free — no per-entry stat.
 	const entries = await readdir(globalStore, { withFileTypes: true }).catch(() => []);
 
-	const projects = await Promise.all(
-		entries.map(async (dirent) => {
-			// Skip non-dirs and dot-dirs (e.g. `.archive` for soft-deleted projects).
-			if (!dirent.isDirectory() || dirent.name.startsWith(".")) return null;
-			const slotPath = join(globalStore, dirent.name);
-			try {
-				const content = await readFile(join(slotPath, DEFAULT_FILES.CONFIG), "utf8");
-				const { id, projectName } = parseBacklogConfigMetadata(content);
-				// Prefer the config id/name; fall back to the dir name as a stable key.
-				return { id: id ?? dirent.name, name: projectName ?? dirent.name, slotPath };
-			} catch {
-				// Not a project slot (no readable config.yml) — skip.
-				return null;
-			}
-		}),
-	);
-	return projects.filter((p): p is GlobalStoreProject => p !== null);
+	return entries
+		.filter((dirent) => dirent.isDirectory() && !dirent.name.startsWith("."))
+		.map((dirent) => ({ id: dirent.name, name: dirent.name, slotPath: join(globalStore, dirent.name) }));
 }
 
 /** Find a single global-store project by its scan id, or null. */

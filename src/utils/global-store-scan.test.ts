@@ -55,19 +55,20 @@ describe("scanGlobalStoreProjects", () => {
 		expect(await scanGlobalStoreProjects()).toEqual([]);
 	});
 
-	it("discovers slots with a readable config.yml; skips non-projects", async () => {
-		await mkdir(join(store, "Alpha"), { recursive: true });
-		await writeFile(join(store, "Alpha", "config.yml"), `id: "alpha-1234"\nproject_name: "Alpha"\n`);
-		// A bare dir with no config.yml is not a project.
-		await mkdir(join(store, "not-a-project"), { recursive: true });
-		// A slot without an id falls back to the dir name.
+	it("treats every folder as a project keyed by its name; no config.yml needed", async () => {
+		// Folders with tasks, with a config, and bare — all are projects.
+		await mkdir(join(store, "Alpha", "tasks"), { recursive: true });
 		await mkdir(join(store, "Beta"), { recursive: true });
-		await writeFile(join(store, "Beta", "config.yml"), `project_name: "Beta"\n`);
+		await writeFile(join(store, "Beta", "config.yml"), `project_name: "ignored"\n`);
+		await mkdir(join(store, "Gamma"), { recursive: true });
+		// Dot-dirs (e.g. soft-deleted) are excluded.
+		await mkdir(join(store, ".archive"), { recursive: true });
 
 		const projects = await scanGlobalStoreProjects();
 		const byName = Object.fromEntries(projects.map((p) => [p.name, p]));
-		expect(Object.keys(byName).sort()).toEqual(["Alpha", "Beta"]);
-		expect(byName.Alpha?.id).toBe("alpha-1234");
-		expect(byName.Beta?.id).toBe("Beta"); // dir-name fallback
+		expect(Object.keys(byName).sort()).toEqual(["Alpha", "Beta", "Gamma"]);
+		// id and name are the folder name — config.yml contents are not read.
+		expect(byName.Beta?.id).toBe("Beta");
+		expect(byName.Alpha?.slotPath).toBe(join(store, "Alpha"));
 	});
 });

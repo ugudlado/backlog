@@ -37,11 +37,9 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<SpawnResu
 	return { exitCode, stdout, stderr };
 }
 
-/** Create a global-store project slot (flat config.yml + tasks/) with a given id. */
-async function makeSlot(globalStoreDir: string, name: string, id: string): Promise<void> {
-	const slot = join(globalStoreDir, name);
-	await mkdir(join(slot, "tasks"), { recursive: true });
-	await writeFile(join(slot, "config.yml"), `id: "${id}"\nproject_name: "${name}"\nstatuses: ["To Do", "Done"]\n`);
+/** Create a global-store project slot — just a folder with tasks/; the folder IS the project. */
+async function makeSlot(globalStoreDir: string, name: string): Promise<void> {
+	await mkdir(join(globalStoreDir, name, "tasks"), { recursive: true });
 }
 
 describe("backlog project list + switch CLI integration", () => {
@@ -75,9 +73,9 @@ describe("backlog project list + switch CLI integration", () => {
 	});
 
 	it("list shows both projects; current is marked *; exits 0", async () => {
-		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
-		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentProjectId("alpha-1", machineConfigDir);
+		await makeSlot(globalStoreDir, "Alpha");
+		await makeSlot(globalStoreDir, "Beta");
+		await setCurrentProjectId("Alpha", machineConfigDir);
 
 		const result = await runCli(["project", "list"], env);
 		expect(result.exitCode).toBe(0);
@@ -88,9 +86,9 @@ describe("backlog project list + switch CLI integration", () => {
 	});
 
 	it("list --plain emits JSON of the scanned projects", async () => {
-		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
-		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentProjectId("alpha-1", machineConfigDir);
+		await makeSlot(globalStoreDir, "Alpha");
+		await makeSlot(globalStoreDir, "Beta");
+		await setCurrentProjectId("Alpha", machineConfigDir);
 
 		const result = await runCli(["project", "list", "--plain"], env);
 		expect(result.exitCode).toBe(0);
@@ -98,11 +96,11 @@ describe("backlog project list + switch CLI integration", () => {
 			current: string | null;
 			projects: Array<{ id: string; name: string }>;
 		};
-		expect(parsed.current).toBe("alpha-1");
+		expect(parsed.current).toBe("Alpha");
 		const sorted = [...parsed.projects].sort((a, b) => a.id.localeCompare(b.id));
 		expect(sorted).toEqual([
-			{ id: "alpha-1", name: "Alpha" },
-			{ id: "beta-2", name: "Beta" },
+			{ id: "Alpha", name: "Alpha" },
+			{ id: "Beta", name: "Beta" },
 		]);
 	});
 
@@ -113,20 +111,20 @@ describe("backlog project list + switch CLI integration", () => {
 	});
 
 	it("switch by name: exits 0, confirms, current updates", async () => {
-		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
-		await makeSlot(globalStoreDir, "Beta", "beta-2");
-		await setCurrentProjectId("alpha-1", machineConfigDir);
+		await makeSlot(globalStoreDir, "Alpha");
+		await makeSlot(globalStoreDir, "Beta");
+		await setCurrentProjectId("Alpha", machineConfigDir);
 
 		const result = await runCli(["project", "switch", "Beta"], env);
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Switched to project Beta");
 
 		const index = await readProjectsIndex(machineConfigDir);
-		expect(index.current).toBe("beta-2");
+		expect(index.current).toBe("Beta");
 	});
 
 	it("switch unknown name: exits 1 with error", async () => {
-		await makeSlot(globalStoreDir, "Alpha", "alpha-1");
+		await makeSlot(globalStoreDir, "Alpha");
 		const result = await runCli(["project", "switch", "Ghost"], env);
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr).toContain('No project named "Ghost"');
@@ -155,7 +153,7 @@ describe("backlog project list/switch in remote mode", () => {
 		await mkdir(cliConfigDir, { recursive: true });
 		await mkdir(serverConfigDir, { recursive: true });
 		await mkdir(serverStore, { recursive: true });
-		await makeSlot(serverStore, "RemoteProj", "remoteproj-1");
+		await makeSlot(serverStore, "RemoteProj");
 
 		await writeFile(join(cliConfigDir, "config.yml"), `backlog_url: http://localhost:${port}\nclient_token: secret\n`);
 		await writeFile(join(serverConfigDir, "config.yml"), `globalStore: ${serverStore}\n`);
