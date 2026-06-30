@@ -1,14 +1,14 @@
 # Backlog.md Not Initialized
 
-This directory does not have Backlog.md initialized.
+This directory has no Backlog.md project yet.
 
-**To set up task management for this project, run:**
+**To set up task management, create a project:**
 
 ```bash
-backlog init
+backlog project create <name>
 ```
 
-This will create the necessary `backlog/` directory structure and configuration file.
+You can pass `--prefix <letters>` to set the task ID prefix. This creates a slot in the global store, writes its config, and makes it the current project. Tasks live in the configured global store, not a local `backlog/` directory. The `globalStore` must already be set in `~/.config/backlog/config.yml`.
 
 ## What is Backlog.md?
 
@@ -16,9 +16,7 @@ Backlog.md is a task management system that uses markdown files to track feature
 
 ## Next Steps
 
-1. Run `backlog init` in your project directory
-2. Follow the interactive setup prompts
-3. Choose your preferred AI agent integration (Claude Code, Codex, Gemini CLI, or Kiro)
-4. Start creating and managing tasks!
+1. Run `backlog project create <name>` (optionally with `--prefix <letters>`)
+2. Start creating and managing tasks!
 
 For more information, visit: https://backlog.md

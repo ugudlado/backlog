@@ -6,21 +6,13 @@ Full command reference for Backlog. For getting started, see [README.md](README.
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Initialize project | `backlog init [project-name]` (creates backlog structure with a minimal interactive flow) |
-| Re-initialize | `backlog init` (preserves existing config, allows updates) |
-| Advanced settings wizard | `backlog init` then choose "Yes" at the advanced settings prompt |
+| Create project | `backlog project create <name>` (optional `--prefix <letters>`, immutable after creation) |
 
-`backlog init` keeps first-run setup focused on the essentials:
-- **Project name** – identifier for your backlog (defaults to the current directory on re-run).
-- **Backlog folder** – choose `backlog/`, `.backlog/`, or a custom project-relative path.
-- **Config location** – for built-in folders, choose folder-local `config.yml` or root `backlog.config.yml`; custom paths use root `backlog.config.yml`.
-- **Integration choice** – decide whether your AI tools connect through the **MCP connector** (recommended) or stick with **CLI commands (legacy)**.
-- **Instruction files (CLI path only)** – when you choose the legacy CLI flow, pick which instruction files to create (CLAUDE.md, AGENTS.md, GEMINI.md, Copilot, or skip).
-- **Advanced settings prompt** – default answer "No" finishes init immediately; choosing "Yes" jumps straight into the advanced wizard documented in [ADVANCED-CONFIG.md](ADVANCED-CONFIG.md).
+`backlog project create <name>` writes the project config, registers the project, and sets it as current. `globalStore` must be preconfigured in `~/.config/backlog/config.yml`.
 
-The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
+To change project config later, use the Web UI Settings page or edit the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
 
-You can rerun the wizard anytime by running `backlog init` again and choosing "Yes" at the advanced settings prompt. All existing CLI flags (for example `--defaults`, `--integration-mode`) continue to provide fully non-interactive setups. To change project config later without rerunning init, use the Web UI Settings page or edit the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
+MCP wiring is set up once per machine with `backlog mcp install <claude|codex|gemini|kiro>`.
 
 ## Task Management
 
@@ -169,7 +161,7 @@ Manage task dependencies to create execution sequences and prevent circular rela
 | Custom port | `backlog server --port 8080` |
 | Pin project explicitly | `backlog server --project /path/to/repo` |
 
-The server picks its project from the registry's `current` pointer (set on UI switch or `backlog init`); without `--project` it falls back to the first registered workspace, then walk-up from CWD.
+The server picks its project from the registry's `current` pointer (set on UI switch or `backlog project switch`); without `--project` it falls back to the first registered workspace, then walk-up from CWD.
 
 ## Service (macOS launchd)
 

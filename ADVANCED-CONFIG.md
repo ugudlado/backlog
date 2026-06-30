@@ -7,7 +7,7 @@ There is no `backlog config` CLI command. Project configuration is edited in one
 - **Web UI Settings page** — run `backlog server` and open Settings.
 - **Editing the project config file directly** — `backlog/config.yml`, or `backlog.config.yml` at the project root when using root config discovery.
 
-A subset of options can also be set during `backlog init` when you opt into advanced settings.
+The `--prefix` for task IDs is set once at `backlog project create` time and is immutable afterward. All other options are edited via the Web UI Settings page or by editing the project config file directly.
 
 ## Project Configuration Options
 
@@ -15,7 +15,7 @@ These keys live in the project config file (`backlog/config.yml` or root `backlo
 
 | Key                     | Purpose                                              | Default                      |
 |-------------------------|------------------------------------------------------|------------------------------|
-| `projectName`           | Project identifier                                   | (set at init)                |
+| `projectName`           | Project identifier                                   | (set at project create)      |
 | `defaultStatus`         | First column / default status for new tasks          | `To Do`                      |
 | `statuses`              | Board columns                                        | `[To Do, In Progress, Done]` |
 | `labels`                | Known labels                                         | `[]`                         |
@@ -24,7 +24,7 @@ These keys live in the project config file (`backlog/config.yml` or root `backlo
 | `maxColumnWidth`        | Max column width in board/list views                 | `(unset)`                    |
 | `autoOpenBrowser`       | Open browser automatically when the server starts    | `true`                       |
 | `defaultPort`           | Web UI port                                          | `6420`                       |
-| `prefixes`              | ID prefix for tasks (read-only after init)           | `{ task: "task" }`           |
+| `prefixes`              | ID prefix for tasks (read-only after project create) | `{ task: "task" }`           |
 | `onStatusChange`        | Shell command to run on status change                | `(disabled)`                 |
 
 ## Detailed Notes
@@ -45,9 +45,9 @@ globalStore: /path/to/my/backlog-store
 ```
 
 When `globalStore` is set:
-- `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
+- `backlog project create` creates `<globalStore>/<name>/` instead of `<repo>/backlog/`.
 - All task reads and writes go to the external slot — the code repo is never touched.
-- The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
+- The `globalStore` directory must exist before running `backlog project create`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
 **`backlog_url` / `client_token`** — point the CLI and MCP at a remote Backlog server instead of local files:

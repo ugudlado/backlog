@@ -50,14 +50,17 @@ mkdir -p ~/.config/backlog
 echo 'globalStore: ~/.config/backlog/projects' > ~/.config/backlog/config.yml
 
 # Create a project (you can run this from anywhere)
-backlog init "My Awesome Project"
+backlog project create "My Awesome Project"
+# optional: choose a task-id prefix with --prefix <letters>
 ```
 
-The init wizard will ask how you want to connect AI tools:
+Then wire your AI tool to Backlog over MCP (once per machine):
 
-- **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor and adds workflow instructions for your agents.
-- **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.
-- **Skip** — no AI setup; use Backlog purely as a task manager.
+```bash
+backlog mcp install <claude|codex|gemini|kiro>
+```
+
+This configures the chosen client to talk to the Backlog MCP server. You can also follow the manual MCP steps in the [MCP Integration](#-mcp-integration-model-context-protocol) section below. Prefer to skip AI entirely? Just use Backlog as a task manager from the CLI or web UI.
 
 Every project is stored as a slot in the configured **global store** (`globalStore` in `~/.config/backlog/config.yml`) — one directory per project, keyed by name, not tied to any repo. Tasks remain human-readable Markdown files (e.g. `task-10 - Add core search functionality.md`). List and switch projects with `backlog project list` / `backlog project switch <name>`, or target one per command with `--project <name>`.
 
@@ -66,7 +69,7 @@ Every project is stored as a slot in the configured **global store** (`globalSto
 ### Working with AI agents
 
 This is the recommended flow for Claude Code, Codex, Gemini CLI, Kiro and similar tools — following the **spec‑driven AI development** approach.
-After running `backlog init` and choosing the MCP or CLI integration, work in this loop:
+After creating a project (`backlog project create`) and wiring your AI tool with `backlog mcp install <client>`, work in this loop:
 
 **Step 1 — Describe your idea.** Tell the agent what you want to build and ask it to split the work into small tasks with clear descriptions and acceptance criteria.
 
@@ -169,7 +172,7 @@ Linux (systemd) and Windows (Task Scheduler / NSSM) recipes live in [Running Bac
 ## 🔧 MCP Integration (Model Context Protocol)
 
 The easiest way to connect Backlog to AI coding assistants like Claude Code, Codex, Gemini CLI and Kiro is via the MCP protocol.
-You can run `backlog init` (even if you already initialized Backlog) to set up MCP integration automatically, or follow the manual steps below.
+Run `backlog mcp install <claude|codex|gemini|kiro>` to wire a client up automatically, or follow the manual steps below.
 
 ### Client guides
 
@@ -232,7 +235,7 @@ If your IDE supports custom args but not env vars, you can also use `["mcp", "st
 
 > [!IMPORTANT]
 > When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.
-> This step is not required when using `backlog init` as it adds these instructions automatically.
+> Using `backlog mcp install <client>` wires up the MCP server for you; otherwise add these instructions yourself.
 > Backlog's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
 
 Once connected, agents can read the Backlog workflow instructions via the resource `backlog://docs/task-workflow`.
@@ -258,18 +261,16 @@ Backlog merges the following layers (highest → lowest):
 2. Project config file (`config.yml` inside the project's global-store slot)
 3. Built‑ins
 
-### Interactive wizard (`backlog init` advanced settings)
+### Project settings
 
-When you run `backlog init` and answer "Yes" at the advanced settings prompt, an interactive wizard walks through the project configuration surface:
+`backlog project create` ships safe defaults (`defaultPort=6420`, `autoOpenBrowser=true`). The task-id prefix is chosen at create time with `--prefix <letters>`. The rest of the project configuration surface is:
 
-- Definition of Done defaults: interactively add/remove/reorder/clear project-level `definition_of_done` checklist items.
-- Web UI defaults: choose `defaultPort` and whether `autoOpenBrowser` should run.
+- Definition of Done defaults: project-level `definition_of_done` checklist items.
+- Web UI defaults: `defaultPort` and whether `autoOpenBrowser` should run.
 
-Answering "No" applies the safe defaults that ship with Backlog (`defaultPort=6420`, `autoOpenBrowser=true`). When you revisit `backlog init`, the wizard pre-populates prompts with your current values so you can adjust only what changed.
+Change any of these via the Web UI Settings page or by editing the project config file directly (see below).
 
 Projects live in the global store, not in a Git repo. CLI, Web, and MCP workflows never depend on a Git repository.
-
-To change project config later, use the Web UI Settings page or edit the project config file directly (see below).
 
 ### Machine-level config (`~/.config/backlog/config.yml`)
 
@@ -284,10 +285,10 @@ globalStore: /path/to/my/backlog-store
 
 When `globalStore` is set:
 
-- `backlog init` creates `<globalStore>/<repo-basename>/` instead of `<repo>/backlog/`.
+- `backlog project create` creates `<globalStore>/<name>/` instead of `<repo>/backlog/`.
 - All task reads and writes go to the external slot — the code repo is never touched.
 - `git log` in your code repo stays clean.
-- The `globalStore` directory must exist before running `backlog init`. Backlog will not create it.
+- The `globalStore` directory must exist before running `backlog project create`. Backlog will not create it.
 - If a local `backlog/` or `.backlog/` folder already exists in the repo, it wins and the global store is ignored for that project.
 
 The current `globalStore` value (or `(not set)`) is whatever you have written in `~/.config/backlog/config.yml`.
@@ -296,7 +297,7 @@ To override the config directory path (useful in tests or CI), set the `BACKLOG_
 
 ### Definition of Done defaults
 
-Set project-wide DoD items during `backlog init` advanced setup, in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
+Set project-wide DoD items in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
 
 ```yaml
 definition_of_done:

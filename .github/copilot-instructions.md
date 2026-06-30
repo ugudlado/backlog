@@ -24,8 +24,7 @@
 
 There is no `backlog config` CLI command. Project configuration is edited via the
 Web UI Settings page or by editing the project config file directly
-(`backlog/config.yml`, or `backlog.config.yml` at the project root). The
-interactive advanced-settings wizard runs as part of `backlog init`.
+(`backlog/config.yml`, or `backlog.config.yml` at the project root).
 
 ## Core Structure
 

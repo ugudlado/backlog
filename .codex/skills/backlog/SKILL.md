@@ -81,7 +81,7 @@ Each project is one slot in a configured **global store** (`globalStore` in
 config's `current` pointer is what the long-running server / MCP fall back to;
 switch via the CLI, don't hand-edit it.
 
-- Create: `backlog init <name>` or `backlog project create <name>`
+- Create: `backlog project create <name>`
 - List: `backlog project list` (`--plain` → `{"current", "projects":[{"id","name"}]}`)
 - Switch: `backlog project switch <name>`
 - One-off override: `backlog <cmd> --project <name>`
@@ -103,5 +103,5 @@ confirm you're targeting the right one.
   `BACKLOG_TOKEN`, which overrides it) as a bearer token; the server accepts any
   token in its `server_tokens` list. `BACKLOG_URL`/`BACKLOG_TOKEN` env vars
   override config.
-- **Refresh agent instructions:** re-run `backlog init`, select the instruction
-  files — idempotent, replaces only the marked block.
+- **Wire up an AI client:** `backlog mcp install <claude|codex|gemini|kiro>`
+  configures the client to talk to the Backlog MCP server.

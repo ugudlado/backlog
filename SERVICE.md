@@ -51,7 +51,7 @@ backlog service uninstall  # stop and remove the plist
 1. The `current` pointer in `~/.config/backlog/projects.yml` (last project selected in the UI), if set
 2. Otherwise the first project found by scanning the global store
 
-Create a project first (so the store isn't empty) with `backlog init <name>`. Switching projects in the UI persists the selection, so the next service start picks up the same project.
+Create a project first (so the store isn't empty) with `backlog project create <name>`. Switching projects in the UI persists the selection, so the next service start picks up the same project.
 
 ## Advanced / manual service managers
 
