@@ -98,6 +98,7 @@ jobs:
           mkdir -p dist
           cp scripts/cli.cjs dist/cli.js
           cp scripts/resolveBinary.cjs dist/resolveBinary.cjs
+          cp scripts/proxyBypass.cjs dist/proxyBypass.cjs
           cp scripts/postuninstall.cjs dist/postuninstall.cjs
           cp scripts/postinstall.cjs dist/postinstall.cjs
           chmod +x dist/cli.js
@@ -108,7 +109,7 @@ jobs:
           jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.type) |
               .version = "'$TAG'" |
               .bin = {backlog:"cli.js"} |
-              .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","postinstall.cjs","package.json","README.md","LICENSE"] |
+              .files = ["cli.js","resolveBinary.cjs","proxyBypass.cjs","postuninstall.cjs","postinstall.cjs","package.json","README.md","LICENSE"] |
               .scripts = {"postinstall": "node postinstall.cjs", "postuninstall": "node postuninstall.cjs"} |
               .repository = {"type":"git","url":"https://github.com/ugudlado/backlog"} |
               .optionalDependencies = {
