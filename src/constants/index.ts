@@ -55,5 +55,3 @@ export const DEFAULT_INIT_CONFIG = {
 	defaultPort: 6420,
 	autoOpenBrowser: true,
 } as const;
-
-export * from "../guidelines/index.ts";

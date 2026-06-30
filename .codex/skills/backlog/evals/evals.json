@@ -1,0 +1,39 @@
+{
+	"skill_name": "backlog",
+	"evals": [
+		{
+			"id": 0,
+			"name": "create-task-via-cli",
+			"prompt": "Add a backlog task titled 'Write release notes' to this project.",
+			"expected_output": "Runs `backlog task create` via the CLI; does NOT hand-write a task .md file.",
+			"files": [],
+			"expectations": [
+				"Used the `backlog task create` CLI command",
+				"Did not create or edit a task markdown file by hand",
+				"The task appears in `backlog task list`"
+			]
+		},
+		{
+			"id": 1,
+			"name": "list-tasks-plain",
+			"prompt": "Show me the tasks in this backlog project.",
+			"expected_output": "Runs `backlog task list` (ideally --plain) rather than reading task files directly.",
+			"files": [],
+			"expectations": [
+				"Used the `backlog task list` CLI command",
+				"Did not enumerate tasks by reading the tasks directory directly"
+			]
+		},
+		{
+			"id": 2,
+			"name": "switch-project",
+			"prompt": "Switch the active backlog project to one named 'eval-proj'.",
+			"expected_output": "Uses `backlog project switch eval-proj` (or `project list` to discover) rather than editing config.yml.",
+			"files": [],
+			"expectations": [
+				"Used `backlog project switch` (and/or `backlog project list`)",
+				"Did not hand-edit config.yml to change the current project"
+			]
+		}
+	]
+}

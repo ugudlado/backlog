@@ -119,73 +119,16 @@ describe("CLI Integration", () => {
 			expect(config?.projectName).toBe("Test Project");
 		});
 
-		it("should create agent instruction files when requested", async () => {
-			// Set up a git repository
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			// Simulate the agent instructions being added
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Agent Test Project");
-
-			// Import and call addAgentInstructions directly (simulating user saying "y")
-			const { addAgentInstructions } = await import("../index.ts");
-			await addAgentInstructions(TEST_DIR);
-
-			// Verify agent files were created. Claude gets the skill bundle instead
-			// of an injected CLAUDE.md (so it doesn't bloat every prompt).
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			// .cursorrules removed; Cursor now uses AGENTS.md
-			const geminiFile = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
-			const copilotFile = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
-			const skillFile = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).exists();
-			const referenceFile = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "reference.md")).exists();
-
-			expect(agentsFile).toBe(true);
-			expect(claudeFile).toBe(false);
-			expect(skillFile).toBe(true);
-			expect(referenceFile).toBe(true);
-			expect(geminiFile).toBe(true);
-			expect(copilotFile).toBe(true);
-
-			// Verify content
-			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
-			const skillContent = await Bun.file(join(TEST_DIR, ".claude", "skills", "backlog-md", "SKILL.md")).text();
-			const geminiContent = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
-			const copilotContent = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
-			expect(agentsContent.length).toBeGreaterThan(0);
-			expect(skillContent.length).toBeGreaterThan(0);
-			expect(geminiContent.length).toBeGreaterThan(0);
-			expect(copilotContent.length).toBeGreaterThan(0);
-		});
-
-		it("should allow skipping agent instructions with 'none' selection", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			const output = await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions none`
-				.cwd(TEST_DIR)
-				.env(initEnv)
-				.text();
-
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			expect(agentsFile).toBe(false);
-			expect(claudeFile).toBe(false);
-			expect(output).toContain("AI Integration: CLI commands (legacy)");
-			expect(output).toContain("Skipping agent instruction files per selection.");
-		});
-
 		it("should print minimal summary when advanced settings are skipped", async () => {
 			await initTestGitRepo({ cwd: TEST_DIR });
 
-			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --agent-instructions none`
+			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --integration-mode none`
 				.cwd(TEST_DIR)
 				.env(initEnv)
 				.text();
 
 			expect(output).toContain("Initialization Summary");
 			expect(output).toContain("Project Name: SummaryProj");
-			expect(output).toContain("AI Integration: CLI commands (legacy)");
 			// Global-store projects are filesystem-only, so git integration is off.
 			expect(output).toContain("Git integration: disabled (filesystem-only)");
 		});
@@ -232,58 +175,6 @@ describe("CLI Integration", () => {
 			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
 			expect(agentsFile).toBe(false);
 			expect(claudeFile).toBe(false);
-		});
-
-		it("should reject MCP integration when agent instruction flags are provided", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			let failed = false;
-			let combinedOutput = "";
-			try {
-				await $`bun ${CLI_PATH} init ConflictProj --defaults --integration-mode mcp --agent-instructions claude`
-					.cwd(TEST_DIR)
-					.env(initEnv)
-					.text();
-			} catch (err) {
-				failed = true;
-				const e = err as { stdout?: unknown; stderr?: unknown };
-				combinedOutput = String(e.stdout ?? "") + String(e.stderr ?? "");
-			}
-
-			expect(failed).toBe(true);
-			expect(combinedOutput).toContain("cannot be combined");
-		});
-
-		it("should ignore 'none' when other agent instructions are provided", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			await $`bun ${CLI_PATH} init TestProj --defaults --agent-instructions agents,none`
-				.cwd(TEST_DIR)
-				.env(initEnv)
-				.quiet();
-
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			expect(agentsFile).toBe(true);
-		});
-
-		it("should error on invalid agent instruction value", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			let failed = false;
-			try {
-				await $`bun ${CLI_PATH} init InvalidProj --defaults --agent-instructions notreal`
-					.cwd(TEST_DIR)
-					.env(initEnv)
-					.quiet();
-			} catch (e) {
-				failed = true;
-				const err = e as { stdout?: unknown; stderr?: unknown };
-				const out = String(err.stdout ?? "") + String(err.stderr ?? "");
-				expect(out).toContain("Invalid agent instruction: notreal");
-				expect(out).toContain("Valid options are: cursor, claude, agents, gemini, copilot, none");
-			}
-
-			expect(failed).toBe(true);
 		});
 	});
 

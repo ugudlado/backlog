@@ -20,7 +20,7 @@ Full command reference for Backlog. For getting started, see [README.md](README.
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
 
-You can rerun the wizard anytime by running `backlog init` again and choosing "Yes" at the advanced settings prompt. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups. To change project config later without rerunning init, use the Web UI Settings page or edit the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
+You can rerun the wizard anytime by running `backlog init` again and choosing "Yes" at the advanced settings prompt. All existing CLI flags (for example `--defaults`, `--integration-mode`) continue to provide fully non-interactive setups. To change project config later without rerunning init, use the Web UI Settings page or edit the project config file directly (`backlog/config.yml`, or `backlog.config.yml` at the project root).
 
 ## Task Management
 

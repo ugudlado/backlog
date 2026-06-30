@@ -1,12 +1,9 @@
 ---
-name: backlog-md
-description: |
-  Manage tasks, plans, and project state with backlog.md (a CLI + MCP task
-  management tool). Use when the user asks to create, list, or edit tasks,
-  run the backlog web UI, or work with multiple backlog projects.
+name: backlog
+description: This skill should be used when the user asks to "create a backlog task", "list backlog tasks", "edit a task", "manage backlog", "open the backlog UI", or "switch backlog projects". Manages tasks, plans, and project state with backlog.md (a CLI + MCP task management tool), preferring the CLI over MCP when both are available.
 ---
 
-# backlog-md
+# backlog
 
 You are working in a repo (or environment) where backlog.md may be installed
 as the task management system.
@@ -14,7 +11,9 @@ as the task management system.
 ## Quick rules
 
 - The CLI is the interface. Never edit task `.md` files directly — always go
-  through `backlog task ...` commands.
+  through `backlog task ...` commands. When both the CLI and the backlog MCP
+  server are available, prefer the CLI; fall back to MCP only where the CLI
+  cannot run (e.g. no shell access).
 - Projects live in a configured **global store** (`globalStore` in
   `~/.config/backlog/config.yml`), one slot per project keyed by name. Create
   with `backlog init <name>` or `backlog project create <name>`.

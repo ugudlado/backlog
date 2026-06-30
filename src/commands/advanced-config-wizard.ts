@@ -31,13 +31,11 @@ export type PromptRunner = (
 interface WizardOptions {
 	existingConfig?: BacklogConfig | null;
 	cancelMessage: string;
-	includeClaudePrompt?: boolean;
 	promptImpl?: PromptRunner;
 }
 
 export interface AdvancedConfigWizardResult {
 	config: Partial<BacklogConfig>;
-	installClaudeAgent: boolean;
 }
 
 type DefinitionOfDoneAction = "add" | "remove" | "reorder" | "clear" | "done";
@@ -194,7 +192,6 @@ const clackPromptRunner: PromptRunner = async (question, options) => {
 export async function runAdvancedConfigWizard({
 	existingConfig,
 	cancelMessage,
-	includeClaudePrompt = false,
 	promptImpl = clackPromptRunner,
 }: WizardOptions): Promise<AdvancedConfigWizardResult> {
 	const onCancel = () => handlePromptCancel(cancelMessage);
@@ -203,7 +200,6 @@ export async function runAdvancedConfigWizard({
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
-	let installClaudeAgent = false;
 
 	while (true) {
 		const preview = renderDefinitionOfDonePreview(definitionOfDone);
@@ -444,26 +440,11 @@ export async function runAdvancedConfigWizard({
 		break;
 	}
 
-	if (includeClaudePrompt) {
-		const claudePrompt = await promptImpl(
-			{
-				type: "confirm",
-				name: "installClaudeAgent",
-				message: "Install Claude Code Backlog.md agent?",
-				hint: "Adds configuration under .claude/agents/",
-				initial: false,
-			},
-			{ onCancel },
-		);
-		installClaudeAgent = Boolean(claudePrompt?.installClaudeAgent);
-	}
-
 	return {
 		config: {
 			definitionOfDone,
 			defaultPort,
 			autoOpenBrowser,
 		},
-		installClaudeAgent,
 	};
 }

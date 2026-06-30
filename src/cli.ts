@@ -14,14 +14,7 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
-import {
-	type AgentInstructionFile,
-	Core,
-	type EnsureMcpGuidelinesResult,
-	ensureMcpGuidelines,
-	exportKanbanBoardToFile,
-	updateReadmeWithBoard,
-} from "./index.ts";
+import { Core, exportKanbanBoardToFile, updateReadmeWithBoard } from "./index.ts";
 import {
 	type BacklogConfig,
 	isLocalEditableTask,
@@ -35,7 +28,6 @@ import {
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
-import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
@@ -65,7 +57,7 @@ import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
 
-type IntegrationMode = "mcp" | "cli" | "none";
+type IntegrationMode = "mcp" | "none";
 
 function normalizeIntegrationOption(value: string): IntegrationMode | null {
 	const normalized = value.trim().toLowerCase();
@@ -76,18 +68,6 @@ function normalizeIntegrationOption(value: string): IntegrationMode | null {
 		normalized === "model_context_protocol"
 	) {
 		return "mcp";
-	}
-	if (
-		normalized === "cli" ||
-		normalized === "legacy" ||
-		normalized === "commands" ||
-		normalized === "command" ||
-		normalized === "instructions" ||
-		normalized === "instruction" ||
-		normalized === "agent" ||
-		normalized === "agents"
-	) {
-		return "cli";
 	}
 	if (
 		normalized === "none" ||
@@ -104,14 +84,6 @@ function normalizeIntegrationOption(value: string): IntegrationMode | null {
 
 // Always use "backlog" as the global MCP server name so fallback mode works when the project isn't initialized.
 const MCP_SERVER_NAME = "backlog";
-
-const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
-	claude: "CLAUDE.md",
-	codex: "AGENTS.md",
-	gemini: "GEMINI.md",
-	kiro: "AGENTS.md",
-	guide: "AGENTS.md",
-};
 
 async function openUrlInBrowser(url: string): Promise<void> {
 	let cmd: string[];
@@ -554,20 +526,13 @@ program
 program
 	.command("init [projectName]")
 	.description("initialize backlog project in the current directory")
-	.option(
-		"--agent-instructions <instructions>",
-		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
-	)
-	.option("--install-claude-agent <boolean>", "install Claude Code agent (default: false)")
-	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog (mcp, cli, or none)")
+	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog (mcp or none)")
 	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
 	.option("--defaults", "use default values for all prompts")
 	.action(
 		async (
 			projectName: string | undefined,
 			options: {
-				agentInstructions?: string;
-				installClaudeAgent?: string;
 				integrationMode?: string;
 				taskPrefix?: string;
 				defaults?: boolean;
@@ -603,12 +568,6 @@ program
 					process.exit(1);
 				}
 
-				// Helper function to parse boolean strings
-				const parseBoolean = (value: string | undefined, defaultValue: boolean): boolean => {
-					if (value === undefined) return defaultValue;
-					return value.toLowerCase() === "true" || value === "1";
-				};
-
 				function abortInitialization(message = "Aborting initialization.") {
 					clack.cancel(message);
 					process.exitCode = 1;
@@ -618,13 +577,7 @@ program
 				}
 
 				// Non-interactive mode when any flag is provided or --defaults is used
-				const isNonInteractive = !!(
-					options.agentInstructions ||
-					options.defaults ||
-					options.installClaudeAgent ||
-					options.integrationMode ||
-					options.taskPrefix
-				);
+				const isNonInteractive = !!(options.defaults || options.integrationMode || options.taskPrefix);
 
 				// Get project name
 				let name = projectName;
@@ -695,39 +648,14 @@ program
 					? normalizeIntegrationOption(options.integrationMode)
 					: undefined;
 				if (options.integrationMode && !integrationOption) {
-					console.error(`Invalid integration mode: ${options.integrationMode}. Valid options are: mcp, cli, none`);
+					console.error(`Invalid integration mode: ${options.integrationMode}. Valid options are: mcp, none`);
 					process.exit(1);
 				}
 
 				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
 				const mcpServerName = MCP_SERVER_NAME;
-				type AgentSelection = AgentSelectionValue;
-				let agentFiles: AgentInstructionFile[] = [];
-				let agentInstructionsSkipped = false;
 				let mcpClientSetupSummary: string | undefined;
 				const mcpGuideUrl = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
-
-				if (
-					!integrationOption &&
-					integrationMode === "mcp" &&
-					(options.agentInstructions || options.installClaudeAgent)
-				) {
-					integrationMode = "cli";
-				}
-
-				if (integrationMode === "mcp" && (options.agentInstructions || options.installClaudeAgent)) {
-					console.error(
-						"The MCP connector option cannot be combined with --agent-instructions or --install-claude-agent.",
-					);
-					process.exit(1);
-				}
-
-				if (integrationMode === "none" && (options.agentInstructions || options.installClaudeAgent)) {
-					console.error(
-						"Skipping AI integration cannot be combined with --agent-instructions or --install-claude-agent.",
-					);
-					process.exit(1);
-				}
 
 				let integrationTipShown = false;
 				mainSelection: while (true) {
@@ -745,10 +673,6 @@ program
 									value: "mcp",
 								},
 								{
-									label: "via CLI commands (broader compatibility)",
-									value: "cli",
-								},
-								{
 									label: "Skip for now (I am not using Backlog with AI tools)",
 									value: "none",
 								},
@@ -763,83 +687,6 @@ program
 						const selectedMode = integrationPrompt ? normalizeIntegrationOption(String(integrationPrompt)) : null;
 						integrationMode = selectedMode ?? "mcp";
 						console.log("");
-					}
-
-					if (integrationMode === "cli") {
-						if (options.agentInstructions) {
-							const nameMap: Record<string, AgentSelection> = {
-								cursor: "AGENTS.md",
-								claude: "CLAUDE.md",
-								agents: "AGENTS.md",
-								gemini: "GEMINI.md",
-								copilot: ".github/copilot-instructions.md",
-								none: "none",
-								"CLAUDE.md": "CLAUDE.md",
-								"AGENTS.md": "AGENTS.md",
-								"GEMINI.md": "GEMINI.md",
-								".github/copilot-instructions.md": ".github/copilot-instructions.md",
-							};
-
-							const requestedInstructions = options.agentInstructions.split(",").map((f) => f.trim().toLowerCase());
-							const mappedFiles: AgentSelection[] = [];
-
-							for (const instruction of requestedInstructions) {
-								const mappedFile = nameMap[instruction];
-								if (!mappedFile) {
-									console.error(`Invalid agent instruction: ${instruction}`);
-									console.error("Valid options are: cursor, claude, agents, gemini, copilot, none");
-									process.exit(1);
-								}
-								mappedFiles.push(mappedFile);
-							}
-
-							const { files, needsRetry, skipped } = processAgentSelection({ selected: mappedFiles });
-							if (needsRetry) {
-								console.error("Please select at least one agent instruction file before continuing.");
-								process.exit(1);
-							}
-							agentFiles = files;
-							agentInstructionsSkipped = skipped;
-						} else if (isNonInteractive) {
-							agentFiles = [];
-						} else {
-							while (true) {
-								const response = await clack.multiselect({
-									message: "Select instruction files for CLI-based AI tools (space toggles selections; enter accepts)",
-									options: [
-										{ label: "CLAUDE.md — Claude Code", value: "CLAUDE.md" },
-										{
-											label: "AGENTS.md — Codex, Cursor, Zed, Warp, Aider, RooCode, etc.",
-											value: "AGENTS.md",
-										},
-										{ label: "GEMINI.md — Google Gemini Code Assist CLI", value: "GEMINI.md" },
-										{
-											label: "Copilot instructions — GitHub Copilot",
-											value: ".github/copilot-instructions.md",
-										},
-									],
-									required: false,
-								});
-
-								if (clack.isCancel(response)) {
-									integrationMode = null;
-									console.log("");
-									continue mainSelection;
-								}
-
-								const selected = Array.isArray(response) ? (response as AgentSelection[]) : [];
-								const { files, needsRetry, skipped } = processAgentSelection({ selected });
-								if (needsRetry) {
-									console.log("Please select at least one agent instruction file before continuing.");
-									continue;
-								}
-								agentFiles = files;
-								agentInstructionsSkipped = skipped;
-								break;
-							}
-						}
-
-						break;
 					}
 
 					if (integrationMode === "mcp") {
@@ -875,18 +722,6 @@ program
 							}
 
 							const results: string[] = [];
-							const mcpGuidelineUpdates: EnsureMcpGuidelinesResult[] = [];
-							const recordGuidelinesForClient = async (clientKey: string) => {
-								const instructionFile = MCP_CLIENT_INSTRUCTION_MAP[clientKey];
-								if (!instructionFile) {
-									return;
-								}
-								const nudgeResult = await ensureMcpGuidelines(cwd, instructionFile);
-								if (nudgeResult.changed) {
-									mcpGuidelineUpdates.push(nudgeResult);
-								}
-							};
-							const uniq = (values: string[]) => [...new Set(values)];
 
 							for (const client of selectedClients) {
 								if (client === "claude") {
@@ -902,7 +737,6 @@ program
 										"start",
 									]);
 									results.push(result);
-									await recordGuidelinesForClient(client);
 									continue;
 								}
 								if (client === "codex") {
@@ -915,7 +749,6 @@ program
 										"start",
 									]);
 									results.push(result);
-									await recordGuidelinesForClient(client);
 									continue;
 								}
 								if (client === "gemini") {
@@ -930,7 +763,6 @@ program
 										"start",
 									]);
 									results.push(result);
-									await recordGuidelinesForClient(client);
 									continue;
 								}
 								if (client === "kiro") {
@@ -947,29 +779,12 @@ program
 										"mcp,start",
 									]);
 									results.push(result);
-									await recordGuidelinesForClient(client);
 									continue;
 								}
 								if (client === "guide") {
 									console.log("    Opening MCP setup guide in your browser...");
 									await openUrlInBrowser(mcpGuideUrl);
 									results.push("Setup guide opened");
-									await recordGuidelinesForClient(client);
-								}
-							}
-
-							if (mcpGuidelineUpdates.length > 0) {
-								const createdFiles = uniq(
-									mcpGuidelineUpdates.filter((entry) => entry.created).map((entry) => entry.fileName),
-								);
-								const updatedFiles = uniq(
-									mcpGuidelineUpdates.filter((entry) => !entry.created).map((entry) => entry.fileName),
-								);
-								if (createdFiles.length > 0) {
-									console.log(`    Created MCP reminder file(s): ${createdFiles.join(", ")}`);
-								}
-								if (updatedFiles.length > 0) {
-									console.log(`    Added MCP reminder to ${updatedFiles.join(", ")}`);
 								}
 							}
 
@@ -981,19 +796,14 @@ program
 					}
 
 					if (integrationMode === "none") {
-						agentFiles = [];
-						agentInstructionsSkipped = false;
 						break;
 					}
 				}
 
 				let advancedConfig: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
-				let installClaudeAgentSelection = false;
 
 				if (isNonInteractive) {
 					advancedConfig = applyAdvancedOptionOverrides();
-					installClaudeAgentSelection =
-						integrationMode === "cli" ? parseBoolean(options.installClaudeAgent, false) : false;
 				} else {
 					const advancedPrompt = await clack.confirm({
 						message: "Configure advanced settings now? (Runs the advanced backlog config wizard)",
@@ -1008,10 +818,8 @@ program
 						const wizardResult = await runAdvancedConfigWizard({
 							existingConfig,
 							cancelMessage: "Aborting initialization.",
-							includeClaudePrompt: integrationMode === "cli",
 						});
 						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
-						installClaudeAgentSelection = integrationMode === "cli" ? wizardResult.installClaudeAgent : false;
 					}
 				}
 				// Point the filesystem at the global-store slot, keyed by project name
@@ -1035,8 +843,6 @@ program
 					projectName: name,
 					integrationMode: integrationMode || "none",
 					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
-					agentInstructions: agentFiles,
-					installClaudeAgent: installClaudeAgentSelection,
 					advancedConfig: {
 						definitionOfDone: advancedConfig.definitionOfDone,
 						defaultPort: advancedConfig.defaultPort,
@@ -1061,16 +867,7 @@ program
 				summaryLines.push(`${label("Store:")} ${muted(core.filesystem.backlogDir)}`);
 				// Global-store projects live outside git, so integration is always off.
 				summaryLines.push(`${label("Git integration:")} ${muted("disabled (filesystem-only)")}`);
-				if (integrationMode === "cli") {
-					summaryLines.push(`${label("AI Integration:")} ${muted("CLI commands (legacy)")}`);
-					if (agentFiles.length > 0) {
-						summaryLines.push(`${label("Agent instructions:")} ${agentFiles.join(", ")}`);
-					} else if (agentInstructionsSkipped) {
-						summaryLines.push(`${label("Agent instructions:")} ${muted("skipped")}`);
-					} else {
-						summaryLines.push(`${label("Agent instructions:")} ${muted("none")}`);
-					}
-				} else if (integrationMode === "mcp") {
+				if (integrationMode === "mcp") {
 					summaryLines.push(`${label("AI Integration:")} ${good("MCP connector")}`);
 					summaryLines.push(
 						`${label("Agent instruction files:")} ${muted("guidance is provided through the MCP connector.")}`,
@@ -1095,20 +892,6 @@ program
 					clack.outro(`Updated backlog project configuration: ${name}`);
 				} else {
 					clack.outro(`Initialized backlog project: ${name}`);
-				}
-
-				// Log agent files result from shared init
-				if (integrationMode === "cli") {
-					if (initResult.mcpResults?.agentFiles) {
-						clack.log.info(initResult.mcpResults.agentFiles);
-					} else if (agentInstructionsSkipped) {
-						clack.log.info("Skipping agent instruction files per selection.");
-					}
-				}
-
-				// Log Claude agent result from shared init
-				if (integrationMode === "cli" && initResult.mcpResults?.claudeAgent) {
-					clack.log.info(`Claude Code Backlog agent ${initResult.mcpResults.claudeAgent}`);
 				}
 			} catch (err) {
 				console.error("Failed to initialize project", err);

@@ -1,12 +1,6 @@
 import { stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { spawn } from "bun";
-import {
-	type AgentInstructionFile,
-	addAgentInstructions,
-	ensureMcpGuidelines,
-	installClaudeAgent,
-} from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG, DEFAULT_STATUSES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { readMachineConfig } from "../utils/machine-config.ts";
@@ -89,8 +83,6 @@ export interface InitializeProjectOptions {
 	projectName: string;
 	integrationMode: IntegrationMode;
 	mcpClients?: McpClient[];
-	agentInstructions?: AgentInstructionFile[];
-	installClaudeAgent?: boolean;
 	advancedConfig?: {
 		definitionOfDone?: string[];
 		defaultPort?: number;
@@ -138,18 +130,9 @@ export async function initializeProject(
 	core: Core,
 	options: InitializeProjectOptions,
 ): Promise<InitializeProjectResult> {
-	const {
-		projectName,
-		integrationMode,
-		mcpClients = [],
-		agentInstructions = [],
-		installClaudeAgent: installClaudeAgentFlag = false,
-		advancedConfig = {},
-		existingConfig,
-	} = options;
+	const { projectName, integrationMode, mcpClients = [], advancedConfig = {}, existingConfig } = options;
 
 	const isReInitialization = !!existingConfig;
-	const projectRoot = core.filesystem.rootDir;
 
 	const normalizedAdvancedConfig = advancedConfig;
 	const hasDefinitionOfDoneOverride = Object.hasOwn(normalizedAdvancedConfig, "definitionOfDone");
@@ -257,7 +240,6 @@ export async function initializeProject(
 						"start",
 					]);
 					mcpResults.claude = result;
-					await ensureMcpGuidelines(projectRoot, "CLAUDE.md");
 				} else if (client === "codex") {
 					const result = await runMcpClientCommand("OpenAI Codex", "codex", [
 						"mcp",
@@ -268,7 +250,6 @@ export async function initializeProject(
 						"start",
 					]);
 					mcpResults.codex = result;
-					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
 				} else if (client === "gemini") {
 					const result = await runMcpClientCommand("Gemini CLI", "gemini", [
 						"mcp",
@@ -281,7 +262,6 @@ export async function initializeProject(
 						"start",
 					]);
 					mcpResults.gemini = result;
-					await ensureMcpGuidelines(projectRoot, "GEMINI.md");
 				} else if (client === "kiro") {
 					const result = await runMcpClientCommand("Kiro", "kiro-cli", [
 						"mcp",
@@ -296,7 +276,6 @@ export async function initializeProject(
 						"mcp,start",
 					]);
 					mcpResults.kiro = result;
-					await ensureMcpGuidelines(projectRoot, "AGENTS.md");
 				} else if (client === "guide") {
 					mcpResults.guide = `Setup guide: ${MCP_GUIDE_URL}`;
 				}
@@ -304,32 +283,6 @@ export async function initializeProject(
 				const message = error instanceof Error ? error.message : String(error);
 				mcpResults[client] = `Failed: ${message}`;
 			}
-		}
-	}
-
-	// Handle CLI integration - agent instruction files.
-	// addAgentInstructions injects guidelines for AGENTS.md/GEMINI/Copilot but, for
-	// CLAUDE.md, installs the on-demand skill (.claude/skills/backlog-md/) instead of
-	// an injected block — so it doesn't bloat every prompt.
-	if (integrationMode === "cli" && agentInstructions.length > 0) {
-		try {
-			await addAgentInstructions(projectRoot, agentInstructions);
-			const created = agentInstructions.map((f) => (f === "CLAUDE.md" ? ".claude/skills/backlog-md/" : f)).join(", ");
-			mcpResults.agentFiles = `Created: ${created}`;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			mcpResults.agentFiles = `Failed: ${message}`;
-		}
-	}
-
-	// Handle Claude agent installation
-	if (integrationMode === "cli" && installClaudeAgentFlag) {
-		try {
-			await installClaudeAgent(projectRoot);
-			mcpResults.claudeAgent = "Installed to .claude/agents/";
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			mcpResults.claudeAgent = `Failed: ${message}`;
 		}
 	}
 
