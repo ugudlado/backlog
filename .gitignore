@@ -38,14 +38,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Claude Code session data
-.claude
-# But include the agents directory
-!.claude/agents
-!.claude/agents/**
-# and include the skills directory
-!.claude/skills
-!.claude/skills/**
 
 # Gemini CLI session data
 .gemini
