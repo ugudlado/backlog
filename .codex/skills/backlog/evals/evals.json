@@ -70,6 +70,18 @@
 				"Produced three distinct lines, either via repeated `--append-notes` or real newlines inside the quoted argument",
 				"Did not rely on a literal `\\n` sequence inside double quotes to create line breaks"
 			]
+		},
+		{
+			"id": 6,
+			"name": "create-project-via-cli",
+			"prompt": "Create a new backlog project named 'newproj'.",
+			"expected_output": "Runs `backlog project create newproj`; does NOT hand-create a slot directory or write config.yml by hand. (`backlog init` no longer exists.)",
+			"files": [],
+			"expectations": [
+				"Used `backlog project create <name>` to create the project",
+				"Did not run `backlog init` (that command was removed)",
+				"Did not hand-create the slot directory or write config.yml directly"
+			]
 		}
 	]
 }

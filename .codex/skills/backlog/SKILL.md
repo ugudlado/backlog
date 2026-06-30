@@ -72,6 +72,40 @@ added, status `Done`, *and* tests/docs/review pass.
   `![alt](assets/images/foo.png)` (path starts with `assets/`, not the backlog
   dir name). Served by `backlog server`.
 
+## Task file format (read-only)
+
+What you'll *see* in `backlog/tasks/task-<id> - <title>.md`. **Never edit it by
+hand** — every field has a CLI flag (`backlog task edit --help`).
+
+```markdown
+---
+id: task-42
+title: Add GraphQL resolver
+status: To Do
+assignee: [@sara]
+labels: [backend, api]
+---
+
+## Description
+Brief explanation of the task purpose.
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 First criterion
+- [x] #2 Second criterion (completed)
+<!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Tests pass
+<!-- DOD:END -->
+```
+
+The `AC:BEGIN`/`DOD:BEGIN` markers are CLI-managed — `--check-ac`/`--check-dod`
+index flags operate on the numbered items inside them. Don't touch the markers
+or renumber by hand. (Plan, Notes, and Final Summary follow as their own
+sections, all set via `backlog task edit`.)
+
 ## Projects
 
 Each project is one slot in a configured **global store** (`globalStore` in
