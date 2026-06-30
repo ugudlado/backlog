@@ -59,7 +59,40 @@ For finer control, or on Linux/Windows, use the OS-native service manager direct
 
 ### Linux / WSL2 (systemd user unit)
 
-One unit serves every project — it resolves the current project from the global store, so no `WorkingDirectory` is needed. Create `~/.config/systemd/user/backlog.service`:
+`backlog service` manages a systemd **user** unit for you — it writes
+`~/.config/systemd/user/backlog.service` with `ExecStart` pointed at the
+resolved `backlog` binary, so the unit can never drift from where the binary
+actually lives:
+
+```bash
+backlog service start              # write unit + enable + start (default port 6420)
+backlog service start --port 7000  # custom port (re-runnable)
+backlog service restart            # picks up an upgraded binary after `npm i -g`
+backlog service status
+backlog service logs               # journalctl -f
+backlog service stop
+backlog service uninstall          # disable + remove the unit
+```
+
+One unit serves every project — it resolves the current project from the global
+store, so no `WorkingDirectory` is needed.
+
+**Upgrading:** `npm i -g @ugudlado1/backlog@latest && backlog service restart`.
+The unit's `ExecStart` is the npm shim path (stable across npm upgrades); only a
+**node version change** moves it, in which case re-run `backlog service start`
+to rewrite the unit.
+
+For start-at-boot without an active login session, enable lingering once:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+<details>
+<summary>Manual unit (if you'd rather not use <code>backlog service</code>)</summary>
+
+Create `~/.config/systemd/user/backlog.service` — set `ExecStart` to your
+`which backlog` path:
 
 ```ini
 [Unit]
@@ -76,19 +109,11 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-Enable linger so the unit can start at boot without an active terminal session, then enable the service:
-
 ```bash
-sudo loginctl enable-linger "$USER"
 systemctl --user daemon-reload
 systemctl --user enable --now backlog.service
-
-# Check status or follow logs
-systemctl --user status backlog
-journalctl --user -u backlog -f
 ```
-
-Adjust the `ExecStart` path to match `which backlog` on your system.
+</details>
 
 ### macOS (launchd LaunchAgent)
 

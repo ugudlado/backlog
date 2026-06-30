@@ -30,9 +30,9 @@ function paths(): Paths {
 	};
 }
 
-function ensureMacOS(): void {
-	if (process.platform !== "darwin") {
-		console.error("backlog service: macOS only (uses launchd). For Linux/Windows see SERVICE.md in the project repo.");
+function ensureSupportedOS(): void {
+	if (process.platform !== "darwin" && process.platform !== "linux") {
+		console.error("backlog service: macOS (launchd) and Linux (systemd) only. For Windows see SERVICE.md.");
 		process.exit(1);
 	}
 }
@@ -71,6 +71,11 @@ function renderPlist(bin: string, port: number, p: Paths): string {
 }
 
 function resolveBacklogBin(): string {
+	// Prefer the `backlog` on PATH (`command -v`) — that's the npm shim in
+	// <npm-prefix>/bin, a STABLE path that survives `npm i -g` (npm rewrites the
+	// shim's target, not the shim itself). process.execPath points into
+	// node_modules (the platform binary, or `bun` in dev) and can move on
+	// upgrade, so only trust it when it literally ends in `/backlog`.
 	const exe = process.execPath;
 	if (exe?.endsWith("/backlog")) return exe;
 	const which = spawnSync("/bin/sh", ["-c", "command -v backlog"], { encoding: "utf8" });
@@ -176,6 +181,100 @@ function doLogs(): void {
 	process.exit(r.status ?? 0);
 }
 
+// ---------------------------------------------------------------------------
+// Linux: systemd user unit. One unit serves every project (it resolves the
+// current project from the global store), so no WorkingDirectory is needed.
+// ExecStart embeds the resolved binary path — written here so it can never
+// drift from where the binary actually lives (the bug that bites hand-authored
+// units). `npm i -g` updates that path in place; a node-version change is the
+// only thing that needs a re-run of `service start` to rewrite ExecStart.
+// ---------------------------------------------------------------------------
+
+const SYSTEMD_UNIT = "backlog.service";
+
+function systemdUnitPath(): string {
+	return join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
+}
+
+function systemctlUser(args: string[], { allowFail = false }: { allowFail?: boolean } = {}): number {
+	const r = spawnSync("systemctl", ["--user", ...args], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+	const status = r.status ?? 1;
+	if (status !== 0 && !allowFail) {
+		if (r.stderr) process.stderr.write(r.stderr);
+		process.exit(status);
+	}
+	return status;
+}
+
+export function renderUnit(bin: string, port: number): string {
+	return `[Unit]
+Description=Backlog Web UI
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${bin} server --port ${port}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`;
+}
+
+function writeUnit(port: number): void {
+	const unitPath = systemdUnitPath();
+	mkdirSync(join(homedir(), ".config", "systemd", "user"), { recursive: true });
+	writeFileSync(unitPath, renderUnit(resolveBacklogBin(), port));
+	systemctlUser(["daemon-reload"]);
+}
+
+function doStartLinux(port: number): void {
+	writeUnit(port);
+	// enable --now installs the WantedBy symlink and (re)starts in one step;
+	// rewriting the unit + daemon-reload above means restart picks up the new
+	// ExecStart, so this doubles as the restart path.
+	systemctlUser(["enable", "--now", SYSTEMD_UNIT]);
+	systemctlUser(["restart", SYSTEMD_UNIT]);
+	console.log(`Started ${SYSTEMD_UNIT} on port ${port}.`);
+	console.log(`Open http://localhost:${port}`);
+	console.log(
+		"Tip: enable lingering (`sudo loginctl enable-linger $USER`) so it starts at boot without a login session.",
+	);
+	console.log("Tip: create a project with `backlog project create <name>` if the UI shows no projects.");
+}
+
+function doStopLinux(): void {
+	systemctlUser(["stop", SYSTEMD_UNIT], { allowFail: true });
+	console.log(`Stopped ${SYSTEMD_UNIT}.`);
+}
+
+function doUninstallLinux(): void {
+	systemctlUser(["disable", "--now", SYSTEMD_UNIT], { allowFail: true });
+	rmSync(systemdUnitPath(), { force: true });
+	systemctlUser(["daemon-reload"], { allowFail: true });
+	console.log(`Uninstalled ${SYSTEMD_UNIT}.`);
+}
+
+function doStatusLinux(): void {
+	// is-active gives the one-word truth; status adds the detail lines.
+	const active = spawnSync("systemctl", ["--user", "is-active", SYSTEMD_UNIT], { encoding: "utf8" });
+	const state = active.stdout?.trim() || "unknown";
+	if (state !== "active") {
+		console.log(`${SYSTEMD_UNIT}: ${state} (run \`backlog service start\`)`);
+		return;
+	}
+	console.log(`${SYSTEMD_UNIT}: running`);
+	spawnSync("systemctl", ["--user", "status", SYSTEMD_UNIT, "--no-pager", "-n", "0"], { stdio: "inherit" });
+}
+
+function doLogsLinux(): void {
+	const r = spawnSync("journalctl", ["--user", "-u", SYSTEMD_UNIT, "-n", "50", "-f"], { stdio: "inherit" });
+	process.exit(r.status ?? 0);
+}
+
+const isLinux = process.platform === "linux";
+
 function parsePortOrExit(raw: string): number {
 	const port = Number.parseInt(raw, 10);
 	if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -186,55 +285,59 @@ function parsePortOrExit(raw: string): number {
 }
 
 export function registerServiceCommand(program: Command): void {
-	const svc = program.command("service").description("manage backlog server as a macOS launchd service");
+	const svc = program
+		.command("service")
+		.description("manage backlog server as a background service (macOS launchd / Linux systemd)");
 
 	svc
 		.command("start")
-		.description("install (if needed) and start the launchd service")
+		.description("install (if needed) and start the service")
 		.option("-p, --port <port>", "port to serve on", String(DEFAULT_PORT))
 		.action((opts: { port: string }) => {
-			ensureMacOS();
-			doStart(parsePortOrExit(opts.port));
+			ensureSupportedOS();
+			const port = parsePortOrExit(opts.port);
+			isLinux ? doStartLinux(port) : doStart(port);
 		});
 
 	svc
 		.command("restart")
-		.description("restart the service (boots out cleanly, then starts)")
+		.description("restart the service (picks up an upgraded binary)")
 		.option("-p, --port <port>", "port to serve on", String(DEFAULT_PORT))
 		.action((opts: { port: string }) => {
-			ensureMacOS();
-			doStart(parsePortOrExit(opts.port));
+			ensureSupportedOS();
+			const port = parsePortOrExit(opts.port);
+			isLinux ? doStartLinux(port) : doStart(port);
 		});
 
 	svc
 		.command("stop")
-		.description("stop the service (plist preserved; use `uninstall` to remove)")
+		.description("stop the service (unit preserved; use `uninstall` to remove)")
 		.action(() => {
-			ensureMacOS();
-			doStop();
+			ensureSupportedOS();
+			isLinux ? doStopLinux() : doStop();
 		});
 
 	svc
 		.command("uninstall")
-		.description("stop and remove the launchd service")
+		.description("stop and remove the service")
 		.action(() => {
-			ensureMacOS();
-			doUninstall();
+			ensureSupportedOS();
+			isLinux ? doUninstallLinux() : doUninstall();
 		});
 
 	svc
 		.command("status")
 		.description("show service status")
 		.action(() => {
-			ensureMacOS();
-			doStatus();
+			ensureSupportedOS();
+			isLinux ? doStatusLinux() : doStatus();
 		});
 
 	svc
 		.command("logs")
 		.description("tail service logs")
 		.action(() => {
-			ensureMacOS();
-			doLogs();
+			ensureSupportedOS();
+			isLinux ? doLogsLinux() : doLogs();
 		});
 }
