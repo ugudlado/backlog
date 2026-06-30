@@ -4,19 +4,15 @@ import { join, resolve } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
-import { $, spawn } from "bun";
 import { Command } from "commander";
-import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { registerProjectCommand } from "./commands/project.ts";
 import { registerServiceCommand } from "./commands/service.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
-import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import { Core, exportKanbanBoardToFile, updateReadmeWithBoard } from "./index.ts";
 import {
-	type BacklogConfig,
 	isLocalEditableTask,
 	type Milestone,
 	type SearchPriorityFilter,
@@ -29,7 +25,6 @@ import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
-import { readMachineConfig } from "./utils/machine-config.ts";
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
@@ -56,70 +51,6 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { getVersion } from "./utils/version.ts";
-
-type IntegrationMode = "mcp" | "none";
-
-function normalizeIntegrationOption(value: string): IntegrationMode | null {
-	const normalized = value.trim().toLowerCase();
-	if (
-		normalized === "mcp" ||
-		normalized === "connector" ||
-		normalized === "model-context-protocol" ||
-		normalized === "model_context_protocol"
-	) {
-		return "mcp";
-	}
-	if (
-		normalized === "none" ||
-		normalized === "skip" ||
-		normalized === "manual" ||
-		normalized === "later" ||
-		normalized === "no" ||
-		normalized === "off"
-	) {
-		return "none";
-	}
-	return null;
-}
-
-// Always use "backlog" as the global MCP server name so fallback mode works when the project isn't initialized.
-const MCP_SERVER_NAME = "backlog";
-
-async function openUrlInBrowser(url: string): Promise<void> {
-	let cmd: string[];
-	if (process.platform === "darwin") {
-		cmd = ["open", url];
-	} else if (process.platform === "win32") {
-		cmd = ["cmd", "/c", "start", "", url];
-	} else {
-		cmd = ["xdg-open", url];
-	}
-	try {
-		await $`${cmd}`.quiet();
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`  ⚠️  Unable to open browser automatically (${message}). Please visit ${url}`);
-	}
-}
-
-async function runMcpClientCommand(label: string, command: string, args: string[]): Promise<string> {
-	console.log(`    Configuring ${label}...`);
-	try {
-		const child = spawn({
-			cmd: [command, ...args],
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await child.exited;
-		console.log(`    ✓ Added Backlog MCP server to ${label}`);
-		return label;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`    ⚠️ Unable to configure ${label} automatically (${message}).`);
-		console.warn(`       Run manually: ${command} ${args.join(" ")}`);
-		return `${label} (manual setup required)`;
-	}
-}
 
 // Helper function for accumulating multiple CLI option values
 function createMultiValueAccumulator() {
@@ -277,14 +208,6 @@ async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<
  * Processes --ac and --acceptance-criteria options to extract acceptance criteria
  * Handles both single values and arrays from multi-value accumulators
  */
-function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partial<BacklogConfig> {
-	return {
-		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
-		defaultPort: existingConfig?.defaultPort ?? 6420,
-		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
-	};
-}
-
 /**
  * Resolves the Backlog.md project root from the current working directory.
  * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
@@ -489,9 +412,8 @@ function getMcpStartCwdOverrideFromArgv(argv = process.argv): string | undefined
 }
 
 // Global config migration - run before any command processing
-// Only run if we're in a backlog project (skip for init, help, version)
+// Only run if we're in a backlog project (skip for help, version)
 const shouldRunMigration =
-	!process.argv.includes("init") &&
 	!process.argv.includes("--help") &&
 	!process.argv.includes("-h") &&
 	!process.argv.includes("--version") &&
@@ -522,383 +444,6 @@ program
 	.description("Backlog - Project management CLI")
 	.version(version, "-v, --version", "display version number")
 	.option("--project <name>", "operate on the named global-store project (overrides the current selection)");
-
-program
-	.command("init [projectName]")
-	.description("initialize backlog project in the current directory")
-	.option("--integration-mode <mode>", "choose how AI tools connect to Backlog (mcp or none)")
-	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
-	.option("--defaults", "use default values for all prompts")
-	.action(
-		async (
-			projectName: string | undefined,
-			options: {
-				integrationMode?: string;
-				taskPrefix?: string;
-				defaults?: boolean;
-			},
-		) => {
-			try {
-				// init command uses process.cwd() directly - it initializes in the current directory
-				const cwd = process.cwd();
-				// Tasks live in the global store (~/.config/...), not the repo, so the
-				// cwd's git status is irrelevant to where data goes. We don't init or
-				// require git here.
-				const core = new Core(cwd);
-
-				// Check if project is already initialized and load existing config
-				const existingConfig = await core.filesystem.loadConfig();
-				const isReInitialization = !!existingConfig;
-
-				if (isReInitialization) {
-					console.log(
-						"Existing backlog project detected. Current configuration will be preserved where not specified.",
-					);
-				}
-
-				// Backlog stores every project's tasks in the configured global store
-				// (`globalStore` in ~/.config/backlog/config.yml). It is required.
-				const machineConfig = readMachineConfig();
-				if (!machineConfig.globalStore) {
-					console.error(
-						"globalStore is not configured. Set it once in ~/.config/backlog/config.yml, e.g.:\n" +
-							"  globalStore: ~/.config/backlog/workspaces\n" +
-							"Then re-run `backlog init`.",
-					);
-					process.exit(1);
-				}
-
-				function abortInitialization(message = "Aborting initialization.") {
-					clack.cancel(message);
-					process.exitCode = 1;
-				}
-				function cancelInitialization(message = "Initialization cancelled.") {
-					clack.cancel(message);
-				}
-
-				// Non-interactive mode when any flag is provided or --defaults is used
-				const isNonInteractive = !!(options.defaults || options.integrationMode || options.taskPrefix);
-
-				// Get project name
-				let name = projectName;
-				if (!name) {
-					const defaultName = existingConfig?.projectName || "";
-					const promptMessage = isReInitialization && defaultName ? `Project name (${defaultName}):` : "Project name:";
-					const enteredName = await clack.text({
-						message: promptMessage,
-						defaultValue: isReInitialization && defaultName ? defaultName : undefined,
-						validate: (value) => {
-							if (!isReInitialization || !defaultName) {
-								if (!String(value ?? "").trim()) {
-									return "Project name is required.";
-								}
-							}
-							return undefined;
-						},
-					});
-					if (clack.isCancel(enteredName)) {
-						abortInitialization();
-						return;
-					}
-					name = String(enteredName ?? "").trim();
-					// Use existing name if nothing entered during re-init
-					if (!name && isReInitialization && defaultName) {
-						name = defaultName;
-					}
-					if (!name) {
-						abortInitialization();
-						return;
-					}
-				}
-
-				// Get task prefix (first-time init only, preserved on re-init)
-				let taskPrefix = options.taskPrefix;
-				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
-					const enteredPrefix = await clack.text({
-						message: "Task prefix (default: task):",
-						validate: (value) => {
-							const normalized = String(value ?? "").trim();
-							if (!normalized) {
-								return undefined;
-							}
-							if (!/^[a-zA-Z]+$/.test(normalized)) {
-								return "Task prefix must contain only letters (a-z, A-Z).";
-							}
-							return undefined;
-						},
-					});
-					if (clack.isCancel(enteredPrefix)) {
-						abortInitialization();
-						return;
-					}
-					taskPrefix = String(enteredPrefix ?? "").trim();
-				}
-				// Validate task prefix if provided
-				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
-					console.error("Task prefix must contain only letters (a-z, A-Z).");
-					process.exit(1);
-				}
-
-				const defaultAdvancedConfig = getDefaultAdvancedConfig(existingConfig);
-				const applyAdvancedOptionOverrides = (): Partial<BacklogConfig> => ({
-					...defaultAdvancedConfig,
-				});
-
-				const integrationOption = options.integrationMode
-					? normalizeIntegrationOption(options.integrationMode)
-					: undefined;
-				if (options.integrationMode && !integrationOption) {
-					console.error(`Invalid integration mode: ${options.integrationMode}. Valid options are: mcp, none`);
-					process.exit(1);
-				}
-
-				let integrationMode: IntegrationMode | null = integrationOption ?? (isNonInteractive ? "mcp" : null);
-				const mcpServerName = MCP_SERVER_NAME;
-				let mcpClientSetupSummary: string | undefined;
-				const mcpGuideUrl = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
-
-				let integrationTipShown = false;
-				mainSelection: while (true) {
-					if (integrationMode === null) {
-						if (!integrationTipShown) {
-							clack.note("MCP connector is recommended for AI tool integration.", "AI setup tip");
-							integrationTipShown = true;
-						}
-						const integrationPrompt = await clack.select({
-							message: "How would you like your AI tools to connect to Backlog?",
-							initialValue: "mcp",
-							options: [
-								{
-									label: "via MCP connector (recommended for Claude Code, Codex, Gemini CLI, Kiro, Cursor, etc.)",
-									value: "mcp",
-								},
-								{
-									label: "Skip for now (I am not using Backlog with AI tools)",
-									value: "none",
-								},
-							],
-						});
-
-						if (clack.isCancel(integrationPrompt)) {
-							cancelInitialization();
-							return;
-						}
-
-						const selectedMode = integrationPrompt ? normalizeIntegrationOption(String(integrationPrompt)) : null;
-						integrationMode = selectedMode ?? "mcp";
-						console.log("");
-					}
-
-					if (integrationMode === "mcp") {
-						if (isNonInteractive) {
-							mcpClientSetupSummary = "skipped (non-interactive)";
-							break;
-						}
-
-						console.log(`  MCP server name: ${mcpServerName}`);
-						while (true) {
-							const clientResponse = await clack.multiselect({
-								message: "Which AI tools should we configure right now? (space toggles items; enter confirms)",
-								options: [
-									{ label: "Claude Code", value: "claude" },
-									{ label: "OpenAI Codex", value: "codex" },
-									{ label: "Gemini CLI", value: "gemini" },
-									{ label: "Kiro", value: "kiro" },
-									{ label: "Other (open setup guide)", value: "guide" },
-								],
-								required: true,
-							});
-
-							if (clack.isCancel(clientResponse)) {
-								integrationMode = null;
-								console.log("");
-								continue mainSelection;
-							}
-
-							const selectedClients = Array.isArray(clientResponse) ? clientResponse : [];
-							if (selectedClients.length === 0) {
-								console.log("Please select at least one AI tool before continuing.");
-								continue;
-							}
-
-							const results: string[] = [];
-
-							for (const client of selectedClients) {
-								if (client === "claude") {
-									const result = await runMcpClientCommand("Claude Code", "claude", [
-										"mcp",
-										"add",
-										"-s",
-										"user",
-										mcpServerName,
-										"--",
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									continue;
-								}
-								if (client === "codex") {
-									const result = await runMcpClientCommand("OpenAI Codex", "codex", [
-										"mcp",
-										"add",
-										mcpServerName,
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									continue;
-								}
-								if (client === "gemini") {
-									const result = await runMcpClientCommand("Gemini CLI", "gemini", [
-										"mcp",
-										"add",
-										"-s",
-										"user",
-										mcpServerName,
-										"backlog",
-										"mcp",
-										"start",
-									]);
-									results.push(result);
-									continue;
-								}
-								if (client === "kiro") {
-									const result = await runMcpClientCommand("Kiro", "kiro-cli", [
-										"mcp",
-										"add",
-										"--scope",
-										"global",
-										"--name",
-										mcpServerName,
-										"--command",
-										"backlog",
-										"--args",
-										"mcp,start",
-									]);
-									results.push(result);
-									continue;
-								}
-								if (client === "guide") {
-									console.log("    Opening MCP setup guide in your browser...");
-									await openUrlInBrowser(mcpGuideUrl);
-									results.push("Setup guide opened");
-								}
-							}
-
-							mcpClientSetupSummary = results.join(", ");
-							break;
-						}
-
-						break;
-					}
-
-					if (integrationMode === "none") {
-						break;
-					}
-				}
-
-				let advancedConfig: Partial<BacklogConfig> = { ...defaultAdvancedConfig };
-
-				if (isNonInteractive) {
-					advancedConfig = applyAdvancedOptionOverrides();
-				} else {
-					const advancedPrompt = await clack.confirm({
-						message: "Configure advanced settings now? (Runs the advanced backlog config wizard)",
-						initialValue: false,
-					});
-					if (clack.isCancel(advancedPrompt)) {
-						abortInitialization();
-						return;
-					}
-
-					if (advancedPrompt) {
-						const wizardResult = await runAdvancedConfigWizard({
-							existingConfig,
-							cancelMessage: "Aborting initialization.",
-						});
-						advancedConfig = { ...defaultAdvancedConfig, ...wizardResult.config };
-					}
-				}
-				// Point the filesystem at the global-store slot, keyed by project name
-				// (so a repo can be named independently of its directory). Validate the
-				// name is a safe single path component — without this, `init "../x"`
-				// would escape the global store (path traversal at a trust boundary).
-				{
-					const { isSafeSlotName } = await import("./utils/backlog-directory.ts");
-					if (!isSafeSlotName(name)) {
-						console.error(
-							`Invalid project name: "${name}". ` +
-								"It must not contain path separators or '..' (it names a directory in the global store).",
-						);
-						process.exit(1);
-					}
-					core.filesystem.setGlobalStoreSlot(join(machineConfig.globalStore, name), name);
-				}
-
-				// Call shared core init function
-				const initResult = await initializeProject(core, {
-					projectName: name,
-					integrationMode: integrationMode || "none",
-					mcpClients: [], // MCP clients are handled separately in CLI with interactive prompts
-					advancedConfig: {
-						definitionOfDone: advancedConfig.definitionOfDone,
-						defaultPort: advancedConfig.defaultPort,
-						autoOpenBrowser: advancedConfig.autoOpenBrowser,
-						taskPrefix: taskPrefix || undefined,
-					},
-					existingConfig,
-				});
-
-				const config = initResult.config;
-
-				// Show configuration summary
-				const supportsColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
-				const colorize = (code: string, value: string): string =>
-					supportsColor ? `\u001B[${code}m${value}\u001B[0m` : value;
-				const label = (value: string): string => colorize("1;36", value);
-				const good = (value: string): string => colorize("32", value);
-				const bad = (value: string): string => colorize("31", value);
-				const muted = (value: string): string => colorize("2", value);
-				const boolValue = (value: boolean): string => (value ? good("true") : bad("false"));
-				const summaryLines: string[] = [`${label("Project Name:")} ${colorize("1", config.projectName)}`];
-				summaryLines.push(`${label("Store:")} ${muted(core.filesystem.backlogDir)}`);
-				// Global-store projects live outside git, so integration is always off.
-				summaryLines.push(`${label("Git integration:")} ${muted("disabled (filesystem-only)")}`);
-				if (integrationMode === "mcp") {
-					summaryLines.push(`${label("AI Integration:")} ${good("MCP connector")}`);
-					summaryLines.push(
-						`${label("Agent instruction files:")} ${muted("guidance is provided through the MCP connector.")}`,
-					);
-					summaryLines.push(`${label("MCP server name:")} ${mcpServerName}`);
-					summaryLines.push(`${label("MCP client setup:")} ${mcpClientSetupSummary ?? muted("skipped")}`);
-				} else {
-					summaryLines.push(`${label("AI integration:")} ${muted("skipped (configure later via `backlog init`)")}`);
-				}
-				summaryLines.push(label("Advanced settings:"));
-				summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
-				summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
-				summaryLines.push(
-					`  ${label("Definition of Done defaults:")} ${
-						(config.definitionOfDone ?? []).length > 0 ? config.definitionOfDone?.join(" | ") : muted("none")
-					}`,
-				);
-				clack.note(summaryLines.join("\n"), "Initialization Summary");
-
-				// Log init result
-				if (initResult.isReInitialization) {
-					clack.outro(`Updated backlog project configuration: ${name}`);
-				} else {
-					clack.outro(`Initialized backlog project: ${name}`);
-				}
-			} catch (err) {
-				console.error("Failed to initialize project", err);
-				process.exitCode = 1;
-			}
-		},
-	);
 
 const taskCmd = program.command("task").aliases(["tasks"]);
 

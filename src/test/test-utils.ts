@@ -181,13 +181,13 @@ export async function initializeGlobalTestProject(
 	process.env.BACKLOG_MACHINE_CONFIG_DIR = machineConfigDir;
 	clearMachineConfigCache();
 
-	// Run the real CLI init so the slot is created and made current EXACTLY as in
-	// production (a global-store slot named by the project name). The slot is both
-	// project root and data dir; subsequent CLI commands resolve it via `current`.
+	// Create the slot via the real CLI EXACTLY as in production (a global-store
+	// slot named by the project name). The slot is both project root and data dir;
+	// subsequent CLI commands resolve it via `current`.
 	const CLI_PATH = join(process.cwd(), "src", "cli.ts");
-	const res = await $`bun ${[CLI_PATH, "init", projectName, "--defaults"]}`.env(env).quiet().nothrow();
+	const res = await $`bun ${[CLI_PATH, "project", "create", projectName]}`.env(env).quiet().nothrow();
 	if (res.exitCode !== 0) {
-		throw new Error(`Test global init failed: ${res.stderr.toString() || res.stdout.toString()}`);
+		throw new Error(`Test global project create failed: ${res.stderr.toString() || res.stdout.toString()}`);
 	}
 	const slotPath = join(globalStoreDir, projectName);
 

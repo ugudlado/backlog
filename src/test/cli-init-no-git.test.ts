@@ -34,15 +34,12 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function initFilesystemOnlyProject(projectName = "No Git Project"): Promise<Core> {
-	const result = await $`bun ${CLI_PATH} init ${projectName} --defaults --integration-mode none`
-		.cwd(TEST_DIR)
-		.env(initEnv)
-		.quiet();
+	const result = await $`bun ${CLI_PATH} project create ${projectName}`.cwd(TEST_DIR).env(initEnv).quiet();
 	expect(result.exitCode).toBe(0);
 	return openSlot(projectName);
 }
 
-describe("CLI init without Git", () => {
+describe("CLI project create without Git", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-init-no-git");
 		await mkdir(TEST_DIR, { recursive: true });
@@ -70,11 +67,8 @@ describe("CLI init without Git", () => {
 		}
 	});
 
-	test("initializes a filesystem-only project without creating a Git repository", async () => {
-		const result = await $`bun ${CLI_PATH} init "Filesystem Project" --defaults --integration-mode none`
-			.cwd(TEST_DIR)
-			.env(initEnv)
-			.quiet();
+	test("creates a filesystem-only project without creating a Git repository", async () => {
+		const result = await $`bun ${CLI_PATH} project create "Filesystem Project"`.cwd(TEST_DIR).env(initEnv).quiet();
 
 		expect(result.exitCode).toBe(0);
 		expect(await pathExists(join(TEST_DIR, ".git"))).toBe(false);
@@ -83,7 +77,7 @@ describe("CLI init without Git", () => {
 		const config = await core.filesystem.loadConfig();
 
 		expect(config?.projectName).toBe("Filesystem Project");
-		expect(result.stdout.toString()).toContain("Git integration: disabled (filesystem-only)");
+		expect(result.stdout.toString()).toContain("Created project Filesystem Project");
 	});
 
 	test("local task and milestone flows work without Git", async () => {

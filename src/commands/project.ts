@@ -40,7 +40,7 @@ export function registerProjectCommand(program: Command): void {
 					return;
 				}
 				if (projects.length === 0) {
-					console.log("No projects yet. Create one with `backlog init <name>`.");
+					console.log("No projects yet. Create one with `backlog project create <name>`.");
 					return;
 				}
 				for (const p of projects) {

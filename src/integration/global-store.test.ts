@@ -6,10 +6,10 @@
  * with `globalStore: <tempDir>`.
  *
  * These tests verify the full wire-up:
- *   (a) backlog init creates external slot, code repo stays clean
+ *   (a) project create makes external slot, code repo stays clean
  *   (b) task create/list operate against external slot
  *   (d) missing globalStore dir → clean error message
- *   (e) backlog init stores NO registry path; project is scan-discoverable + current
+ *   (e) project create stores NO registry path; project is scan-discoverable + current
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
@@ -67,12 +67,8 @@ afterEach(async () => {
 });
 
 describe("globalStore end-to-end integration", () => {
-	it("(a) backlog init creates external slot and leaves code repo clean", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
-			.cwd(repoDir)
-			.env(cliEnv())
-			.nothrow()
-			.quiet();
+	it("(a) project create makes external slot and leaves code repo clean", async () => {
+		await $`bun run ${CLI_PATH} project create "E2E Project"`.cwd(repoDir).env(cliEnv()).nothrow().quiet();
 
 		// Slot is keyed by project name (not folder name).
 		const slotPath = join(globalStoreDir, "E2E Project");
@@ -91,11 +87,7 @@ describe("globalStore end-to-end integration", () => {
 	});
 
 	it("(b) task create and list operate against external slot", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
-			.cwd(repoDir)
-			.env(cliEnv())
-			.nothrow()
-			.quiet();
+		await $`bun run ${CLI_PATH} project create "E2E Project"`.cwd(repoDir).env(cliEnv()).nothrow().quiet();
 
 		// Create a task via CLI
 		const createResult = await $`bun run ${CLI_PATH} task create "Integration test task" --plain`
@@ -126,21 +118,14 @@ describe("globalStore end-to-end integration", () => {
 		await writeFile(join(badMachineConfigDir, "config.yml"), `globalStore: ${missingDir}\n`);
 
 		const badEnv = { ...cliEnv(), BACKLOG_MACHINE_CONFIG_DIR: badMachineConfigDir };
-		const result = await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
-			.cwd(repoDir)
-			.env(badEnv)
-			.nothrow();
+		const result = await $`bun run ${CLI_PATH} project create "E2E Project"`.cwd(repoDir).env(badEnv).nothrow();
 
 		const output = result.stdout.toString() + result.stderr.toString();
 		expect(output).toMatch(/Global store directory does not exist/i);
 	});
 
-	it("(e) backlog init stores NO registry path; project is scan-discoverable + current", async () => {
-		await $`bun run ${CLI_PATH} init "E2E Project" --integration-mode none`
-			.cwd(repoDir)
-			.env(cliEnv())
-			.nothrow()
-			.quiet();
+	it("(e) project create stores NO registry path; project is scan-discoverable + current", async () => {
+		await $`bun run ${CLI_PATH} project create "E2E Project"`.cwd(repoDir).env(cliEnv()).nothrow().quiet();
 
 		// Global projects carry no registry path — they are found by scanning the
 		// global store, and the registry only holds the `current` pointer.

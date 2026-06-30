@@ -24,7 +24,7 @@ describe("CLI Splash (bare run)", () => {
 		expect(result.exitCode).toBe(0);
 		expect(out).toContain("Backlog v");
 		expect(out).toContain("Docs: https://github.com/ugudlado/backlog");
-		expect(out).toContain("backlog init");
+		expect(out).toContain("backlog project create");
 	});
 
 	it("prints quickstart (initialized repo)", async () => {

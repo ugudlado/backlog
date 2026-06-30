@@ -74,8 +74,8 @@ export async function printSplash(opts: SplashOptions): Promise<void> {
 	lines.push("");
 
 	if (!initialized) {
-		lines.push(bold(color, "Not initialized"));
-		lines.push(`  ${green(color, "backlog init")}  ${dim(color, "Initialize Backlog in this repo")}`);
+		lines.push(bold(color, "No project selected"));
+		lines.push(`  ${green(color, "backlog project create <name>")}  ${dim(color, "Create a Backlog project")}`);
 	} else {
 		lines.push(bold(color, "Quickstart"));
 		lines.push(

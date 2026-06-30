@@ -6,7 +6,6 @@ import { Core } from "../index.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import {
-	createTestGlobalStore,
 	createUniqueTestDir,
 	initializeGlobalTestProject,
 	initializeTestProject,
@@ -39,16 +38,7 @@ describe("CLI Integration", () => {
 		}
 	});
 
-	describe("backlog init command", () => {
-		// Backlog stores every project in the configured global store; init requires
-		// it. Each test gets an isolated globalStore under TEST_DIR. `initEnv` is
-		// passed to CLI subprocesses; the slot lives at <globalStore>/<name>.
-		let initEnv: Record<string, string>;
-		beforeEach(async () => {
-			const gs = await createTestGlobalStore(TEST_DIR);
-			initEnv = gs.env;
-		});
-
+	describe("project creation (Core)", () => {
 		it("should initialize backlog project in existing git repo", async () => {
 			// Set up a git repository
 			await initTestGitRepo({ cwd: TEST_DIR });
@@ -117,64 +107,6 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("Test Project");
-		});
-
-		it("should print minimal summary when advanced settings are skipped", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			const output = await $`bun ${CLI_PATH} init SummaryProj --defaults --integration-mode none`
-				.cwd(TEST_DIR)
-				.env(initEnv)
-				.text();
-
-			expect(output).toContain("Initialization Summary");
-			expect(output).toContain("Project Name: SummaryProj");
-			// Global-store projects are filesystem-only, so git integration is off.
-			expect(output).toContain("Git integration: disabled (filesystem-only)");
-		});
-
-		it("should support MCP integration mode via flag", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			const output = await $`bun ${CLI_PATH} init McpProj --defaults --integration-mode mcp`
-				.cwd(TEST_DIR)
-				.env(initEnv)
-				.text();
-
-			expect(output).toContain("AI Integration: MCP connector");
-			expect(output).toContain("Agent instruction files: guidance is provided through the MCP connector.");
-			expect(output).toContain("MCP server name: backlog");
-			expect(output).toContain("MCP client setup: skipped (non-interactive)");
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			expect(agentsFile).toBe(false);
-			expect(claudeFile).toBe(false);
-		});
-
-		it("should default to MCP integration when no mode is specified", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			const output = await $`bun ${CLI_PATH} init DefaultMcpProj --defaults`.cwd(TEST_DIR).env(initEnv).text();
-
-			expect(output).toContain("AI Integration: MCP connector");
-			expect(output).toContain("MCP server name: backlog");
-			expect(output).toContain("MCP client setup: skipped (non-interactive)");
-		});
-
-		it("should allow skipping AI integration via flag", async () => {
-			await initTestGitRepo({ cwd: TEST_DIR });
-
-			const output = await $`bun ${CLI_PATH} init SkipProj --defaults --integration-mode none`
-				.cwd(TEST_DIR)
-				.env(initEnv)
-				.text();
-
-			expect(output).not.toContain("AI Integration:");
-			expect(output).toContain("AI integration: skipped");
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			expect(agentsFile).toBe(false);
-			expect(claudeFile).toBe(false);
 		});
 	});
 
