@@ -1540,7 +1540,8 @@ taskCmd
 	.description("archive a task")
 	.action(async (taskId: string) => {
 		if (isRemoteMode()) {
-			await remoteTaskArchive(taskId).catch(onRemoteError);
+			const result = await remoteTaskArchive(taskId).catch(onRemoteError);
+			if (result === null) return;
 			console.log(`Archived task ${taskId}`);
 			return;
 		}
