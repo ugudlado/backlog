@@ -30,6 +30,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import {
 	isRemoteMode,
+	onRemoteError,
 	remoteSearch,
 	remoteTaskArchive,
 	remoteTaskCreate,
@@ -474,34 +475,23 @@ taskCmd
 	.option(
 		"--depends-on <taskIds>",
 		"specify task dependencies (comma-separated or use multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
+		createMultiValueAccumulator(),
 	)
-	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option("--ref <reference>", "add reference URL or file path (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option("--dep <taskIds>", "specify task dependencies (shortcut for --depends-on)", createMultiValueAccumulator())
+	.option(
+		"--ref <reference>",
+		"add reference URL or file path (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--modified-file <path>",
 		"add modified file path from project root (can be used multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
+		createMultiValueAccumulator(),
 	)
 	.option(
 		"--doc <documentation>",
 		"add documentation URL or file path (can be used multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
+		createMultiValueAccumulator(),
 	)
 	.action(async (title: string | undefined, options) => {
 		const shouldUseWizard = hasInteractiveTTY && title === undefined && !hasCreateFieldFlags(options);
@@ -530,11 +520,7 @@ taskCmd
 				acceptanceCriteria: options.ac ?? options.acceptanceCriteria,
 				plan: options.plan,
 				notes: options.notes,
-			}).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return null;
-			});
+			}).catch(onRemoteError);
 			if (!task) return;
 			console.log(`Created task ${task.id}`);
 			if (isPlainRequested(options)) console.log(formatTaskPlainText(task));
@@ -655,11 +641,7 @@ program
 				priority: options.priority as SearchPriorityFilter | undefined,
 				modifiedFiles: modifiedFileFilters,
 				limit,
-			}).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return null;
-			});
+			}).catch(onRemoteError);
 			if (!searchResults) return;
 
 			const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
@@ -863,11 +845,7 @@ taskCmd
 				milestone: options.milestone,
 				priority: options.priority,
 				parent: options.parent,
-			}).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return null;
-			});
+			}).catch(onRemoteError);
 			if (!tasks) return;
 			if (tasks.length === 0) {
 				console.log("No tasks found.");
@@ -1222,31 +1200,16 @@ taskCmd
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
+		createMultiValueAccumulator(),
 	)
-	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option("--ref <reference>", "set references (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", createMultiValueAccumulator())
+	.option("--ref <reference>", "set references (can be used multiple times)", createMultiValueAccumulator())
 	.option(
 		"--modified-file <path>",
 		"set modified file paths from project root (can be used multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
+		createMultiValueAccumulator(),
 	)
-	.option("--doc <documentation>", "set documentation (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option("--doc <documentation>", "set documentation (can be used multiple times)", createMultiValueAccumulator())
 	.action(async (taskId: string | undefined, options) => {
 		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
 		if (!shouldUseWizard && !taskId) {
@@ -1257,11 +1220,7 @@ taskCmd
 		if (isRemoteMode() && !shouldUseWizard && taskId) {
 			const editArgs = buildCliEditArgs(taskId, options);
 			const updateInput = buildTaskUpdateInput(editArgs);
-			const task = await remoteTaskEdit(taskId, updateInput).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return null;
-			});
+			const task = await remoteTaskEdit(taskId, updateInput).catch(onRemoteError);
 			if (!task) return;
 			if (isPlainRequested(options)) {
 				console.log(formatTaskPlainText(task));
@@ -1547,11 +1506,7 @@ taskCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
 		if (isRemoteMode()) {
-			const task = await remoteTaskView(taskId).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return null;
-			});
+			const task = await remoteTaskView(taskId).catch(onRemoteError);
 			if (!task) return;
 			console.log(formatTaskPlainText(task));
 			return;
@@ -1585,11 +1540,7 @@ taskCmd
 	.description("archive a task")
 	.action(async (taskId: string) => {
 		if (isRemoteMode()) {
-			await remoteTaskArchive(taskId).catch((err: Error) => {
-				console.error(`Remote error: ${err.message}`);
-				process.exitCode = 1;
-				return;
-			});
+			await remoteTaskArchive(taskId).catch(onRemoteError);
 			console.log(`Archived task ${taskId}`);
 			return;
 		}

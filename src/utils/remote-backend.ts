@@ -53,6 +53,16 @@ export function isRemoteMode(): boolean {
 	return Boolean(getRemoteUrl());
 }
 
+/**
+ * Shared `.catch` handler for remote CLI calls: prints the error, marks the
+ * process as failed, and resolves to `null` so callers can `if (!result) return;`.
+ */
+export function onRemoteError(err: Error): null {
+	console.error(`Remote error: ${err.message}`);
+	process.exitCode = 1;
+	return null;
+}
+
 export class RemoteBackendError extends Error {
 	constructor(
 		message: string,

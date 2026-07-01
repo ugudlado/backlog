@@ -206,6 +206,24 @@ function areStringArraysEqual(a: string[], b: string[]): boolean {
 	return a.every((value, index) => value === b[index]);
 }
 
+/**
+ * Parse both raw list inputs, and if they differ, record the new value on the
+ * update. `transform` normalizes both sides before comparing (e.g. dependencies).
+ */
+function diffListField(
+	updateInput: TaskUpdateInput,
+	key: "assignee" | "labels" | "dependencies" | "references" | "documentation",
+	initialRaw: string,
+	nextRaw: string,
+	transform: (list: string[]) => string[] = (list) => list,
+): void {
+	const initial = transform(parseListInput(initialRaw));
+	const next = transform(parseListInput(nextRaw));
+	if (!areStringArraysEqual(initial, next)) {
+		updateInput[key] = next;
+	}
+}
+
 function areChecklistEntriesEqual(existing: ChecklistEntry[], next: ChecklistEntry[]): boolean {
 	if (existing.length !== next.length) return false;
 	return existing.every((entry, index) => {
@@ -641,35 +659,11 @@ export async function runTaskEditWizard(
 		updateInput.priority = values.priority as WizardPriority;
 	}
 
-	const initialAssignee = parseListInput(initial.assignee);
-	const nextAssignee = parseListInput(values.assignee);
-	if (!areStringArraysEqual(initialAssignee, nextAssignee)) {
-		updateInput.assignee = nextAssignee;
-	}
-
-	const initialLabels = parseListInput(initial.labels);
-	const nextLabels = parseListInput(values.labels);
-	if (!areStringArraysEqual(initialLabels, nextLabels)) {
-		updateInput.labels = nextLabels;
-	}
-
-	const initialDependencies = normalizeDependencies(parseListInput(initial.dependencies));
-	const nextDependencies = normalizeDependencies(parseListInput(values.dependencies));
-	if (!areStringArraysEqual(initialDependencies, nextDependencies)) {
-		updateInput.dependencies = nextDependencies;
-	}
-
-	const initialReferences = parseListInput(initial.references);
-	const nextReferences = parseListInput(values.references);
-	if (!areStringArraysEqual(initialReferences, nextReferences)) {
-		updateInput.references = nextReferences;
-	}
-
-	const initialDocumentation = parseListInput(initial.documentation);
-	const nextDocumentation = parseListInput(values.documentation);
-	if (!areStringArraysEqual(initialDocumentation, nextDocumentation)) {
-		updateInput.documentation = nextDocumentation;
-	}
+	diffListField(updateInput, "assignee", initial.assignee, values.assignee);
+	diffListField(updateInput, "labels", initial.labels, values.labels);
+	diffListField(updateInput, "dependencies", initial.dependencies, values.dependencies, normalizeDependencies);
+	diffListField(updateInput, "references", initial.references, values.references);
+	diffListField(updateInput, "documentation", initial.documentation, values.documentation);
 
 	if (values.implementationPlan !== initial.implementationPlan) {
 		updateInput.implementationPlan = values.implementationPlan;

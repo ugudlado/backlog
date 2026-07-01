@@ -44,6 +44,11 @@ import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } fr
 import { SearchService } from "./search-service.ts";
 import { computeSequences, planMoveToSequence, planMoveToUnsequenced } from "./sequences.ts";
 
+/** Current time as a `YYYY-MM-DD HH:MM` timestamp for task created/updated dates. */
+function currentTimestamp(): string {
+	return new Date().toISOString().slice(0, 16).replace("T", " ");
+}
+
 interface BlessedScreen {
 	program: {
 		disableMouse(): void;
@@ -721,7 +726,7 @@ export class Core {
 		}
 
 		const priority = this.normalizePriority(input.priority);
-		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const createdDate = currentTimestamp();
 		if (
 			input.ordinal !== undefined &&
 			(typeof input.ordinal !== "number" || !Number.isFinite(input.ordinal) || input.ordinal < 0)
@@ -806,7 +811,7 @@ export class Core {
 		const statusChanged = oldStatus !== newStatus;
 
 		// Always set updatedDate when updating a task
-		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		task.updatedDate = currentTimestamp();
 
 		await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
@@ -1799,7 +1804,7 @@ export class Core {
 			return { changed: false, task: refreshedTask ?? editableTask };
 		}
 
-		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const now = currentTimestamp();
 		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
 		await Bun.write(filePath, withUpdatedDate);
 
@@ -1983,7 +1988,7 @@ export class Core {
 			}
 
 			// 7. Stamp updatedDate (same format as updateTask)
-			top.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+			top.updatedDate = currentTimestamp();
 
 			// 8. Write atomically (crash-safe, same filesystem as the original)
 			if (!top.filePath) {

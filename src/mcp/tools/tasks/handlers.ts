@@ -71,8 +71,7 @@ export class TaskHandlers {
 
 	private wrapRemoteError(error: unknown): never {
 		if (error instanceof RemoteBackendError) {
-			const code = error.status === 401 ? "OPERATION_FAILED" : "OPERATION_FAILED";
-			throw new BacklogToolError(error.message, code);
+			throw new BacklogToolError(error.message, "OPERATION_FAILED");
 		}
 		throw error;
 	}
