@@ -31,7 +31,7 @@ async function ensureGlobalStoreExists(globalStore: string): Promise<void> {
 }
 
 export const MCP_SERVER_NAME = "backlog";
-export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
+const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
 export type CreateGlobalProjectError = "no_global_store" | "invalid_name" | "already_exists";
 

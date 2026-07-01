@@ -24,33 +24,6 @@ export class McpValidationError extends BacklogToolError {
 }
 
 /**
- * Authentication error for auth failures
- */
-export class McpAuthenticationError extends BacklogToolError {
-	constructor(message = "Authentication required") {
-		super(message, "AUTH_ERROR");
-	}
-}
-
-/**
- * Connection error for transport-level failures
- */
-export class McpConnectionError extends BacklogToolError {
-	constructor(message: string, details?: unknown) {
-		super(message, "CONNECTION_ERROR", details);
-	}
-}
-
-/**
- * Internal error for unexpected failures
- */
-export class McpInternalError extends BacklogToolError {
-	constructor(message = "An unexpected error occurred", details?: unknown) {
-		super(message, "INTERNAL_ERROR", details);
-	}
-}
-
-/**
  * Formats MCP errors into standardized tool responses
  */
 function buildErrorResult(code: string, message: string, details?: unknown): CallToolResult {
@@ -91,27 +64,9 @@ export function handleBacklogToolError(error: unknown): CallToolResult {
 }
 
 /**
- * Formats successful responses in a consistent structure
- */
-export function handleMcpSuccess(data: unknown): CallToolResult {
-	return {
-		content: [
-			{
-				type: "text",
-				text: "OK",
-			},
-		],
-		structuredContent: {
-			success: true,
-			data,
-		},
-	};
-}
-
-/**
  * Format error messages in markdown for consistent MCP error responses
  */
-export function formatErrorMarkdown(code: string, message: string, details?: unknown, includeDetails = false): string {
+function formatErrorMarkdown(code: string, message: string, details?: unknown, includeDetails = false): string {
 	// Include details only when explicitly requested (e.g., debug mode)
 	if (includeDetails && details) {
 		let result = `${code}: ${message}`;
