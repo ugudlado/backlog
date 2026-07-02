@@ -1,6 +1,6 @@
 {
 	"name": "@ugudlado1/backlog",
-	"version": "2.2.11",
+	"version": "2.2.12",
 	"type": "module",
 	"module": "src/cli.ts",
 	"files": [
