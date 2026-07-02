@@ -119,6 +119,22 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
+	/**
+	 * Evict a task after a server-initiated move out of the tasks dir (archive,
+	 * complete). The file watcher usually catches these, but callers that just
+	 * moved the file must not depend on it — a missed rename event leaves ghost
+	 * tasks in every list until restart.
+	 */
+	removeTask(taskId: string): void {
+		if (!this.initialized) {
+			return;
+		}
+		if (this.tasks.delete(normalizeTaskId(taskId))) {
+			this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+			this.notify("tasks");
+		}
+	}
+
 	getSnapshot(): ContentSnapshot {
 		return {
 			tasks: this.cachedTasks.slice(),

@@ -46,6 +46,27 @@ describe("ContentStore", () => {
 		expect(snapshot.tasks.map((task) => task.id)).toContain("TASK-1");
 	});
 
+	it("removeTask evicts immediately, normalizing the id, and notifies", async () => {
+		await filesystem.saveTask(sampleTask);
+		await store.ensureInitialized();
+		expect(store.getTasks()).toHaveLength(1);
+
+		let notified = false;
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") notified = true;
+		});
+
+		store.removeTask("task-1"); // stored as TASK-1
+		expect(store.getTasks()).toHaveLength(0);
+		expect(notified).toBe(true);
+
+		// Removing an unknown id is a no-op and must not notify again
+		notified = false;
+		store.removeTask("TASK-99");
+		expect(notified).toBe(false);
+		unsubscribe();
+	});
+
 	it("emits task updates when underlying files change", async () => {
 		await filesystem.saveTask(sampleTask);
 		await store.ensureInitialized();

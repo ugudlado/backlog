@@ -998,10 +998,20 @@ export class BacklogServer {
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId);
-		if (!success) {
+		const task = await this.core.filesystem.loadTask(taskId);
+		if (!task) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
+
+		const success = await this.core.archiveTask(taskId);
+		if (!success) {
+			return Response.json({ error: "Failed to archive task" }, { status: 500 });
+		}
+
+		// Evict from the cache directly — the file just moved out of the tasks
+		// dir, and a missed watcher event would leave a ghost task in every list.
+		(await this.getContentStoreInstance()).removeTask(task.id);
+		this.broadcastTasksUpdated();
 		return Response.json({ success: true });
 	}
 
@@ -1017,7 +1027,8 @@ export class BacklogServer {
 				return Response.json({ error: "Failed to complete task" }, { status: 500 });
 			}
 
-			// Notify listeners to refresh
+			// Evict from the cache directly (same reasoning as handleDeleteTask).
+			(await this.getContentStoreInstance()).removeTask(task.id);
 			this.broadcastTasksUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
