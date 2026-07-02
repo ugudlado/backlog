@@ -1,35 +1,21 @@
-# Backlog.md MCP Implementation (MVP)
+# Backlog.md MCP Implementation
 
-This directory exposes a minimal stdio MCP surface so local agents can work with backlog.md without duplicating business
-logic.
+This directory exposes the MCP surface so agents can work with backlog.md without duplicating business logic. It serves
+local clients over stdio (`backlog mcp start`) and remote clients over Streamable HTTP via the web server's `/mcp` and
+`/projects/:id/mcp` routes.
 
 ## What’s included
 
-- `server.ts` / `createMcpServer()` – bootstraps a stdio-only server that extends `Core` and registers task, milestone, Definition of Done defaults, and document tools (`task_*`, `milestone_*`, `definition_of_done_defaults_*`, `document_*`) for MCP clients.
-- `tasks/` – consolidated task tooling that delegates to shared Core helpers (including plan/notes/AC editing).
-- `documents/` – document tooling layered on `Core`’s document helpers for list/view/create/update/search flows, including docs-directory-relative path metadata.
-- `tools/dependency-tools.ts` – dependency helpers reusing shared builders.
+- `server.ts` / `createMcpServer()` – bootstraps a server that extends `Core` and registers context, task, milestone, and Definition of Done defaults tools (`get_backlog_context`, `get_backlog_instructions`, `task_*`, `milestone_*`, `definition_of_done_defaults_*`) for MCP clients.
+- `tools/context/` – the `get_backlog_context` session bootstrap: workflow instructions, project state, and board snapshot in one call, with optional atomic claim of the next ready task.
+- `tools/tasks/` – consolidated task tooling that delegates to shared Core helpers (including plan/notes/AC editing).
 - `resources/` – lightweight resource adapters for agents.
-- `guidelines/mcp/` – task workflow content surfaced via MCP.
+- `../guidelines/mcp/` – task workflow content surfaced via MCP.
 
 Everything routes through existing Core APIs so the MCP layer stays a protocol wrapper.
 
-Document tool `path` inputs are subdirectories under the configured docs directory, for example `guides/setup`.
-Created and updated document responses include the persisted docs-relative file path. Absolute paths and traversal
-segments such as `..` are rejected by the shared core/filesystem path handling.
-
-## Development workflow
+## Testing
 
 ```bash
-# Run the stdio server from the repo
-bun run cli mcp start
-
-# Or via the globally installed CLI
-backlog mcp start
-
-# Tests
 bun test src/test/mcp-*.test.ts
 ```
-
-The test suite keeps to the reduced surface area and focuses on happy-path coverage for tasks, dependencies, and server
-bootstrap.
