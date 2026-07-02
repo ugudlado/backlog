@@ -111,6 +111,10 @@ export class BacklogServer {
 	private core: Core;
 	private server: Server<unknown> | null = null;
 	private mcpServer: McpServer | null = null;
+	// Lazily created MCP servers for /projects/:id/mcp, keyed by global-store
+	// project id. Each is bound to its own slot, so concurrent remote agents can
+	// work on different projects without touching the server's current project.
+	private readonly projectMcpServers = new Map<string, Promise<McpServer>>();
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
@@ -149,6 +153,39 @@ export class BacklogServer {
 			const denied = this.checkAuth(req);
 			return denied ?? handler(req);
 		};
+	}
+
+	/**
+	 * Serve MCP for one specific global-store project, independent of the
+	 * server's current project. The URL names the project; nothing here reads or
+	 * writes the persisted current-project pointer.
+	 */
+	private async handleProjectMcp(req: Request, rawId: string): Promise<Response> {
+		let id: string;
+		try {
+			id = decodeURIComponent(rawId);
+		} catch {
+			return Response.json({ error: `No project with id "${rawId}"` }, { status: 404 });
+		}
+
+		let serverPromise = this.projectMcpServers.get(id);
+		if (!serverPromise) {
+			const { findGlobalStoreProject } = await import("../utils/global-store-scan.ts");
+			const slot = await findGlobalStoreProject(id);
+			if (!slot) {
+				return Response.json({ error: `No project with id "${id}"` }, { status: 404 });
+			}
+			// The slot is both project root and data dir; record the override so
+			// FileSystem resolves config/tasks flat inside the slot.
+			const { setActiveWorkspaceDataDir } = await import("../utils/active-workspace.ts");
+			setActiveWorkspaceDataDir(slot.slotPath, slot.slotPath);
+			serverPromise = createMcpServer(slot.slotPath, { forceLocal: true });
+			this.projectMcpServers.set(id, serverPromise);
+			serverPromise.catch(() => this.projectMcpServers.delete(id));
+		}
+
+		const mcpServer = await serverPromise;
+		return mcpServer.handleHttpRequest(req);
 	}
 
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
@@ -349,6 +386,14 @@ export class BacklogServer {
 					"/assets/*": {
 						GET: this.guard((req) => this.handleAssetRequest(req)),
 					},
+					// MCP over HTTP scoped to one global-store project (concurrent-agent safe)
+					"/projects/:id/mcp": {
+						GET: this.guard((req: Request & { params: { id: string } }) => this.handleProjectMcp(req, req.params.id)),
+						POST: this.guard((req: Request & { params: { id: string } }) => this.handleProjectMcp(req, req.params.id)),
+						DELETE: this.guard((req: Request & { params: { id: string } }) =>
+							this.handleProjectMcp(req, req.params.id),
+						),
+					},
 					// MCP over HTTP (Streamable HTTP transport, stateless)
 					"/mcp": {
 						GET: this.guard(
@@ -487,6 +532,14 @@ export class BacklogServer {
 			await this.mcpServer?.stop();
 		} catch {}
 		this.mcpServer = null;
+
+		// Stop per-project MCP servers
+		for (const serverPromise of this.projectMcpServers.values()) {
+			try {
+				await (await serverPromise).stop();
+			} catch {}
+		}
+		this.projectMcpServers.clear();
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {

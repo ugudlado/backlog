@@ -1,5 +1,5 @@
 /**
- * Request-scoped active-workspace data-dir override.
+ * Active-workspace data-dir overrides, keyed by project root.
  *
  * The CLI resolves the active workspace once per invocation (in
  * `requireProjectRoot`). When the resolved `workspaces.yml` entry carries a
@@ -7,14 +7,15 @@
  * than thread that override through 22 `new Core(...)` call sites, the resolver
  * records it here and `FileSystem` reads it for the matching project root.
  *
- * Scope: a single CLI process handles one command, so a module-scoped value is
- * effectively request-scoped. It is keyed by project root so a stale value can
- * never apply to a different workspace.
+ * Keyed by project root so a stale value can never apply to a different
+ * workspace. A map (rather than a single value) lets a long-lived server hold
+ * overrides for several project roots at once — e.g. the per-project MCP
+ * endpoints, where each global-store slot is its own root and data dir.
  */
 
 import { normalize, resolve } from "node:path";
 
-let activeDataDirByRoot: { projectRoot: string; dataDir: string } | null = null;
+const activeDataDirByRoot = new Map<string, string>();
 
 function key(projectRoot: string): string {
 	return normalize(resolve(projectRoot));
@@ -22,7 +23,11 @@ function key(projectRoot: string): string {
 
 /** Record the active workspace's data-dir override (called by the resolver). */
 export function setActiveWorkspaceDataDir(projectRoot: string, dataDir: string | undefined): void {
-	activeDataDirByRoot = dataDir ? { projectRoot: key(projectRoot), dataDir } : null;
+	if (dataDir) {
+		activeDataDirByRoot.set(key(projectRoot), dataDir);
+	} else {
+		activeDataDirByRoot.delete(key(projectRoot));
+	}
 }
 
 /**
@@ -30,13 +35,10 @@ export function setActiveWorkspaceDataDir(projectRoot: string, dataDir: string |
  * exact root. Returns null for any other root so a stale value cannot leak.
  */
 export function getActiveWorkspaceDataDir(projectRoot: string): string | null {
-	if (!activeDataDirByRoot) {
-		return null;
-	}
-	return activeDataDirByRoot.projectRoot === key(projectRoot) ? activeDataDirByRoot.dataDir : null;
+	return activeDataDirByRoot.get(key(projectRoot)) ?? null;
 }
 
-/** Test/teardown helper: clear any recorded override. */
+/** Test/teardown helper: clear all recorded overrides. */
 export function clearActiveWorkspaceDataDir(): void {
-	activeDataDirByRoot = null;
+	activeDataDirByRoot.clear();
 }
