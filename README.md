@@ -234,11 +234,10 @@ If your IDE can't set the process working directory for MCP servers, set `BACKLO
 If your IDE supports custom args but not env vars, you can also use `["mcp", "start", "--cwd", "/absolute/path/to/your/project"]`.
 
 > [!IMPORTANT]
-> When adding the MCP server manually, you should add some extra instructions in your CLAUDE.md/AGENTS.md files to inform the agent about Backlog.
-> Using `backlog mcp install <client>` wires up the MCP server for you; otherwise add these instructions yourself.
-> Backlog's instructions for agents are available at [`/src/guidelines/mcp/agent-nudge.md`](/src/guidelines/mcp/agent-nudge.md).
+> When adding the MCP server manually, consider adding a short note in your CLAUDE.md/AGENTS.md files telling the agent this project uses Backlog.md for task management.
+> The server guides connected agents from there: one `get_backlog_context` tool call returns the full workflow instructions, project state, and current task board.
 
-Once connected, agents can read the Backlog workflow instructions via the resource `backlog://docs/task-workflow`.
+Once connected, agents can also read the workflow instructions via the resource `backlog://workflow/overview` or the `get_backlog_instructions` tool.
 Use `/mcp` command in your AI tool (Claude Code, Codex, Kiro) to verify if the connection is working.
 
 ---
