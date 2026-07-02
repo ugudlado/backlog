@@ -205,6 +205,7 @@ describe("McpServer bootstrap", () => {
 		const tools = await server.testInterface.listTools();
 		expect(tools.tools.map((tool) => tool.name)).toEqual([
 			"get_backlog_instructions",
+			"get_backlog_context",
 			"task_create",
 			"task_list",
 			"task_search",

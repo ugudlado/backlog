@@ -27,6 +27,7 @@ import { getRemoteUrl, isRemoteMode, remoteGetConfig } from "../utils/remote-bac
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
+import { registerContextTools } from "./tools/context/index.ts";
 import { registerDefinitionOfDoneTools } from "./tools/definition-of-done/index.ts";
 import { registerMilestoneTools } from "./tools/milestones/index.ts";
 import { registerTaskTools } from "./tools/tasks/index.ts";
@@ -54,7 +55,7 @@ import type {
 const APP_NAME = getPackageName();
 const APP_VERSION = await getVersion();
 const INSTRUCTIONS =
-	"At the beginning of each session, list the available resources and read the first one to understand how to use Backlog.md for task management. Additional detailed guides are available as resources when needed.";
+	"At the beginning of each session, call the get_backlog_context tool once: it returns the complete workflow instructions, project state, and current task board in a single call (pass claim=true to also claim the next ready task). The same guidance is available piecemeal via resources for clients that prefer them.";
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -246,6 +247,7 @@ export class McpServer extends Core {
 
 		registerWorkflowResources(this);
 		registerWorkflowTools(this);
+		registerContextTools(this);
 		registerTaskTools(this, config);
 		registerMilestoneTools(this);
 		registerDefinitionOfDoneTools(this);
@@ -537,6 +539,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 		const server = new McpServer(projectRoot, INSTRUCTIONS);
 		registerWorkflowResources(server);
 		registerWorkflowTools(server);
+		registerContextTools(server);
 		registerTaskTools(server, config);
 
 		if (options.debug) {
@@ -569,6 +572,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	// Normal mode: full tools and resources
 	registerWorkflowResources(server);
 	registerWorkflowTools(server);
+	registerContextTools(server);
 	registerTaskTools(server, config);
 	registerMilestoneTools(server);
 	registerDefinitionOfDoneTools(server);
