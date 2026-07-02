@@ -446,6 +446,21 @@ program
 	.version(version, "-v, --version", "display version number")
 	.option("--project <name>", "operate on the named global-store project (overrides the current selection)");
 
+// Remote mode proxies commands to the remote server's *current* project;
+// --project only affects local root resolution, so honoring it would silently
+// target the wrong project. Fail loudly instead. Checked in a hook because
+// remote-mode commands branch before requireProjectRoot runs.
+program.hook("preAction", () => {
+	const projectName = program.opts().project as string | undefined;
+	if (projectName && isRemoteMode()) {
+		console.error(
+			`--project is not supported in remote mode: commands always target the remote server's current project. ` +
+				`Switch it with \`backlog project switch ${projectName}\` (affects all remote clients), or unset backlog_url/BACKLOG_URL to work locally.`,
+		);
+		process.exit(1);
+	}
+});
+
 const taskCmd = program.command("task").aliases(["tasks"]);
 
 taskCmd
